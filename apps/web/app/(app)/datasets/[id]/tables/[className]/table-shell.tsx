@@ -1,16 +1,36 @@
 'use client';
 
 /**
- * Summary tables tab content shell — Phase 3b. Provides the per-class
- * sub-nav (subject / element / element_epoch / treatment / ...) so the
- * URL contract is in place for follow-up content port. Each sub-nav
- * link routes to `/datasets/[id]/tables/[className]` and the active
- * class is reflected in the styling.
+ * Summary tables tab content — `/datasets/[id]/tables/[className]`.
+ *
+ * Phase 6.5a (cross-repo unification): the structural shell that landed
+ * with Phase 3b is now backed by the real ported `SummaryTableView`
+ * component (fully-featured: filter + sort + column-toggle + virtualized
+ * rows + ontology popovers + CSV/XLS/JSON export + B6a canonical-column
+ * defaults for subject/probe/epoch grains).
+ *
+ * Two responsibilities:
+ *
+ *   1. Render the per-class sub-nav (subject / element / element_epoch /
+ *      treatment / probe_location / openminds_subject / combined / ontology)
+ *      so the URL contract matches the data-browser. Each tab is a `<Link>`;
+ *      the active class is reflected in styling + `aria-current="page"`.
+ *   2. Fetch the table for the active class via `useSummaryTable` (which
+ *      hits `/api/datasets/:id/tables/:className`). Loading → Skeleton.
+ *      Error → ErrorState. Success → `<SummaryTableView>`.
+ *
+ * The `ontology` and `combined` tabs each have a dedicated server endpoint
+ * with a different response shape; for now they fall back to the standard
+ * single-class fetch. Ontology-table-specific UI (per-row variableNames /
+ * docIds) is a follow-up.
  */
 import Link from 'next/link';
 
 import { cn } from '@/lib/cn';
+import { useSummaryTable } from '@/lib/api/tables';
 import { Card, CardBody } from '@/components/ui/Card';
+import { Skeleton } from '@/components/ui/Skeleton';
+import { SummaryTableView } from '@/components/app/SummaryTableView';
 
 const COMMON_CLASSES = [
   { id: 'subject', label: 'Subjects' },
@@ -57,21 +77,78 @@ export function TableShell({
         })}
       </nav>
 
+      <TableContent datasetId={datasetId} className={activeClass} />
+    </div>
+  );
+}
+
+/**
+ * Inner data-fetching component. Split from the shell so the nav above
+ * stays mounted (and keeps its styling + a11y current-state) across
+ * fetch lifecycle transitions for the active class.
+ */
+function TableContent({
+  datasetId,
+  className,
+}: {
+  datasetId: string;
+  className: string;
+}) {
+  const query = useSummaryTable(datasetId, className);
+
+  if (query.isPending) {
+    return (
       <Card>
         <CardBody>
-          <p className="text-sm text-fg-secondary">
-            Summary table for <span className="font-mono font-medium text-fg-primary">{activeClass}</span>{' '}
-            in dataset <span className="font-mono font-medium text-fg-primary">{datasetId}</span>.
+          <div className="space-y-2">
+            <Skeleton className="h-7 w-48" />
+            <Skeleton className="h-5 w-full" />
+            <Skeleton className="h-5 w-full" />
+            <Skeleton className="h-5 w-3/4" />
+          </div>
+        </CardBody>
+      </Card>
+    );
+  }
+
+  if (query.isError) {
+    return (
+      <Card>
+        <CardBody>
+          <p className="text-sm text-red-700">
+            Failed to load <span className="font-mono">{className}</span> table.
           </p>
-          <p className="text-xs text-fg-muted mt-3 italic">
-            Phase 3b structural shell. The TanStack Table-backed
-            `SummaryTableView` (with virtualized rows + ontology popovers
-            + cell-detail hover) ports in a follow-up to this PR. The
-            tab bar a11y close (audit #65) is the deliverable that
-            blocks Phase 3c onward.
+          <p className="text-xs text-fg-muted mt-2 font-mono">
+            {query.error instanceof Error ? query.error.message : String(query.error)}
           </p>
         </CardBody>
       </Card>
-    </div>
+    );
+  }
+
+  const data = query.data;
+  if (!data || data.rows.length === 0) {
+    return (
+      <Card>
+        <CardBody>
+          <p className="text-sm text-fg-secondary">
+            No <span className="font-mono">{className}</span> rows in this dataset.
+          </p>
+          <p className="text-xs text-fg-muted mt-2 italic">
+            The table endpoint returned 0 rows. Try a different class or
+            confirm this dataset publishes the {className} grain.
+          </p>
+        </CardBody>
+      </Card>
+    );
+  }
+
+  return (
+    <SummaryTableView
+      data={data}
+      tableType={className}
+      title={`${datasetId}-${className}`}
+      datasetId={datasetId}
+    />
   );
 }

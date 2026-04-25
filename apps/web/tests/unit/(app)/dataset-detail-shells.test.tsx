@@ -49,8 +49,19 @@ afterEach(() => {
 });
 
 describe('TableShell', () => {
+  // Phase 6.5a turned this from a placeholder into a real data-fetching
+  // shell. The sub-nav is still rendered unconditionally, but the body
+  // (TableContent) calls `useSummaryTable` which requires a
+  // `QueryClientProvider` ancestor. The mock leaves the request pending
+  // (Skeleton renders) so these tests stay focused on the nav contract.
   it('renders the per-class sub-nav with active aria-current', () => {
-    render(<TableShell datasetId="d1" className="subject" />);
+    mockedApiFetch.mockReturnValue(new Promise(() => {}));
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <TableShell datasetId="d1" className="subject" />
+      </Wrapper>,
+    );
     const subjectLink = screen.getByRole('link', { name: 'Subjects' });
     expect(subjectLink.getAttribute('aria-current')).toBe('page');
     expect(subjectLink.getAttribute('href')).toBe('/datasets/d1/tables/subject');
@@ -58,9 +69,23 @@ describe('TableShell', () => {
     expect(elementLink.getAttribute('aria-current')).toBeNull();
   });
 
-  it('echoes the active class id in the body copy', () => {
-    render(<TableShell datasetId="d1" className="treatment" />);
-    expect(screen.getByText('treatment')).toBeInTheDocument();
+  it('renders the empty-state message when the table has no rows', async () => {
+    mockedApiFetch.mockResolvedValueOnce({ columns: [], rows: [] });
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <TableShell datasetId="d1" className="treatment" />
+      </Wrapper>,
+    );
+    // The empty-state copy interpolates the active class name into a
+    // separate `<span>` node ("No <span>treatment</span> rows…"), so the
+    // class id appears as its own match target.
+    await waitFor(() => {
+      // Two `treatment` strings in the DOM: the active sub-nav link
+      // ("Treatments") and the empty-state span. Match the span via
+      // exact-text equality against the bare class id.
+      expect(screen.getByText('treatment', { selector: 'span' })).toBeInTheDocument();
+    });
   });
 });
 

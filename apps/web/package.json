@@ -15,6 +15,7 @@
     "test:e2e:install": "playwright install --with-deps chromium firefox"
   },
   "dependencies": {
+    "@e965/xlsx": "^0.20.3",
     "@emotion/react": "^11.14.0",
     "@emotion/styled": "^11.14.1",
     "@mui/icons-material": "^9.0.0",
