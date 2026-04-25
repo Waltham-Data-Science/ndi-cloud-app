@@ -6,7 +6,7 @@ import { useState, type FormEvent } from 'react';
 
 import { ApiError } from '@/lib/api/client';
 import { signup } from '@/lib/api/auth';
-import { AuthCard } from '@/components/marketing/AuthCard';
+import { AuthSplitLayout } from '@/components/marketing/AuthSplitLayout';
 import { Field, FormError } from '@/components/marketing/AuthForm';
 import { MarketingButton } from '@/components/marketing/Button';
 
@@ -57,19 +57,28 @@ export function CreateAccountForm() {
   }
 
   return (
-    <AuthCard
-      heading="Create your account"
-      description="Free for all public-data use. No credit card required."
-      footer={
+    <AuthSplitLayout
+      marketingEyebrow="Create your account"
+      marketingTitle={
         <>
-          Already have an account?{' '}
-          <Link href="/login" className="text-ndi-teal hover:underline">
-            Log in
-          </Link>
-          .
+          From first upload to <em>first DOI</em>, in a day.
         </>
       }
+      marketingSubtitle="Free to browse the Commons. Free-tier lab workspaces available for academic labs — today including teams at Brandeis, UCSD, and Johns Hopkins. No credit card required."
+      marketingFeatures={[
+        'Published datasets satisfy NIH Data Management & Sharing Plan requirements',
+        <>
+          RRID:SCR_023368 &mdash; cite NDI in your methods section
+        </>,
+        '(Public Data Commons is open to everyone — no account needed for browsing.)',
+      ]}
     >
+      <h1 className="font-display text-[1.85rem] font-extrabold tracking-tight text-fg-primary leading-tight mb-2 m-0">
+        Create your account
+      </h1>
+      <p className="text-[0.92rem] text-fg-secondary mb-7 m-0">
+        Free to browse the Commons. Account creation takes about 30 seconds.
+      </p>
       <form onSubmit={handleSubmit} noValidate>
         {error && <FormError>{error}</FormError>}
         <Field
@@ -112,7 +121,14 @@ export function CreateAccountForm() {
         >
           {submitting ? 'Creating account…' : 'Create account'}
         </MarketingButton>
+        <div className="mt-5 pt-5 border-t border-border-subtle text-sm text-fg-muted">
+          Already have an account?{' '}
+          <Link href="/login" className="text-ndi-teal hover:underline">
+            Log in
+          </Link>
+          .
+        </div>
       </form>
-    </AuthCard>
+    </AuthSplitLayout>
   );
 }
