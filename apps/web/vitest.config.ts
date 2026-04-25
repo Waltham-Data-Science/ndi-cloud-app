@@ -40,23 +40,21 @@ export default defineConfig({
         'app/sitemap.ts',
         'app/robots.ts',
       ],
-      // Phase 3a floors — ratcheted up from Phase 2b's 35/33/45/35
-      // baseline as `lib/api/*` + `components/ui/*` ports landed with
-      // their tests carried over from data-browser plus new hook /
-      // primitive smoke tests written in this PR.
+      // Phase 3b floors — ratcheted again from Phase 3a's 43/45/48/43
+      // baseline. The 11 tab-a11y tests + 5 hero tests + 14 shell tests
+      // pulled coverage up across all four metrics.
       //
-      // Measured 2026-04-25 (Phase 3a, after datasets + ui + hooks):
-      // statements 45.30, branches 47.47, functions 50.94, lines 45.00.
+      // Measured 2026-04-25 (Phase 3b, after detail layout + tab bar):
+      // statements 49.63, branches 52.79, functions 55.17, lines 49.54.
       //
       // Floors set ~2 points below measured so routine churn within a
-      // sub-phase doesn't trip the gate; the next sub-phase ratchets
-      // again as Phase 3b–3e ports + audit fixes (#65, #64, #66) land
-      // with their full data-browser test suites.
+      // sub-phase doesn't trip the gate; Phase 3c's MyDatasets
+      // virtualization adds tests for #64 close.
       thresholds: {
-        statements: 43,
-        branches: 45,
-        functions: 48,
-        lines: 43,
+        statements: 47,
+        branches: 50,
+        functions: 53,
+        lines: 47,
       },
     },
   },

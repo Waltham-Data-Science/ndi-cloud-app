@@ -1,21 +1,49 @@
 /**
- * Dataset detail layout — Phase 3a placeholder.
+ * Dataset detail layout — Phase 3b.
  *
- * Phase 3b builds out the hero (dataset name, byline, citation) and
- * the from-scratch a11y tab bar (audit #65) here. The tab bar uses
- * roving tabindex + ArrowLeft/Right/Home/End keyboard handling, with
- * URL-routed tabs (overview / tables / pivot / documents) rather than
- * state-controlled — that's the structural fix that #65 required.
+ * Wraps every `/datasets/[id]/{overview,tables,pivot,documents}` route
+ * with a shared hero band + the from-scratch a11y tab bar (audit #65).
+ * The tab bar is URL-routed (`<Link>` + `usePathname`-derived
+ * aria-selected), NOT state-controlled — that's the structural fix
+ * for the audit. Document detail (`documents/[docId]`) opts OUT via
+ * its own nested layout that drops this chrome (matches the
+ * data-browser's "outside the Outlet" pattern).
  *
- * For Phase 3a we just pass children through so `/datasets/[id]/overview`
- * renders standalone. Document detail (`/datasets/[id]/documents/[docId]`)
- * will opt out via its own nested layout in Phase 3b that drops the tab
- * bar (matches the data-browser's "outside the Outlet" pattern).
+ * Tabs as nested routes (Phase 3b also wires):
+ *   `tables/page.tsx`         → server redirect to ./subject
+ *   `tables/[className]/page.tsx`
+ *   `pivot/[grain]/page.tsx`
+ *   `documents/page.tsx`
+ *   `documents/[docId]/layout.tsx`  → opt-out wrapper (no tab bar)
+ *   `documents/[docId]/page.tsx`
  */
-export default function DatasetDetailLayout({
-  children,
-}: {
+import { DatasetDetailHero } from '@/components/app/DatasetDetailHero';
+import { DatasetTabs } from '@/components/app/DatasetTabs';
+
+interface LayoutProps {
   children: React.ReactNode;
-}) {
-  return <>{children}</>;
+  params: Promise<{ id: string }>;
+}
+
+export default async function DatasetDetailLayout({
+  children,
+  params,
+}: LayoutProps) {
+  const { id } = await params;
+
+  return (
+    <>
+      <DatasetDetailHero datasetId={id} />
+      <DatasetTabs datasetId={id} />
+      {/*
+        `min-w-0` keeps wide inner tables honest — CSS Grid items default
+        to `min-width: auto`, so without this a table wider than the
+        viewport would push the whole page wider instead of triggering
+        its own overflow-x-auto scroll. (Carried over from data-browser.)
+      */}
+      <section className="mx-auto max-w-[1200px] px-7 py-7 min-w-0">
+        {children}
+      </section>
+    </>
+  );
 }
