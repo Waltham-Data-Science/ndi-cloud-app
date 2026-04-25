@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from 'next';
 import { GeistSans } from 'geist/font/sans';
 import { GeistMono } from 'geist/font/mono';
+import { Analytics } from '@vercel/analytics/next';
+import { SpeedInsights } from '@vercel/speed-insights/next';
 
 import { Providers } from './providers';
 import './globals.css';
@@ -38,6 +40,18 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body className="antialiased">
         <Providers>{children}</Providers>
+        {/*
+          Analytics + Speed Insights — Phase 5. Free on Vercel Pro.
+          - <Analytics /> captures Core Web Vitals from real users so we
+            can verify Lighthouse scores generalize.
+          - <SpeedInsights /> emits per-route latency metrics — useful
+            for catching cache-warm vs cache-miss render variance once
+            the catalog is ISR-served.
+          Both are no-ops outside Vercel (the components self-detect
+          environment), so dev + Playwright runs aren't affected.
+         */}
+        <Analytics />
+        <SpeedInsights />
       </body>
     </html>
   );
