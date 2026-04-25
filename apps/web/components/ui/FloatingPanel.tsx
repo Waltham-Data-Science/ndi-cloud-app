@@ -23,9 +23,25 @@
  * `OntologyPopover` (closes audit #66) — extending here is preferable
  * to forking a custom popover variant.
  */
-import { useCallback, useEffect, useRef, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import type { CSSProperties, ReactNode, RefObject } from 'react';
 import { createPortal } from 'react-dom';
+
+/**
+ * SSR-safe `useLayoutEffect`. The panel is `'use client'` so this only
+ * matters under jsdom-driven tests where the layout-effect path keeps
+ * coords commit synchronous (so the panel goes from "not in
+ * accessibility tree" to "in accessibility tree" in one render — no
+ * visibility:hidden interim that excludes it from `getByRole`).
+ */
+const useIsoLayoutEffect =
+  typeof window !== 'undefined' ? useLayoutEffect : useEffect;
 
 import { cn } from '@/lib/cn';
 
@@ -127,16 +143,17 @@ export function FloatingPanel({
     return { top, left, placement };
   }, [anchorRef, estimatedHeight, offset, preferredPlacement, viewportMargin, width]);
 
-  // Compute initial coords on open, deferred to next animation frame so
-  // the portal div has committed to the DOM. Avoids the React-19 flag
-  // about setState-in-effect-body that direct sync compute would trip.
-  useEffect(() => {
+  // Compute initial coords synchronously after the portal commits but
+  // before the browser paints. This keeps the panel's first frame
+  // visible (rather than hidden at -9999) so testing-library's
+  // accessibility-tree-aware queries see it immediately. The data-
+  // browser pattern called `computeCoords()` from the parent's open
+  // event handler; this useLayoutEffect serves the same purpose with a
+  // slightly cleaner internal-state model.
+  useIsoLayoutEffect(() => {
     if (!open) return;
-    const id = requestAnimationFrame(() => {
-      const next = computeCoords();
-      if (next) setCoords(next);
-    });
-    return () => cancelAnimationFrame(id);
+    const next = computeCoords();
+    if (next) setCoords(next);
   }, [open, computeCoords]);
 
   // Re-anchor on scroll (capture phase — catches nested scrollers like

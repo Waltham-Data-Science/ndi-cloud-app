@@ -40,20 +40,19 @@ export default defineConfig({
         'app/sitemap.ts',
         'app/robots.ts',
       ],
-      // Phase 3c floors — ratcheted again. /my page + MyDatasetsTable
-      // landed with the audit-#64 virtualization gate test.
+      // Phase 3d floors — ratcheted again. OntologyPopover rewritten
+      // on FloatingPanel (audit #66 close) + ontology-utils + lib/api/
+      // ontology landed with their full test suites.
       //
-      // Measured 2026-04-25 (Phase 3c, after /my + MyDatasetsTable):
-      // statements 50.97, branches 52.27, functions 57.08, lines 51.04.
+      // Measured 2026-04-25 (Phase 3d, after OntologyPopover):
+      // statements 56.20, branches 56.53, functions 60.28, lines 55.85.
       //
-      // Floors set ~2 points below measured (branches at 50 because
-      // /my has many filter-state branches not exercised yet — Phase
-      // 3e covers them when /my-account ports lift surrounding tests).
+      // Floors set ~2 points below measured.
       thresholds: {
-        statements: 48,
-        branches: 50,
-        functions: 55,
-        lines: 49,
+        statements: 54,
+        branches: 54,
+        functions: 58,
+        lines: 53,
       },
     },
   },
