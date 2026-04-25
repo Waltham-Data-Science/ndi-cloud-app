@@ -32,6 +32,21 @@ import {
 } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
+// Phase 6.5d: DatasetsListClient now mounts FacetPanel + uses
+// `useRouter()` to push chip-click navigations to /query. Mock the
+// hook so this hydration test stays focused on the SSR → CSR cache
+// handoff (the original Phase 3a contract).
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    refresh: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+}));
+
 import { DatasetsListClient } from '@/app/(app)/datasets/datasets-client';
 import type { DatasetListResponse } from '@/lib/api/datasets';
 
