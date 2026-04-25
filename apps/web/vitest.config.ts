@@ -40,11 +40,18 @@ export default defineConfig({
         'app/sitemap.ts',
         'app/robots.ts',
       ],
+      // Phase 1 baseline floors — set just below the measured Phase 1
+      // baseline (statements 73.33, branches 22.22, functions 75, lines
+      // 73.33) so this PR doesn't have to raise numbers and routine refactor
+      // doesn't trip the gate. Phase 2a/3a/etc. ratchet up as more
+      // testable code lands. The baseline mostly reflects lib/env.ts being
+      // well-tested + app/providers.tsx partially covered via the layout
+      // SSR test. Values are deliberate floors, not aspirational ceilings.
       thresholds: {
-        statements: 35,
-        branches: 27,
-        functions: 34,
-        lines: 37,
+        statements: 70,
+        branches: 20,
+        functions: 70,
+        lines: 70,
       },
     },
   },
