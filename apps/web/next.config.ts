@@ -56,10 +56,46 @@ const config: NextConfig = {
     ];
   },
 
-  // Rewrites for /api/* land in Phase 4. Stubbed empty here so existing
-  // builds don't fail; the rewrite is gated on UPSTREAM_API_URL being set.
+  /*
+   * Phase 4: proxy `/api/*` to the FastAPI backend on Railway.
+   *
+   * The rewrite is gated on `UPSTREAM_API_URL` being set so dev / test
+   * builds (no upstream configured) don't accidentally 404 on /api
+   * paths — they resolve to "no rewrite, serve as-is" which the
+   * App Router treats as a 404 (no `app/api/` routes ship in this
+   * monorepo, the FastAPI is the only API surface).
+   *
+   * Production + preview env on Vercel sets:
+   *   UPSTREAM_API_URL=https://ndb-v2-production.up.railway.app
+   *
+   * Cross-origin / CSRF behavior preserved end-to-end:
+   *   - Origin / Referer headers: Vercel forwards them unchanged when
+   *     proxying through `rewrites()`. The FastAPI's existing CSRF
+   *     middleware sees the same `https://ndi-cloud.com` Origin it
+   *     currently sees from `app.ndi-cloud.com` after Phase 7.
+   *   - Cookies: the apex-level `Domain=.ndi-cloud.com` cookie set
+   *     by the backend (Phase 4 backend PR in `ndi-data-browser-v2`)
+   *     gets carried through automatically because the browser sees
+   *     the same origin (`https://ndi-cloud.com/api/...`) for both
+   *     the marketing surface and the API.
+   *   - Server-side RSC fetches (catalog prefetch in /datasets) bypass
+   *     the rewrite via `INTERNAL_API_URL` to avoid a Vercel-edge to
+   *     Railway double-hop.
+   *
+   * Edge Middleware (Phase 5) attaches Origin enforcement + Vary:Cookie
+   * + nonce CSP on top of this rewrite — the proxy passes the request
+   * through middleware first, so defense-in-depth fires before the
+   * upstream sees the request.
+   */
   async rewrites() {
-    return [];
+    const upstream = process.env.UPSTREAM_API_URL;
+    if (!upstream) return [];
+    return [
+      {
+        source: '/api/:path*',
+        destination: `${upstream.replace(/\/$/, '')}/api/:path*`,
+      },
+    ];
   },
 };
 
