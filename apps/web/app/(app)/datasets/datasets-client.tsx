@@ -27,19 +27,20 @@ import { CardSkeleton } from '@/components/ui/Skeleton';
 import { formatNumber } from '@/lib/format';
 import type { OntologyTerm } from '@/lib/types/facets';
 
-/** Maps the FacetPanel's `kind` argument to the QueryBuilder field path
- * a `contains_string` operator should be applied against. The mapping
- * mirrors the data-browser's `QueryPage` chip-click handlers — once
- * QueryBuilder ports in 6.5e, both sides agree on field paths. */
-const FACET_KIND_TO_FIELD: Record<
-  'species' | 'brainRegions' | 'strains' | 'sexes',
-  string
-> = {
-  species: 'openminds.fields.preferredOntologyIdentifier',
-  brainRegions: 'openminds.fields.preferredOntologyIdentifier',
-  strains: 'openminds.fields.preferredOntologyIdentifier',
-  sexes: 'openminds.fields.preferredOntologyIdentifier',
-};
+/** All four ontology facet kinds funnel into the same backend field —
+ * `data.ontology_name` is the canonical ontology-ID field emitted by
+ * the enrichment pipeline (matches both full IDs like `NCBITaxon:10116`
+ * and human-readable labels in the same cell). The data-browser's
+ * `QueryPage` `handleSelectOntologyFacet` does the same unified
+ * dispatch; the `kind` argument is reserved for future per-kind field
+ * paths if the enrichment pipeline ever splits species / brainRegions
+ * into distinct paths.
+ *
+ * Phase 6.5e fixed this: the previous 6.5d shipped `openminds.fields.preferredOntologyIdentifier`
+ * which doesn't exist in the cloud's document index — chip clicks would
+ * land on /query with a query that always returns 0 rows. This restores
+ * parity with the data-browser. */
+const ONTOLOGY_FACET_FIELD = 'data.ontology_name';
 
 export function DatasetsListClient({
   page = 1,
@@ -51,27 +52,30 @@ export function DatasetsListClient({
   const router = useRouter();
 
   const handleOntologyChip = (
-    kind: 'species' | 'brainRegions' | 'strains' | 'sexes',
+    _kind: 'species' | 'brainRegions' | 'strains' | 'sexes',
     term: OntologyTerm,
   ) => {
     // Prefer the ontology id (e.g. NCBITaxon:6239) when present — that's
     // what the backend ontologyTableRow indexes on. Fall back to the
-    // human-readable label if no ontology id was extracted.
+    // human-readable label if no ontology id was extracted. `_kind` is
+    // unused today; see ONTOLOGY_FACET_FIELD's docstring.
     const value = term.ontologyId ?? term.label;
     if (!value) return;
-    const field = FACET_KIND_TO_FIELD[kind];
     const qs = new URLSearchParams({
       op: 'contains_string',
-      field,
+      field: ONTOLOGY_FACET_FIELD,
       param1: value,
     });
     router.push(`/query?${qs.toString()}`);
   };
 
   const handleProbeTypeChip = (probeType: string) => {
+    // `element.type` is the canonical probe-type field in NDI-matlab and
+    // v2's element-class shape — matches the data-browser's
+    // `QueryPage.handleSelectProbeType`.
     const qs = new URLSearchParams({
       op: 'contains_string',
-      field: 'element.fields.probeType',
+      field: 'element.type',
       param1: probeType,
     });
     router.push(`/query?${qs.toString()}`);
