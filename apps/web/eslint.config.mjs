@@ -71,6 +71,13 @@ const config = [
       'playwright-report/**',
       'test-results/**',
       'next-env.d.ts',
+      // macOS Finder duplicates (e.g. `layout 2.tsx`, `(marketing) 2/`).
+      // These never enter git (the hygiene CI job blocks them) but they
+      // appear locally if a contributor on macOS accidentally Cmd+D's a
+      // file. Linting them spins on stale duplicate trees.
+      '**/* 2',
+      '**/* 2.*',
+      '**/* 2/**',
     ],
   },
 ];

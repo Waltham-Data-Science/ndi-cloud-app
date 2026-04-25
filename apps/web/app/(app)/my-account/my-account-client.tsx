@@ -9,8 +9,6 @@ import { logout } from '@/lib/api/auth';
 import { useSession } from '@/lib/auth/use-session';
 import { commonsSearchUrl, myWorkspaceUrl } from '@/lib/urls';
 import { MarketingButton } from '@/components/marketing/Button';
-import { Header } from '@/components/marketing/Header';
-import { Footer } from '@/components/marketing/Footer';
 
 /**
  * /my-account — authenticated user landing.
@@ -55,21 +53,15 @@ export function MyAccountClient() {
 
   if (isLoading || !user) {
     return (
-      <>
-        <Header />
-        <main className="px-7 py-20 min-h-[calc(100vh-160px)] bg-bg-canvas flex items-center justify-center">
-          <p className="text-fg-muted text-sm">Loading…</p>
-        </main>
-        <Footer />
-      </>
+      <div className="px-7 py-20 bg-bg-canvas flex items-center justify-center">
+        <p className="text-fg-muted text-sm">Loading…</p>
+      </div>
     );
   }
 
   return (
-    <>
-      <Header />
-      <main className="px-7 py-12 min-h-[calc(100vh-160px)] bg-bg-canvas">
-        <div className="max-w-[800px] mx-auto">
+    <div className="px-7 py-12 bg-bg-canvas">
+      <div className="max-w-[800px] mx-auto">
           <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
             Your account
           </div>
@@ -129,10 +121,8 @@ export function MyAccountClient() {
               </button>
             </div>
           </div>
-        </div>
-      </main>
-      <Footer />
-    </>
+      </div>
+    </div>
   );
 }
 

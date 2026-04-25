@@ -1,51 +1,41 @@
 /**
  * apiFetch — typed fetch wrapper for the FastAPI proxy.
  *
- * Phase 2b minimum-viable port — covers what the auth flows need:
- * cookie-based session via `credentials: 'include'`, CSRF double-submit
- * on mutations (read XSRF-TOKEN cookie, echo into X-XSRF-TOKEN header),
- * typed error mapping, JSON request/response. Phase 3a replaces this
- * with the full data-browser implementation (retry-with-jitter,
- * error-code catalog, abort signals, query-string serialization,
- * stream support for binary endpoints) — but the public signature
- * stays the same so callsites here don't need to change.
+ * Phase 3a extension of the Phase 2b minimum-viable port. Adds:
+ *   - ensureCsrfToken bootstrap when XSRF-TOKEN cookie is missing
+ *     (cold-load mutations would otherwise fail FastAPI's CSRF gate;
+ *     this matches data-browser PR #76 behavior — a single bootstrap
+ *     GET to /api/auth/csrf populates the non-HttpOnly cookie which
+ *     the rest of the session reads via document.cookie)
+ *   - typed error catalog (ErrorCode + Recovery + requestId surfaced
+ *     on ApiError; FastAPI envelope `{ error: { ... } }` unwrapped
+ *     before construction so consumers match on err.code without
+ *     dotted paths)
+ *   - idempotencyKey option, propagated as X-Idempotency-Key
+ *   - explicit AbortSignal forwarding (already worked via spread
+ *     in Phase 2b; documented here for the cancel-on-disconnect
+ *     contract that flows from TanStack Query into apiFetch)
  *
- * Lives outside the `'use client'` boundary because it's framework-
- * agnostic. Hooks that consume it (lib/api/auth.ts) carry the
- * `'use client'` directive themselves.
+ * The CSRF flow is **double-submit**, NOT per-request token fetch:
+ *   1. Server sets non-HttpOnly XSRF-TOKEN cookie at session establish
+ *      (login response, /me, or this module's bootstrap).
+ *   2. JS reads it via document.cookie.
+ *   3. Client echoes it in X-XSRF-TOKEN on every mutation.
+ *   4. Server validates header matches cookie.
+ *
+ * Lives outside `'use client'` — framework-agnostic. Hooks that consume
+ * it carry their own `'use client'` directive.
  */
+import { ApiError } from './errors';
+
+export { ApiError };
+export type { ApiErrorBody, ErrorCode, Recovery } from './errors';
 
 const CSRF_COOKIE = 'XSRF-TOKEN';
 const CSRF_HEADER = 'X-XSRF-TOKEN';
+const CSRF_BOOTSTRAP_PATH = '/api/auth/csrf';
+const IDEMPOTENCY_HEADER = 'X-Idempotency-Key';
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
-
-/**
- * Typed error thrown for non-2xx responses.
- *
- * `code` mirrors the server's typed error catalog from
- * `ndi-data-browser-v2/backend/errors.py` — Phase 3a will narrow this
- * to a discriminated union of the 23 known codes; today it's a free
- * string defaulting to 'unknown'.
- */
-export class ApiError extends Error {
-  readonly status: number;
-  readonly code: string;
-  readonly body: unknown;
-
-  constructor(status: number, body: unknown) {
-    const code =
-      body !== null &&
-      typeof body === 'object' &&
-      'code' in body &&
-      typeof (body as { code: unknown }).code === 'string'
-        ? (body as { code: string }).code
-        : 'unknown';
-    super(`API error ${status} (${code})`);
-    this.status = status;
-    this.code = code;
-    this.body = body;
-  }
-}
 
 function readCookie(name: string): string | null {
   if (typeof document === 'undefined') return null;
@@ -54,12 +44,56 @@ function readCookie(name: string): string | null {
   return match && match[1] ? decodeURIComponent(match[1]) : null;
 }
 
+/**
+ * Reads the XSRF-TOKEN cookie; if missing, bootstraps via a GET to
+ * /api/auth/csrf which causes the server to issue Set-Cookie. Returns
+ * the token or null if the bootstrap also failed (offline / 5xx). The
+ * caller decides whether to proceed without CSRF — for FastAPI the
+ * mutation will fail server-side, which is the intended fail-closed
+ * behavior.
+ */
+async function ensureCsrfToken(): Promise<string | null> {
+  const existing = readCookie(CSRF_COOKIE);
+  if (existing) return existing;
+
+  try {
+    const res = await fetch(CSRF_BOOTSTRAP_PATH, {
+      method: 'GET',
+      credentials: 'include',
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return null;
+
+    // Re-read cookie — that's the canonical source. Some test harnesses
+    // (jsdom) won't honor Set-Cookie, so fall back to body.csrfToken.
+    const fresh = readCookie(CSRF_COOKIE);
+    if (fresh) return fresh;
+
+    try {
+      const body = (await res.json()) as { csrfToken?: unknown };
+      return typeof body.csrfToken === 'string' ? body.csrfToken : null;
+    } catch {
+      return null;
+    }
+  } catch {
+    return null;
+  }
+}
+
 export type ApiFetchInit = Omit<RequestInit, 'body'> & {
   /**
-   * Request body. Pass a plain object; we JSON.stringify it. Pass a
-   * pre-stringified string / FormData / Blob and we forward it as-is.
+   * Request body. Plain objects are JSON-stringified and Content-Type
+   * is set to application/json. Strings, FormData, Blob, URLSearchParams,
+   * and ArrayBuffer pass through unchanged so the caller controls the
+   * encoding.
    */
   body?: unknown;
+  /**
+   * Idempotency key for safe retries on mutating endpoints — propagated
+   * as `X-Idempotency-Key`. The FastAPI proxy de-duplicates retries that
+   * carry the same key + body within a short window.
+   */
+  idempotencyKey?: string;
 };
 
 export async function apiFetch<T = unknown>(
@@ -69,16 +103,22 @@ export async function apiFetch<T = unknown>(
   const method = (init.method ?? 'GET').toUpperCase();
   const headers = new Headers(init.headers);
 
-  // CSRF double-submit on mutations: read non-HttpOnly XSRF-TOKEN cookie,
-  // echo into X-XSRF-TOKEN header. Server validates header matches cookie.
+  // CSRF double-submit on mutations. Bootstrap if cookie missing.
   if (MUTATING_METHODS.has(method)) {
-    const token = readCookie(CSRF_COOKIE);
+    const token = await ensureCsrfToken();
     if (token) {
       headers.set(CSRF_HEADER, token);
     }
+    // If still null we proceed — server fails closed. Better signal
+    // than a silent client-side block; matches data-browser semantics.
   }
 
-  // JSON-encode plain-object bodies; let strings / FormData / Blob through.
+  if (init.idempotencyKey) {
+    headers.set(IDEMPOTENCY_HEADER, init.idempotencyKey);
+  }
+
+  // Body encoding. Pass-throughs first (typeof check + instanceof on
+  // shapes that fetch() accepts directly); fall back to JSON.stringify.
   let body: BodyInit | undefined;
   if (init.body === undefined || init.body === null) {
     body = undefined;
@@ -97,8 +137,13 @@ export async function apiFetch<T = unknown>(
     }
   }
 
+  // Strip our extension keys from RequestInit so `fetch` doesn't choke.
+  const { idempotencyKey: _idempotencyKey, body: _body, ...rest } = init;
+  void _idempotencyKey;
+  void _body;
+
   const response = await fetch(path, {
-    ...init,
+    ...rest,
     method,
     body,
     headers,
@@ -106,13 +151,25 @@ export async function apiFetch<T = unknown>(
   });
 
   if (!response.ok) {
-    let errBody: unknown = null;
+    let raw: unknown = null;
     try {
-      errBody = await response.json();
+      raw = await response.json();
     } catch {
-      // Non-JSON error body — fine, leave as null.
+      // Non-JSON error body — surface a generic ApiError below.
     }
-    throw new ApiError(response.status, errBody);
+    // Unwrap FastAPI envelope `{ error: { ... } }` if present. Both
+    // shapes (envelope + flat) flow through ApiError uniformly: the
+    // constructor reads `code` / `message` / `recovery` / `requestId`
+    // off whichever inner shape arrives.
+    const inner =
+      raw !== null &&
+      typeof raw === 'object' &&
+      'error' in raw &&
+      typeof (raw as { error: unknown }).error === 'object' &&
+      (raw as { error: unknown }).error !== null
+        ? (raw as { error: unknown }).error
+        : raw;
+    throw new ApiError(response.status, inner);
   }
 
   if (response.status === 204 || response.headers.get('content-length') === '0') {
