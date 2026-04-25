@@ -1,0 +1,40 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Next.js build
+.next/
+out/
+
+# Coverage + reports
+coverage/
+.nyc_output/
+*.lcov
+
+# Test artifacts
+playwright-report/
+test-results/
+.playwright/
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Misc
+.DS_Store
+.idea/
+.vscode/
+*.log
+*.tsbuildinfo
+.eslintcache
+.turbo/
+
+# Vercel
+.vercel/
+
+# macOS Finder duplicate files (caught by hygiene CI; should never reach repo)
+* 2.*
+* 3.*
+" 2".*
+" 3".*
