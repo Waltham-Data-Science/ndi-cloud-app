@@ -1,20 +1,156 @@
 @import 'tailwindcss';
 
 /*
- * Tailwind v4 design tokens. Phase 2a populates this @theme block with the
- * NDI brand palette translated from ndi-web-app-wds/app/src/styles/globals.scss
- * CSS custom properties. Single source of truth for both marketing and app
- * route groups; replaces variables.scss + jsStyleVariables.ts.
+ * NDI design tokens — single source of truth for marketing + app routes.
+ *
+ * Ported verbatim from ndi-web-app-wds/app/src/styles/globals.scss
+ * (2026-04-25 snapshot). Replaces both `globals.scss` (CSS custom
+ * properties) and `variables.scss` (SCSS mirror) and `jsStyleVariables.ts`
+ * (subset for MUI sx props) — the @theme block emits CSS custom
+ * properties AND drives Tailwind v4 utility class generation.
+ *
+ * Naming: Tailwind v4 reads the `--color-*`, `--font-*`, `--radius-*`,
+ * `--shadow-*`, `--spacing-*`, `--tracking-*`, `--ease-*`, `--duration-*`
+ * prefixes and generates utility classes (`bg-brand-navy`, `text-ndi-teal`,
+ * `rounded-pill`, `shadow-cta`, `p-4`, etc.). Where the source repo used
+ * non-prefixed names (--brand-navy, --sp-4, etc.), they're renamed here to
+ * the Tailwind v4 convention. Original names remain accessible via
+ * `var(--<original>)` aliases in :root below for any direct CSS that
+ * doesn't go through Tailwind.
  */
+
 @theme {
-  /* Phase 2a will populate. Empty for Phase 1 bootstrap. */
+  /* --- Brand colors --- */
+  --color-brand-navy: #002054;
+  --color-brand-blue: #17a7ff;
+  --color-brand-blue-2: #2eb0ff;
+  --color-brand-blue-3: #5dc1ff;
+  --color-brand-cream: #fdf7fa;
+
+  --color-ndi-primary: #002054;
+  --color-ndi-primary-dark: #001a44;
+  --color-ndi-teal: #0f6e56;
+  --color-ndi-teal-light: #e8f5f0;
+  --color-ndi-teal-border: #c4e6d9;
+
+  /* --- Neutrals (project-local; coexist with Tailwind defaults) --- */
+  --color-white: #ffffff;
+  --color-black: #000000;
+  --color-gray-50: #f9fafb;
+  --color-gray-100: #f3f4f6;
+  --color-gray-200: #e5e7eb;
+  --color-gray-300: #d1d5db;
+  --color-gray-500: #6b7280;
+  --color-gray-700: #374151;
+  --color-gray-900: #111827;
+
+  /* --- Semantic surfaces / text / borders --- */
+  --color-bg-canvas: #fdf7fa; /* var(--color-brand-cream) */
+  --color-bg-surface: #ffffff;
+  --color-bg-muted: #f9fafb;
+  --color-bg-inverse: #002054;
+  --color-bg-depth: #0d1117;
+
+  --color-fg-primary: #002054;
+  --color-fg-secondary: #374151;
+  --color-fg-muted: #6b7280;
+  --color-fg-inverse: #ffffff;
+  --color-fg-link: #0f6e56;
+  --color-fg-accent: #17a7ff;
+
+  --color-border-subtle: #e5e7eb;
+  --color-border-strong: #d1d5db;
+  --color-border-focus: #0f6e56;
+
+  /* --- Spacing scale (rem-based, identical to source --sp-* tokens) --- */
+  --spacing: 0.25rem; /* base unit; p-1 = 4px, p-2 = 8px, etc. */
+
+  /* --- Border radius --- */
+  --radius-xs: 4px;
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+  --radius-pill: 100px;
+
+  /* --- Shadows --- */
+  --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 12px rgba(0, 0, 0, 0.06);
+  --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.07);
+  --shadow-lg: 0 8px 30px rgba(0, 0, 0, 0.1);
+  --shadow-xl: 0 12px 40px rgba(0, 32, 84, 0.3);
+  --shadow-cta: 0 4px 16px rgba(15, 110, 86, 0.25);
+  --shadow-nav: 0 1px 12px rgba(0, 0, 0, 0.4);
+
+  /* --- Typography --- */
+  --font-display:
+    'Geist', -apple-system, BlinkMacSystemFont, system-ui, sans-serif;
+  --font-sans:
+    'Geist', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen,
+    Ubuntu, Cantarell, sans-serif;
+  --font-mono:
+    'Geist Mono', ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+
+  --tracking-tight: -0.015em;
+  --tracking-normal: 0;
+  --tracking-wide: 0.04em;
+  --tracking-eyebrow: 0.1em;
+
+  /* --- Motion --- */
+  --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --duration-fast: 150ms;
+  --duration-base: 200ms;
+  --duration-slow: 300ms;
 }
 
 /*
- * Force light color-scheme app-wide (matches data-browser pattern; the
- * 168-dead-`dark:*`-class cleanup in PR #76 audit fix is preserved here
- * by NOT enabling Tailwind's dark mode at all).
+ * Composite typography tokens (CSS font shorthand: weight size/lineheight
+ * family). Not part of @theme since Tailwind v4 doesn't drive a font
+ * shorthand utility — used directly via `font: var(--type-h1)` in marketing
+ * page components where utility classes get unwieldy (heroes, decorative
+ * type ramps).
+ *
+ * Signature gradient lives here too — used inline by hero + 404 + CTA bands.
  */
 :root {
+  --type-display-xl: 700 4rem/1.1 var(--font-display);
+  --type-display-lg: 700 3rem/1.15 var(--font-display);
+  --type-display-md: 700 2.25rem/1.2 var(--font-display);
+  --type-h1: 700 2rem/1.25 var(--font-sans);
+  --type-h2: 700 1.5rem/1.3 var(--font-sans);
+  --type-h3: 700 1.25rem/1.35 var(--font-sans);
+  --type-h4: 600 1.1rem/1.4 var(--font-sans);
+  --type-body-lg: 400 1.05rem/1.6 var(--font-sans);
+  --type-body: 400 0.95rem/1.6 var(--font-sans);
+  --type-body-sm: 400 0.875rem/1.55 var(--font-sans);
+  --type-caption: 400 0.8rem/1.5 var(--font-sans);
+  --type-meta: 600 0.68rem/1.4 var(--font-sans);
+  --type-code: 400 0.875rem/1.55 var(--font-mono);
+
+  --grad-depth: linear-gradient(
+    135deg,
+    #000000 0%,
+    var(--color-ndi-primary-dark) 50%,
+    var(--color-brand-navy) 100%
+  );
+
+  /* Force light color-scheme app-wide. The data-browser had 168 dead
+   * `dark:*` classes (audit #68 cleanup); this declaration prevents them
+   * from creeping back in by making any UA-default dark-scheme handling
+   * impossible. */
   color-scheme: light;
+}
+
+/*
+ * Site-wide base typography. Marketing pages override per-section as
+ * needed; this is the floor that catches anything not explicitly styled
+ * (legal copy, raw <p> tags in error states, etc.).
+ */
+body {
+  font: var(--type-body);
+  color: var(--color-fg-primary);
+  background: var(--color-bg-canvas);
+  letter-spacing: var(--tracking-normal);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
