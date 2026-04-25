@@ -1,26 +1,38 @@
 /**
  * Phase 1 TDD gate.
  *
- * Asserts that RootLayout renders <html> with the GeistSans + GeistMono
- * font variable classes applied. This is the minimum production contract:
- * the design tokens system in Phase 2a depends on the Geist font variables
- * being on the root <html>, and Lighthouse SEO checks expect a `lang`
- * attribute.
+ * Asserts that RootLayout renders <html> with lang="en" + the GeistSans +
+ * GeistMono font variable classes, and that children render inside <body>.
  *
- * This test is intentionally minimal — Phase 2a will add metadata
- * coverage (title, description, canonical) and Phase 5 will add nonce
- * propagation coverage.
+ * Rendering note: RootLayout returns <html><body>...</body></html>. RTL's
+ * default container (a <div> appended to document.body) would nest these
+ * inside a <div>, which React 19 flags as invalid and warns about in the
+ * console. We instead pass `container: document.documentElement` to RTL so
+ * React 19's html-hoisting merges RootLayout's html attributes onto the
+ * existing <html> element — the same behavior Next.js relies on at render
+ * time. No hydration warning, and the assertions remain against the real
+ * document root.
+ *
+ * Phase 2a will add metadata coverage (title, description, canonical) and
+ * Phase 5 will add nonce propagation coverage for CSP.
  */
-import { describe, it, expect } from 'vitest';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import RootLayout from '@/app/layout';
 
 describe('RootLayout', () => {
-  it('sets lang="en" and Geist font variable classes on document.documentElement', () => {
-    // React 19 hoists `<html>` attribute rendering onto the existing
-    // `document.documentElement` rather than creating a nested html node
-    // inside RTL's container. So we assert against the document root.
-    render(<RootLayout>{null}</RootLayout>);
+  beforeEach(() => {
+    // Reset the documentElement attributes between tests so assertions
+    // don't see stale attributes from prior renders.
+    document.documentElement.removeAttribute('lang');
+    document.documentElement.removeAttribute('class');
+  });
+
+  it('sets lang="en" and Geist font variable classes on the root <html>', () => {
+    render(<RootLayout>{null}</RootLayout>, {
+      container: document.documentElement,
+    });
+
     const html = document.documentElement;
     expect(html.getAttribute('lang')).toBe('en');
     // Geist exposes GeistSans.variable + GeistMono.variable as CSS-var
@@ -36,11 +48,8 @@ describe('RootLayout', () => {
       <RootLayout>
         <div data-testid="child">hello</div>
       </RootLayout>,
+      { container: document.documentElement },
     );
-    // `screen` queries the entire `document`, which is correct here because
-    // React 19 hoists html/body content into the document during render. The
-    // child div lands in the document tree even though the html/body tags
-    // wrapping it are nested inside RTL's container.
     expect(screen.getByTestId('child').textContent).toBe('hello');
   });
 });
