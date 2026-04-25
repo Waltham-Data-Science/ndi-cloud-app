@@ -15,6 +15,9 @@ coverage/
 playwright-report/
 test-results/
 .playwright/
+# Lighthouse CI cached run artifacts (large per-route lhr-*.json/.html files,
+# regenerated on each lhci run; never useful to commit).
+.lighthouseci/
 
 # Environment
 .env

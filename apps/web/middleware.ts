@@ -31,10 +31,45 @@ import { NextRequest, NextResponse } from 'next/server';
 
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
-const ALLOWED_ORIGINS = new Set([
-  'https://ndi-cloud.com',
-  'https://www.ndi-cloud.com',
-]);
+/**
+ * Compose the set of allowed `Origin` values for `/api/*` mutations.
+ *
+ * - **Production**: strict allowlist of `ndi-cloud.com` + `www.ndi-cloud.com`
+ *   only. The Phase 7 cutover targets. No `*.vercel.app` URLs admitted —
+ *   production traffic carries the apex Origin and that's the only
+ *   surface that should mutate.
+ * - **Preview** (`VERCEL_ENV === 'preview'`): the static apex pair PLUS
+ *   the per-deployment `VERCEL_URL` and the canonical `VERCEL_BRANCH_URL`.
+ *   Without these, every preview deploy on `*.vercel.app` 403s its own
+ *   login flow because the Origin header doesn't match the production
+ *   allowlist. `VERCEL_PROJECT_PRODUCTION_URL` is intentionally NOT
+ *   included — once cutover happens it becomes a redundant alias of
+ *   the apex; including it would let post-cutover traffic mutate via
+ *   the `*.vercel.app` URL, which we don't want.
+ *
+ * Vercel auto-injects the system env vars on every Vercel build (see
+ * https://vercel.com/docs/environment-variables/system-environment-variables);
+ * they're absent in local dev and bare CI runs, where the production
+ * allowlist applies (the test harness sets `Origin: https://ndi-cloud.com`).
+ *
+ * Computed per request so tests can flip `process.env.VERCEL_ENV` without
+ * `vi.resetModules()`. The function is O(1) and runs at the edge — cheap.
+ */
+function getAllowedOrigins(): Set<string> {
+  const allowed = new Set<string>([
+    'https://ndi-cloud.com',
+    'https://www.ndi-cloud.com',
+  ]);
+  if (process.env.VERCEL_ENV === 'preview') {
+    if (process.env.VERCEL_URL) {
+      allowed.add(`https://${process.env.VERCEL_URL}`);
+    }
+    if (process.env.VERCEL_BRANCH_URL) {
+      allowed.add(`https://${process.env.VERCEL_BRANCH_URL}`);
+    }
+  }
+  return allowed;
+}
 
 const RAILWAY_API = 'https://ndb-v2-production.up.railway.app';
 
@@ -45,7 +80,7 @@ export function middleware(req: NextRequest): NextResponse {
     MUTATING_METHODS.has(req.method)
   ) {
     const origin = req.headers.get('origin');
-    if (origin && !ALLOWED_ORIGINS.has(origin)) {
+    if (origin && !getAllowedOrigins().has(origin)) {
       return new NextResponse('Origin not allowed', { status: 403 });
     }
   }

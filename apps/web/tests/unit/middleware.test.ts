@@ -85,6 +85,115 @@ describe('Origin enforcement', () => {
   });
 });
 
+describe('Origin allowlist — production vs preview environments', () => {
+  /**
+   * The Vercel preview-URL allowance is intentionally gated by
+   * `VERCEL_ENV === 'preview'`. Production must stay strict on the
+   * apex pair only; if the gate ever regresses, post-cutover traffic
+   * could mutate via `*.vercel.app` URLs which is a real security
+   * concern.
+   */
+  const ORIG_ENV = {
+    VERCEL_ENV: process.env.VERCEL_ENV,
+    VERCEL_URL: process.env.VERCEL_URL,
+    VERCEL_BRANCH_URL: process.env.VERCEL_BRANCH_URL,
+  };
+
+  function setEnv(env: Partial<typeof ORIG_ENV>) {
+    for (const [k, v] of Object.entries(env)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+
+  function restoreEnv() {
+    for (const [k, v] of Object.entries(ORIG_ENV)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  }
+
+  it('production: rejects POST from a *.vercel.app preview URL', async () => {
+    setEnv({
+      VERCEL_ENV: 'production',
+      VERCEL_URL: 'ndi-cloud-app-web-abc123.vercel.app',
+      VERCEL_BRANCH_URL: 'ndi-cloud-app-web-git-main-team.vercel.app',
+    });
+    try {
+      const req = makeReq('https://ndi-cloud.com/api/auth/login', {
+        method: 'POST',
+        origin: 'https://ndi-cloud-app-web-abc123.vercel.app',
+      });
+      const res = await middleware(req);
+      expect(res.status).toBe(403);
+    } finally {
+      restoreEnv();
+    }
+  });
+
+  it('production: still allows the apex Origin (no regression)', async () => {
+    setEnv({ VERCEL_ENV: 'production' });
+    try {
+      const req = makeReq('https://ndi-cloud.com/api/auth/login', {
+        method: 'POST',
+        origin: 'https://ndi-cloud.com',
+      });
+      const res = await middleware(req);
+      expect(res.status).not.toBe(403);
+    } finally {
+      restoreEnv();
+    }
+  });
+
+  it('preview: admits VERCEL_URL Origin on POST', async () => {
+    const previewUrl = 'ndi-cloud-app-web-xyz789.vercel.app';
+    setEnv({ VERCEL_ENV: 'preview', VERCEL_URL: previewUrl });
+    try {
+      const req = makeReq('https://ndi-cloud.com/api/auth/login', {
+        method: 'POST',
+        origin: `https://${previewUrl}`,
+      });
+      const res = await middleware(req);
+      expect(res.status).not.toBe(403);
+    } finally {
+      restoreEnv();
+    }
+  });
+
+  it('preview: admits VERCEL_BRANCH_URL Origin on POST', async () => {
+    const branchUrl = 'ndi-cloud-app-web-git-main-team.vercel.app';
+    setEnv({ VERCEL_ENV: 'preview', VERCEL_BRANCH_URL: branchUrl });
+    try {
+      const req = makeReq('https://ndi-cloud.com/api/auth/login', {
+        method: 'POST',
+        origin: `https://${branchUrl}`,
+      });
+      const res = await middleware(req);
+      expect(res.status).not.toBe(403);
+    } finally {
+      restoreEnv();
+    }
+  });
+
+  it('preview: still rejects an unrelated *.vercel.app URL not in the system env vars', async () => {
+    setEnv({
+      VERCEL_ENV: 'preview',
+      VERCEL_URL: 'ndi-cloud-app-web-abc123.vercel.app',
+    });
+    try {
+      const req = makeReq('https://ndi-cloud.com/api/auth/login', {
+        method: 'POST',
+        // Not VERCEL_URL or VERCEL_BRANCH_URL — should still 403.
+        origin: 'https://attacker-project-something.vercel.app',
+      });
+      const res = await middleware(req);
+      expect(res.status).toBe(403);
+    } finally {
+      restoreEnv();
+    }
+  });
+});
+
 describe('CSP nonce (Report-Only)', () => {
   it('emits Content-Security-Policy-Report-Only with a nonce', async () => {
     const req = makeReq('https://ndi-cloud.com/api/auth/me');
