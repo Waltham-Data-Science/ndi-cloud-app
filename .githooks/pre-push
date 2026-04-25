@@ -6,14 +6,27 @@
 # This hook fails the push locally if any commit in the about-to-be-pushed
 # range has a different author — saves the trip through CI just to fail there.
 #
+# **Allowed authors:**
+#   - audri@walthamdatascience.com — the canonical email (every direct commit
+#     created with `--author=...`)
+#   - 138315415+audriB@users.noreply.github.com — the GitHub squash-merge
+#     noreply for user audriB. When PRs are squash-merged via the GitHub UI,
+#     the resulting commit on `main` carries this email regardless of how
+#     the source-PR commits were authored. Rebases that pull main onto a
+#     branch include those squash commits in the push range; without this
+#     allowlist they trip the hook on every subsequent rebase. The CI
+#     hygiene job runs the same check with the same allowlist.
+#
 # Activate locally with:
 #   git config core.hooksPath .githooks
-#
-# CI also runs the same check as a job step.
 
 set -e
 
-REQUIRED_EMAIL="audri@walthamdatascience.com"
+# Allowlist regex matching either canonical email or GitHub squash-merge
+# noreply for audriB. `awk` extended regex; matches the full %ae value.
+# Using a regex (not a literal list) so any `<id>+audriB@users.noreply.github.com`
+# from a future GitHub user-id rotation still matches.
+EMAIL_ALLOWLIST_RE='^(audri@walthamdatascience\.com|[0-9]+\+audriB@users\.noreply\.github\.com)$'
 
 # Read pushed refs from stdin per Git pre-push contract.
 # Format per line: <local ref> <local sha> <remote ref> <remote sha>
@@ -32,16 +45,21 @@ while read -r local_ref local_sha remote_ref remote_sha; do
     range_args=""
   fi
 
-  bad_commits=$(git log $range $range_args --pretty=format:'%H %ae' 2>/dev/null | awk -v want="$REQUIRED_EMAIL" '$2 != want { print $1 " " $2 }')
+  bad_commits=$(git log $range $range_args --pretty=format:'%H %ae' 2>/dev/null \
+    | awk -v re="$EMAIL_ALLOWLIST_RE" '$2 !~ re { print $1 " " $2 }')
 
   if [ -n "$bad_commits" ]; then
-    echo "❌ Pre-push blocked: commits with non-$REQUIRED_EMAIL author found:" >&2
+    echo "❌ Pre-push blocked: commits with non-allowlisted author found:" >&2
     echo "$bad_commits" >&2
     echo "" >&2
+    echo "Allowed authors:" >&2
+    echo "  - audri@walthamdatascience.com (canonical)" >&2
+    echo "  - <id>+audriB@users.noreply.github.com (GitHub squash-merge)" >&2
+    echo "" >&2
     echo "Fix by amending each commit:" >&2
-    echo "  git commit --amend --no-edit --author=\"audriB <$REQUIRED_EMAIL>\"" >&2
+    echo "  git commit --amend --no-edit --author=\"audriB <audri@walthamdatascience.com>\"" >&2
     echo "Or rewrite the range:" >&2
-    echo "  git rebase -x \"git commit --amend --no-edit --author='audriB <$REQUIRED_EMAIL>'\" $remote_sha" >&2
+    echo "  git rebase -x \"git commit --amend --no-edit --author='audriB <audri@walthamdatascience.com>'\" $remote_sha" >&2
     exit 1
   fi
 done

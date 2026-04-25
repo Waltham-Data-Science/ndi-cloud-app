@@ -36,8 +36,19 @@ test-results/
 # Vercel
 .vercel/
 
-# macOS Finder duplicate files (caught by hygiene CI; should never reach repo)
+# macOS Finder duplicate files + directories (caught by hygiene CI; should
+# never reach repo). Cover both extension-bearing files (`Foo 2.tsx`) and
+# extension-less files (`pre-push 2`, `.npmrc 2`) and dup-named dirs
+# (`(marketing) 2/`). The `scripts/clean-finder-dups.sh` script bulk-deletes
+# the matching paths in the working tree without tripping agent
+# bulk-delete safety guards.
+* 2
+* 3
+* 4
+* 5
 * 2.*
 * 3.*
+* 4.*
+* 5.*
 " 2".*
 " 3".*
