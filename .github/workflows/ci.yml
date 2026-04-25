@@ -32,16 +32,25 @@ jobs:
       - name: Verify commit authors on PR
         if: github.event_name == 'pull_request'
         run: |
-          required="audri@walthamdatascience.com"
+          # Allowlist mirrors .githooks/pre-push exactly. See that hook
+          # for the rationale on why GitHub's squash-merge noreply is
+          # allowed alongside the canonical email — keeps rebases onto
+          # main green after PR squash-merges land noreply commits.
+          allowlist_re='^(audri@walthamdatascience\.com|[0-9]+\+audriB@users\.noreply\.github\.com)$'
           base_sha="${{ github.event.pull_request.base.sha }}"
           head_sha="${{ github.event.pull_request.head.sha }}"
-          bad=$(git log "$base_sha..$head_sha" --pretty=format:'%H %ae' | awk -v want="$required" '$2 != want { print $0 }')
+          bad=$(git log "$base_sha..$head_sha" --pretty=format:'%H %ae' \
+            | awk -v re="$allowlist_re" '$2 !~ re { print $0 }')
           if [ -n "$bad" ]; then
-            echo "❌ PR has commits with non-$required author:" >&2
+            echo "❌ PR has commits with non-allowlisted author:" >&2
             echo "$bad" >&2
+            echo "" >&2
+            echo "Allowed authors:" >&2
+            echo "  - audri@walthamdatascience.com (canonical)" >&2
+            echo "  - <id>+audriB@users.noreply.github.com (GitHub squash-merge)" >&2
             exit 1
           fi
-          echo "✅ All PR commits authored as $required."
+          echo "✅ All PR commits author-allowlisted."
 
   install:
     name: install (cached)
