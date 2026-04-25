@@ -85,7 +85,10 @@ describe('DatasetDetailHero', () => {
         screen.getByRole('heading', { name: /Mouse V1 chronic recordings/ }),
       ).toBeInTheDocument();
     });
-    expect(screen.getByText('CC-BY-4.0')).toBeInTheDocument();
+    // License renders in two places per source: the badge row above the
+    // h1 AND the HeroFact strip below the byline. `getAllByText` covers
+    // both — at least the badge-row one must be present.
+    expect(screen.getAllByText('CC-BY-4.0').length).toBeGreaterThanOrEqual(1);
     expect(screen.getByText(/Published/i)).toBeInTheDocument();
   });
 
@@ -129,5 +132,75 @@ describe('DatasetDetailHero', () => {
     await waitFor(() => {
       expect(screen.getByText('v2-revision')).toBeInTheDocument();
     });
+  });
+
+  /**
+   * HeroFact strip — Phase 6.6 REBUILD-2.
+   *
+   * The fact strip is a `<dl>` below the byline showing quick-glance
+   * counts/labels (species, region, documents, subjects, size, license).
+   * Each <dt>/<dd> pair only renders when the corresponding field is
+   * present on the dataset payload — the entire <dl> is hidden when no
+   * facts are available so a fact-less dataset doesn't show an empty
+   * decorative bar.
+   */
+  it('renders the HeroFact strip with all six facts when present', async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      id: 'd1',
+      name: 'Full-fact dataset',
+      species: 'Mus musculus',
+      brainRegions: 'V1, M1',
+      documentCount: 412,
+      numberOfSubjects: 17,
+      totalSize: 2_400_000_000, // ~2.24 GB
+      license: 'CC-BY-4.0',
+      isPublished: true,
+    });
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <DatasetDetailHero datasetId="d1" />
+      </Wrapper>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText('Species')).toBeInTheDocument();
+    });
+    expect(screen.getByText('Mus musculus')).toBeInTheDocument();
+    expect(screen.getByText('Region')).toBeInTheDocument();
+    expect(screen.getByText('V1, M1')).toBeInTheDocument();
+    expect(screen.getByText('Documents')).toBeInTheDocument();
+    expect(screen.getByText('412')).toBeInTheDocument();
+    expect(screen.getByText('Subjects')).toBeInTheDocument();
+    expect(screen.getByText('17')).toBeInTheDocument();
+    expect(screen.getByText('Size')).toBeInTheDocument();
+    // Size formatted via formatBytes — matches the lib/format.ts contract.
+    expect(screen.getByText(/GB$/)).toBeInTheDocument();
+    // License appears twice — once in the badge row above the h1, once
+    // in the fact strip dt/dd. The single `getByText` would throw on
+    // multiple matches, so use `getAllByText`.
+    const licenseHits = screen.getAllByText('CC-BY-4.0');
+    expect(licenseHits.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('omits the HeroFact strip entirely when no facts are present', async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      id: 'd1',
+      name: 'Bare-bones dataset',
+      isPublished: true,
+      // No species/brainRegions/documentCount/numberOfSubjects/totalSize/license.
+    });
+    const Wrapper = withClient();
+    const { container } = render(
+      <Wrapper>
+        <DatasetDetailHero datasetId="d1" />
+      </Wrapper>,
+    );
+    await waitFor(() => {
+      expect(
+        screen.getByRole('heading', { name: /Bare-bones dataset/ }),
+      ).toBeInTheDocument();
+    });
+    // The <dl> should NOT be rendered at all when no facts are available.
+    expect(container.querySelector('dl')).toBeNull();
   });
 });

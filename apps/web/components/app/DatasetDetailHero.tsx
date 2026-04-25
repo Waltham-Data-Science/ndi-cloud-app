@@ -2,9 +2,18 @@
 
 /**
  * Dataset detail hero — renders dataset name, byline (contributors +
- * date), license + DOI badges, and primary action buttons (cite,
- * use-this-data). Phase 3b minimum-viable hero — Phase 3+ polish layers
- * the cite/use-this-data modal connections + provenance hint.
+ * date), license + DOI badges, and a `HeroFact` strip with quick-glance
+ * facts (species/region/docs/subjects/size/license) below the h1.
+ *
+ * Phase 6.6 REBUILD-2: ported the source `HeroFact` strip from
+ * `ndi-data-browser-v2/frontend/src/pages/DatasetDetailPage.tsx:398-424`
+ * + `HeroFact` definition at lines 430-454. The original Phase 3b port
+ * shipped a "minimum-viable hero" without the fact strip; the audit
+ * flagged this as a deferred-implicit gap (the comment noted "Phase 3+
+ * polish layers" but no STATE entry enumerated it). Audience benefit:
+ * users browsing dataset detail pages get an immediate quick-glance
+ * read on subject count, size, and license without having to wait for
+ * the Overview tab content to load.
  *
  * Uses `useDataset()` directly (no prefetch from the layout RSC because
  * App Router layouts don't share fetched data with their children's
@@ -14,11 +23,12 @@
  */
 import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
+import type { ReactNode } from 'react';
 
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useDataset } from '@/lib/api/datasets';
-import { formatDate } from '@/lib/format';
+import { formatBytes, formatDate, formatNumber } from '@/lib/format';
 
 export function DatasetDetailHero({ datasetId }: { datasetId: string }) {
   const { data, isLoading, isError } = useDataset(datasetId);
@@ -106,9 +116,91 @@ export function DatasetDetailHero({ datasetId }: { datasetId: string }) {
                 )}
               </p>
             )}
+
+            {/* HeroFact strip — quick-glance facts below the h1. Each
+                fact is a `<dt>` (uppercase eyebrow label) + `<dd>`
+                (value, monospace where the value is a number/code).
+                Source data-browser `HeroFact` SCSS used `gap-x-8 gap-y-3`
+                + a top border in white/10. Only fact-keys with a value
+                render — no empty placeholders. */}
+            {(data.species ||
+              data.brainRegions ||
+              data.documentCount != null ||
+              (data.numberOfSubjects != null && data.numberOfSubjects > 0) ||
+              (data.totalSize != null && data.totalSize > 0) ||
+              data.license) && (
+              <dl className="flex flex-wrap gap-x-8 gap-y-3 mt-5 pt-4 border-t border-white/10 text-[11.5px] max-w-3xl">
+                {data.species && (
+                  <HeroFact label="Species" value={data.species} />
+                )}
+                {data.brainRegions && (
+                  <HeroFact label="Region" value={data.brainRegions} mono />
+                )}
+                {data.documentCount != null && (
+                  <HeroFact
+                    label="Documents"
+                    value={formatNumber(data.documentCount)}
+                    mono
+                  />
+                )}
+                {data.numberOfSubjects != null &&
+                  data.numberOfSubjects > 0 && (
+                    <HeroFact
+                      label="Subjects"
+                      value={formatNumber(data.numberOfSubjects)}
+                      mono
+                    />
+                  )}
+                {data.totalSize != null && data.totalSize > 0 && (
+                  <HeroFact
+                    label="Size"
+                    value={formatBytes(data.totalSize)}
+                    mono
+                  />
+                )}
+                {data.license && (
+                  <HeroFact label="License" value={data.license} mono />
+                )}
+              </dl>
+            )}
           </>
         )}
       </div>
     </section>
+  );
+}
+
+/**
+ * Single fact row inside the hero `<dl>`. Label is a small uppercase
+ * eyebrow (white/50, 10px); value is monospaced when `mono` is set
+ * (counts/sizes/codes), regular sans-serif for prose values like
+ * species names. Ported verbatim from data-browser-v2's
+ * `DatasetDetailPage.tsx:430-454` HeroFact, transcribed to the
+ * monorepo's design tokens.
+ */
+function HeroFact({
+  label,
+  value,
+  mono,
+}: {
+  label: string;
+  value: ReactNode;
+  mono?: boolean;
+}) {
+  return (
+    <div className="flex flex-col gap-1">
+      <dt className="uppercase tracking-wider text-white/50 text-[10px] font-semibold">
+        {label}
+      </dt>
+      <dd
+        className={
+          mono
+            ? 'font-mono text-white text-[13px]'
+            : 'text-white text-[13px] font-medium'
+        }
+      >
+        {value}
+      </dd>
+    </div>
   );
 }
