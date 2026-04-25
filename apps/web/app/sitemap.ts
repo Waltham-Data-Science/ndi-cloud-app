@@ -57,10 +57,14 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'monthly',
       priority: 0.6,
     },
+    {
+      url: `${baseUrl}/platform`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.7,
+    },
     // Auth pages excluded — they're per-user destinations and shouldn't
     // appear in search results. /account-exists is similarly behind a
     // sign-up flow, not a discoverable landing page.
-    //
-    // /platform added in Phase 2a-3 alongside the page port.
   ];
 }
