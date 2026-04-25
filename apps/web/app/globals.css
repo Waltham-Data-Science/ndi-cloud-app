@@ -33,6 +33,20 @@
    * app primitives use a denser blue to contrast against teal CTAs. */
   --color-brand-500: #0b8bd6;
   --color-brand-600: #0671ab;
+  /*
+   * Brand-tinted greys used by `OntologyTermPill` (light surface +
+   * dark text + ring border) and `DatasetProvenanceCard`'s branch
+   * chip pills. Phase 6.6 REBUILD-3a — added so the pill styling
+   * (`bg-brand-50 text-brand-800 ring-brand-200 hover:bg-brand-100`)
+   * renders correctly when DatasetSummaryCard lands. The tints are
+   * derived from the same brand-blue ramp as `--color-brand-500`/
+   * `--color-brand-600` (data-browser source's `--color-brand-50` etc.
+   * — exact-match port).
+   */
+  --color-brand-50: #e6f4fb;
+  --color-brand-100: #c7e6f4;
+  --color-brand-200: #93cce8;
+  --color-brand-800: #084b73;
 
   --color-ndi-primary: #002054;
   --color-ndi-primary-dark: #001a44;
