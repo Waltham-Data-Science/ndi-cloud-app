@@ -1,13 +1,16 @@
 /**
  * Zod-validated environment.
  *
- * Imported from next.config.ts so missing/malformed env fails the BUILD,
- * not the first request. Aligns with the data-browser pattern of failing
- * loud at boot rather than mysterious 500s in production.
+ * The `schema` is exported so unit tests can exercise validation against
+ * synthetic input without mutating `process.env` (which fights TypeScript's
+ * strict `NodeJS.ProcessEnv` typing). The default `env` export validates
+ * the live `process.env` at module load — a malformed environment fails
+ * the BUILD, not the first request. Aligns with the data-browser pattern
+ * of failing loud at boot rather than mysterious 500s in production.
  */
 import { z } from 'zod';
 
-const schema = z.object({
+export const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
   // Phase 4: production rewrite target. Optional in Phase 1 because no
@@ -24,8 +27,16 @@ const schema = z.object({
 
 export type Env = z.infer<typeof schema>;
 
-const parsed = schema.safeParse(process.env);
-if (!parsed.success) {
+/**
+ * Parse + validate an env-like record. Exported so tests can exercise the
+ * error-formatting path with synthetic input — directly calling this with
+ * `process.env` is the production code path.
+ */
+export function parseEnv(input: Record<string, string | undefined> = process.env): Env {
+  const parsed = schema.safeParse(input);
+  if (parsed.success) {
+    return parsed.data;
+  }
   // Format the issues human-readably so a build failure is actionable.
   const issues = parsed.error.issues
     .map((i) => `  - ${i.path.join('.')}: ${i.message}`)
@@ -33,4 +44,4 @@ if (!parsed.success) {
   throw new Error(`Invalid environment:\n${issues}`);
 }
 
-export const env: Env = parsed.data;
+export const env: Env = parseEnv();
