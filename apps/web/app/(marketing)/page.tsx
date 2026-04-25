@@ -121,8 +121,21 @@ export default function HomePage() {
             }}
           />
           <div className="relative max-w-[1200px] mx-auto text-center">
-            <div className="inline-flex items-center gap-2 text-xs font-bold tracking-eyebrow uppercase text-white/70 mb-5">
-              <span className="inline-block w-1.5 h-1.5 rounded-full bg-brand-blue-3" />
+            {/* Hero eyebrow: pill on tinted-blue bg + halo dot. Ported from
+                source `.eyebrow` SCSS: letter-spacing 0.16em (denser than the
+                global --tracking-eyebrow which is calibrated for the smaller
+                section sub-eyebrows), 11px font, brand-blue-3 text on a
+                rgba(23,167,255,0.12) pill. The `.dot` carries a 3px halo via
+                box-shadow with a softer alpha — restores the "glowing
+                indicator" affordance the audit flagged as missing. */}
+            <div
+              className="inline-flex items-center gap-2 text-[11px] font-bold tracking-[0.16em] uppercase text-brand-blue-3 mb-5 px-3.5 py-1.5 rounded-pill"
+              style={{ background: 'rgba(23, 167, 255, 0.12)' }}
+            >
+              <span
+                className="inline-block w-1.5 h-1.5 rounded-full bg-brand-blue-3"
+                style={{ boxShadow: '0 0 0 3px rgba(93, 193, 255, 0.25)' }}
+              />
               NDI Data Commons · Open access
             </div>
             <h1
@@ -183,8 +196,11 @@ export default function HomePage() {
           `}</style>
         </section>
 
-        {/* FAIR */}
-        <section className="px-7 py-20 bg-bg-canvas">
+        {/* FAIR — white section per source `.commonsMain { background: var(--white) }`.
+             The site body bg is cream (--color-bg-canvas) so this section has
+             to opt in to white explicitly. Audit found the original target
+             read as cream because the section bg was set to cream too. */}
+        <section className="px-7 py-20 bg-bg-surface">
           <div className="max-w-[1100px] mx-auto">
             <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
               FAIR by default
@@ -220,8 +236,14 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* DOI BAND */}
-        <section className="px-7 py-20 bg-bg-surface">
+        {/* DOI BAND — cream section, white card. Inverted from the previous
+             port (white section, cream card) to match source
+             `.doiBand { background: var(--brand-cream) }` + `.doiCard` defaulting
+             to white card surface. Source structure: cream wash sets the band
+             apart from the white FAIR section above and the white Who-Uses-It
+             section below; the white card reads as a "sample DOI landing
+             page" excerpt floating on the cream wash. */}
+        <section className="px-7 py-20 bg-bg-canvas">
           <div className="max-w-[1100px] mx-auto grid grid-cols-2 max-[840px]:grid-cols-1 gap-12 items-start">
             <div>
               <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
@@ -241,8 +263,8 @@ export default function HomePage() {
               </p>
             </div>
 
-            {/* Sample dataset card */}
-            <div className="bg-bg-canvas border border-border-subtle rounded-xl p-6 shadow-md">
+            {/* Sample dataset card — white surface on the cream band. */}
+            <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-md">
               <span className="inline-flex items-center gap-1.5 text-[10px] font-bold tracking-wide uppercase text-green-700 mb-3">
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
                 Published
@@ -268,8 +290,11 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* WHO USES IT */}
-        <section className="px-7 py-20 bg-bg-canvas">
+        {/* WHO USES IT — white section per source. The body bg is cream
+             site-wide; this section opts in to white explicitly so it reads
+             as a continuation of the FAIR white surface, not another cream
+             wash. */}
+        <section className="px-7 py-20 bg-bg-surface">
           <div className="max-w-[1100px] mx-auto">
             <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
               Who uses it
@@ -303,8 +328,16 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* PLATFORM BRIDGE */}
-        <section className="px-7 py-20 bg-bg-surface">
+        {/* PLATFORM BRIDGE — muted-gray section background with a unified
+             white card holding three flush rows. Source `.bridgeSection` uses
+             `--bg-muted` (gray-50) as the band background; `.bridgeRows`
+             wraps the rows in a single white container with
+             `overflow:hidden` + `border-radius:14px` so dividers sit flush
+             at the rounded corners. Each row is `border-top: 1px` except the
+             first — restored via Tailwind's `first:border-t-0`. The active
+             "You're here" row gets a cream wash and the arrow morphs into a
+             pill-shaped uppercase badge on `--ndi-teal-light`. */}
+        <section className="px-7 py-20 bg-bg-muted">
           <div className="max-w-[1100px] mx-auto">
             <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
               One data model
@@ -318,7 +351,7 @@ export default function HomePage() {
               answers from your own papers and datasets.
             </p>
 
-            <div className="flex flex-col gap-3">
+            <div className="bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
               <BridgeRow
                 num="01"
                 title="NDI Data Commons"
@@ -458,25 +491,35 @@ function BridgeRow({
   href?: string;
   active?: boolean;
 }) {
+  // Single-row layout inside the unified bridge container. No own border
+  // (the parent provides the outer card); a top divider on every row except
+  // the first via `first:border-t-0`. Source uses a 56px / 1fr / auto grid
+  // — preserved here so the `01/02/03` mono index column lines up across
+  // rows regardless of title length. Active row gets a cream wash + the
+  // arrow becomes a pill-shaped uppercase "You're here" badge.
   const inner = (
     <div
-      className={`flex items-center gap-5 p-5 rounded-lg border transition-colors duration-(--duration-base) ease-(--ease-out) ${
+      className={`grid grid-cols-[56px_1fr_auto] max-[640px]:grid-cols-[44px_1fr_auto] gap-6 max-[640px]:gap-4 items-center px-8 py-7 max-[640px]:px-5 max-[640px]:py-5 border-t first:border-t-0 border-border-subtle transition-colors duration-(--duration-base) ease-(--ease-out) ${
         active
-          ? 'bg-ndi-teal-light border-ndi-teal-border'
-          : 'bg-bg-canvas border-border-subtle hover:bg-bg-muted'
+          ? 'bg-brand-cream cursor-default'
+          : 'bg-transparent hover:bg-bg-muted'
       }`}
     >
-      <div
-        className={`font-display font-bold text-2xl shrink-0 w-12 ${active ? 'text-ndi-teal' : 'text-fg-muted'}`}
-      >
+      <div className="font-mono text-[0.9rem] font-semibold tracking-[0.06em] text-ndi-teal">
         {num}
       </div>
-      <div className="flex-1">
-        <div className="text-base font-semibold text-fg-primary mb-0.5">{title}</div>
-        <div className="text-sm text-fg-secondary">{desc}</div>
+      <div className="min-w-0">
+        <div className="text-[1.2rem] font-extrabold text-fg-primary leading-tight tracking-tight mb-1.5">
+          {title}
+        </div>
+        <div className="text-[0.95rem] leading-[1.55] text-fg-secondary">{desc}</div>
       </div>
       <span
-        className={`text-sm font-semibold shrink-0 ${active ? 'text-ndi-teal' : 'text-fg-muted'}`}
+        className={
+          active
+            ? 'inline-flex items-center bg-ndi-teal-light text-ndi-teal text-[11px] font-semibold tracking-[0.12em] uppercase px-2.5 py-1 rounded-pill whitespace-nowrap'
+            : 'font-mono text-[0.9rem] text-fg-muted whitespace-nowrap transition-transform duration-(--duration-base) ease-(--ease-out)'
+        }
       >
         {active ? "You're here" : '→'}
       </span>
@@ -485,7 +528,10 @@ function BridgeRow({
 
   if (active || !href) return inner;
   return (
-    <Link href={href} className="no-underline">
+    <Link
+      href={href}
+      className="no-underline block focus:outline-none focus-visible:ring-2 focus-visible:ring-ndi-teal/40"
+    >
       {inner}
     </Link>
   );
