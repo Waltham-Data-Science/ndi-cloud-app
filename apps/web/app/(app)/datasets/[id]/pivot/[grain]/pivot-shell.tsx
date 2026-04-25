@@ -1,23 +1,54 @@
 'use client';
 
+/**
+ * Pivot tab content shell — `/datasets/[id]/pivot/[grain]`.
+ *
+ * Phase 6.5b (cross-repo unification): the structural shell that landed
+ * with Phase 3b is now backed by the real ported `PivotView` component
+ * (Plan B B6e grain-selectable pivot — virtualized table + auto-populated
+ * grain selector + feature-flag-aware disabled state).
+ *
+ * Two responsibilities:
+ *
+ *   1. Render the per-grain sub-nav (Per subject / Per session / Per
+ *      element). Active grain reflected via `aria-current="page"` +
+ *      styling. The data-browser source kept the selector inside the
+ *      pivot card; here we expose it as a URL-routed sub-nav too so
+ *      the tab interactions match `/datasets/[id]/tables/[className]`.
+ *      Both work — clicking a sub-nav link or selecting from the inline
+ *      `<select>` route to the same destination.
+ *   2. Mount `<PivotView datasetId grain>` for the active grain.
+ *
+ * Grain coercion: the URL segment is `string`; PivotView expects the
+ * narrower `PivotGrain` enum. Anything not in the supported set
+ * (subject / session / element) coerces to `subject` — same fallback
+ * as the data-browser source's `coerceGrain()`.
+ */
 import Link from 'next/link';
 
-import { Card, CardBody } from '@/components/ui/Card';
 import { cn } from '@/lib/cn';
+import { PivotView } from '@/components/app/PivotView';
+import type { PivotGrain } from '@/lib/api/datasets';
 
 const GRAINS = [
-  { id: 'subject', label: 'Per subject' },
-  { id: 'session', label: 'Per session' },
-  { id: 'element', label: 'Per element' },
+  { id: 'subject' as const, label: 'Per subject' },
+  { id: 'session' as const, label: 'Per session' },
+  { id: 'element' as const, label: 'Per element' },
 ] as const;
+
+function coerceGrain(raw: string): PivotGrain {
+  if (raw === 'session' || raw === 'element' || raw === 'subject') return raw;
+  return 'subject';
+}
 
 export function PivotShell({
   datasetId,
-  grain: activeGrain,
+  grain: rawGrain,
 }: {
   datasetId: string;
   grain: string;
 }) {
+  const activeGrain = coerceGrain(rawGrain);
   return (
     <div className="space-y-4">
       <nav
@@ -45,18 +76,7 @@ export function PivotShell({
         })}
       </nav>
 
-      <Card>
-        <CardBody>
-          <p className="text-sm text-fg-secondary">
-            Pivot grid at grain <span className="font-mono font-medium text-fg-primary">{activeGrain}</span>{' '}
-            for dataset <span className="font-mono font-medium text-fg-primary">{datasetId}</span>.
-          </p>
-          <p className="text-xs text-fg-muted mt-3 italic">
-            Phase 3b structural shell. The virtualized pivot grid +
-            cell-detail panel ports in a follow-up.
-          </p>
-        </CardBody>
-      </Card>
+      <PivotView datasetId={datasetId} grain={activeGrain} />
     </div>
   );
 }
