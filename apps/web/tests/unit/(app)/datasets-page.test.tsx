@@ -28,6 +28,7 @@ import {
   QueryClient,
   QueryClientProvider,
   dehydrate,
+  type DehydratedState,
 } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -67,7 +68,7 @@ function HydratedTestProvider({
   children,
 }: {
   client: QueryClient;
-  state: unknown;
+  state: DehydratedState;
   children: ReactNode;
 }) {
   return (
@@ -124,9 +125,9 @@ describe('Catalog hydration contract', () => {
     // The whole point: useQuery resolves synchronously to the cached
     // data, no network call required. If this assertion fires, the SSR
     // → CSR handoff regressed.
-    const catalogFetchCalls = fetchSpy.mock.calls.filter((c) =>
-      String(c[0] ?? '').includes('/api/datasets/published'),
-    );
+    const catalogFetchCalls = (
+      fetchSpy.mock.calls as Array<[unknown, ...unknown[]]>
+    ).filter((c) => String(c[0] ?? '').includes('/api/datasets/published'));
     expect(catalogFetchCalls).toHaveLength(0);
   });
 
