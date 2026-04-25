@@ -101,6 +101,16 @@
   --duration-fast: 150ms;
   --duration-base: 200ms;
   --duration-slow: 300ms;
+
+  /*
+   * Custom breakpoint matching the source SCSS @media (max-width: 900px)
+   * cutoff for the primary nav (desktop link row → mobile hamburger menu).
+   * Tailwind defaults (sm:640, md:768, lg:1024) don't match exactly;
+   * 1024 would push tablet users (900–1023) onto the mobile menu.
+   * Naming `nav` instead of overriding `md` so the rest of the app keeps
+   * default Tailwind responsive semantics.
+   */
+  --breakpoint-nav: 56.25rem;
 }
 
 /*
