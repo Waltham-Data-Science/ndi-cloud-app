@@ -1,0 +1,20 @@
+@import 'tailwindcss';
+
+/*
+ * Tailwind v4 design tokens. Phase 2a populates this @theme block with the
+ * NDI brand palette translated from ndi-web-app-wds/app/src/styles/globals.scss
+ * CSS custom properties. Single source of truth for both marketing and app
+ * route groups; replaces variables.scss + jsStyleVariables.ts.
+ */
+@theme {
+  /* Phase 2a will populate. Empty for Phase 1 bootstrap. */
+}
+
+/*
+ * Force light color-scheme app-wide (matches data-browser pattern; the
+ * 168-dead-`dark:*`-class cleanup in PR #76 audit fix is preserved here
+ * by NOT enabling Tailwind's dark mode at all).
+ */
+:root {
+  color-scheme: light;
+}
