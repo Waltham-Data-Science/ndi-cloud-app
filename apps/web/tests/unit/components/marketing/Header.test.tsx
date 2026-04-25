@@ -250,6 +250,31 @@ describe('Header (mobile, anonymous)', () => {
   });
 });
 
+/*
+ * Phase 2b reminder — must add an authenticated-Header e2e smoke test
+ * (Playwright, not just unit) in the PR that lands the real cookie-
+ * backed useSession(). The unit tests in this file mock useSession()
+ * so they exercise the JSX branches; the e2e smoke proves the real
+ * session cookie + apiFetch('/api/auth/me') round-trip drives the UI
+ * end-to-end. The test.todo below surfaces this as a pending test in
+ * vitest's output forever — impossible to forget.
+ *
+ * In Phase 2b: replace test.todo with a real spec at
+ * apps/web/tests/e2e/auth-header.spec.ts that:
+ *   - logs in via /login using the cookie-flow
+ *   - asserts Header shows "My Account" instead of "Log in" / "Create
+ *     Account"
+ *   - clicks "My Account" → asserts dropdown contains Account /
+ *     Bookmarks / Log out
+ *   - clicks Log out → asserts redirect to /login + Header reverts to
+ *     anonymous CTAs
+ */
+describe('Phase 2b reminder', () => {
+  it.todo(
+    'authenticated-Header e2e smoke (real useSession + cookie-flow login)',
+  );
+});
+
 describe('Header (mobile, authenticated)', () => {
   beforeEach(() => {
     mockedUseSession.mockReturnValue({

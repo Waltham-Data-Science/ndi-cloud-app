@@ -5,9 +5,11 @@ import { test, expect } from '@playwright/test';
  * boots and serves the marketing home route. Phase 6 ports 10 real specs
  * from ndi-data-browser-v2/frontend/tests-e2e/.
  */
-test('marketing home loads and has <h1>', async ({ page }) => {
+test('marketing home loads with display heading', async ({ page }) => {
   await page.goto('/');
-  await expect(page.locator('h1')).toHaveText('NDI Cloud');
+  // Match a stable substring of the display heading; Phase 6 will add
+  // tighter Lighthouse + content snapshot tests.
+  await expect(page.locator('h1')).toContainText('Neuroscience datasets');
 });
 
 test('data browser catalog placeholder loads', async ({ page }) => {

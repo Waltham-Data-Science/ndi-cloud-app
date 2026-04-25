@@ -3,15 +3,18 @@ import type { MetadataRoute } from 'next';
 /**
  * Static sitemap for marketing routes.
  *
- * Phase 2a-1 — covers the chrome + simpler pages that have shipped.
- * Phase 2a-2 expands the list as the remaining content pages land
- * (about, platform, security, products/*, home will all be added).
- * Phase 3a adds dynamic dataset routes from a server-side fetch
- * against `process.env.INTERNAL_API_URL` to enumerate published
- * dataset IDs.
+ * Phase 2a-2 — covers all 5 simpler content pages plus the chrome
+ * routes that landed in Phase 2a-1. Phase 2a-3 adds /platform once
+ * that complex page port lands. Phase 3a will add dynamic dataset
+ * routes via a server-side enumeration against the FastAPI catalog.
  *
- * Search engines crawl this at /sitemap.xml automatically — Next.js's
+ * Search engines crawl this at /sitemap.xml automatically — Next 16's
  * file-based metadata routing handles the URL.
+ *
+ * Per-route priority + changeFrequency reflect the editorial reality:
+ * the home + commons routes change often (datasets land daily), the
+ * About / Security / Platform pages only when their content is
+ * intentionally edited.
  */
 export default function sitemap(): MetadataRoute.Sitemap {
   const baseUrl = 'https://ndi-cloud.com';
@@ -30,11 +33,34 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: 'daily',
       priority: 0.9,
     },
+    {
+      url: `${baseUrl}/products/private-cloud`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/products/labchat`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.8,
+    },
+    {
+      url: `${baseUrl}/about`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.6,
+    },
+    {
+      url: `${baseUrl}/security`,
+      lastModified: now,
+      changeFrequency: 'monthly',
+      priority: 0.6,
+    },
     // Auth pages excluded — they're per-user destinations and shouldn't
     // appear in search results. /account-exists is similarly behind a
     // sign-up flow, not a discoverable landing page.
     //
-    // Marketing content pages (/about, /platform, /security,
-    // /products/*) added in Phase 2a-2 as they land.
+    // /platform added in Phase 2a-3 alongside the page port.
   ];
 }
