@@ -21,9 +21,11 @@ vi.mock('@/lib/api/client', () => ({
   apiFetch: vi.fn(),
 }));
 
-// Phase 6.5b: PivotShell now mounts the real `<PivotView>` which calls
-// `useRouter()` for grain navigation. Mock it so the rendering tests
-// below stay focused on the shell's nav contract.
+// Phase 6.5b/6.5c: PivotShell mounts the real `<PivotView>` and
+// DocumentsShell mounts the real `<DocumentExplorer>`. Both call
+// `useRouter()`; DocumentExplorer also calls `useSearchParams()` and
+// `usePathname()` for filter/page URL state. Mock all three so the
+// rendering tests stay focused on shell-level contracts.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: vi.fn(),
@@ -33,6 +35,8 @@ vi.mock('next/navigation', () => ({
     forward: vi.fn(),
     prefetch: vi.fn(),
   }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/datasets/d1/documents',
 }));
 
 import { apiFetch } from '@/lib/api/client';
@@ -126,9 +130,22 @@ describe('PivotShell', () => {
 });
 
 describe('DocumentsShell', () => {
-  it('renders the dataset id', () => {
-    render(<DocumentsShell datasetId="d1" />);
-    expect(screen.getByText('d1')).toBeInTheDocument();
+  // Phase 6.5c turned this from a placeholder into a `DocumentExplorer`
+  // mount. The sidebar header always renders ("Document classes"); the
+  // class-counts list / document table appear after the api fetches
+  // resolve. The mock leaves both pending so this test stays focused
+  // on the shell rendering at all.
+  it('renders the document-classes sidebar even before data resolves', () => {
+    mockedApiFetch.mockReturnValue(new Promise(() => {}));
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <DocumentsShell datasetId="d1" />
+      </Wrapper>,
+    );
+    expect(
+      screen.getByRole('heading', { name: /Document classes/i }),
+    ).toBeInTheDocument();
   });
 });
 
