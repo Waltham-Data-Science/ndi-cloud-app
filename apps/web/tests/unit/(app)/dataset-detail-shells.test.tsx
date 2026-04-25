@@ -222,7 +222,12 @@ describe('OverviewContent', () => {
   });
 
   it('shows a fallback panel on error', async () => {
+    // Phase 6.6 REBUILD-3c: OverviewContent makes three query calls
+    // (dataset, summary, provenance). The error branch is gated on
+    // `ds.isError`, so we only need to fail the first call; summary +
+    // provenance can stay pending.
     mockedApiFetch.mockRejectedValueOnce(new Error('boom'));
+    mockedApiFetch.mockReturnValue(new Promise(() => {}));
     const Wrapper = withClient();
     render(
       <Wrapper>
@@ -235,15 +240,18 @@ describe('OverviewContent', () => {
   });
 
   it('renders the abstract when the dataset has one', async () => {
-    // First call: useDataset → returns data with abstract
-    // Second call: useDatasetSummary → returns empty highlights
+    // Phase 6.6 REBUILD-3c: OverviewContent now mounts
+    // DatasetOverviewCard (main column) + DatasetSummaryCard / provenance
+    // (sidecar). The dataset record's `description ?? abstract` shows
+    // up inside the Details card; summary + provenance are left
+    // pending so this test stays focused on the Overview card path.
     mockedApiFetch
       .mockResolvedValueOnce({
         id: 'd1',
         name: 'whatever',
         abstract: 'A long study of widget tuning across rats and mice.',
       })
-      .mockResolvedValueOnce({ species: [], brainRegions: [] });
+      .mockReturnValue(new Promise(() => {}));
     const Wrapper = withClient();
     render(
       <Wrapper>

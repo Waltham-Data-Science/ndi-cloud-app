@@ -1,99 +1,68 @@
 'use client';
 
 /**
- * Overview tab content — Phase 3b shell.
+ * OverviewContent — the "read this dataset" view for the Overview tab.
  *
- * Reads the dataset record + summary via TanStack Query and renders
- * a compact factsheet (name, abstract, license, DOI, contributors,
- * dates). The richer DatasetSummaryCard + DatasetProvenanceCard +
- * citation modal port lands as a follow-up — those components
- * (~800 LOC combined) deserve their own PR with tests.
+ * Three sections (DatasetOverviewCard + DatasetSummaryCard +
+ * DatasetProvenanceCard) laid out in a two-column grid: the main
+ * "Details" card on the left, summary pills + provenance on the right.
  *
- * The layout's hero already covers the title + byline + DOI; this body
- * renders the abstract + descriptive blocks underneath.
+ * Mirrors `ndi-data-browser-v2/frontend/src/pages/DatasetDetailPage.tsx`
+ * `OverviewTab` (lines 238-308 in source). Phase 6.6 REBUILD-3c lifts
+ * this from a Phase 3b placeholder into a source-faithful Overview.
+ *
+ * Provenance errors degrade silently — a flaky aggregator should never
+ * block the detail view.
  */
-import { useDataset, useDatasetSummary } from '@/lib/api/datasets';
-import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
+import {
+  useDataset,
+  useDatasetProvenance,
+  useDatasetSummary,
+} from '@/lib/api/datasets';
+import { DatasetOverviewCard } from '@/components/datasets/DatasetOverviewCard';
+import { DatasetProvenanceCard } from '@/components/datasets/DatasetProvenanceCard';
+import { DatasetSummaryCard } from '@/components/datasets/DatasetSummaryCard';
 import { CardSkeleton } from '@/components/ui/Skeleton';
-import { Badge } from '@/components/ui/Badge';
 
 export function OverviewContent({ datasetId }: { datasetId: string }) {
-  const { data, isLoading, isError } = useDataset(datasetId);
+  const ds = useDataset(datasetId);
   const summary = useDatasetSummary(datasetId);
-
-  if (isLoading) {
-    return (
-      <div className="space-y-4">
-        <CardSkeleton />
-        <CardSkeleton />
-      </div>
-    );
-  }
-
-  if (isError || !data) {
-    return (
-      <div className="rounded-lg border border-dashed border-border-subtle bg-bg-surface p-6 text-center">
-        <p className="text-sm text-fg-secondary">
-          Couldn&rsquo;t load dataset {datasetId}.
-        </p>
-      </div>
-    );
-  }
-
-  const abstract = data.abstract ?? data.description;
+  const provenance = useDatasetProvenance(datasetId);
 
   return (
-    <div className="space-y-4 max-w-[800px]">
-      {abstract && (
-        <Card>
-          <CardHeader>
-            <CardTitle as="h2">About this dataset</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <p className="text-sm text-fg-secondary leading-relaxed whitespace-pre-line">
-              {abstract}
+    <div className="grid gap-5 lg:grid-cols-[1fr_360px] min-w-0">
+      {/* ── Main column: details (abstract + authors + pubs + cite) ── */}
+      <div className="space-y-4 min-w-0 order-2 lg:order-1">
+        {ds.isLoading && <CardSkeleton />}
+        {ds.isError && (
+          <div className="rounded-lg border border-dashed border-border-subtle bg-bg-surface p-6 text-center">
+            <p className="text-sm text-fg-secondary">
+              Couldn&rsquo;t load dataset {datasetId}.
             </p>
-          </CardBody>
-        </Card>
-      )}
+          </div>
+        )}
+        {ds.data && (
+          <DatasetOverviewCard
+            ds={ds.data}
+            datasetId={datasetId}
+            summary={summary.data}
+          />
+        )}
+      </div>
 
-      {(summary.data?.species?.length || summary.data?.brainRegions?.length) && (
-        <Card>
-          <CardHeader>
-            <CardTitle as="h2">Highlights</CardTitle>
-          </CardHeader>
-          <CardBody>
-            <div className="flex flex-wrap gap-2">
-              {summary.data?.species?.map((s) => (
-                <Badge
-                  key={`species-${s.label}`}
-                  variant="teal"
-                  className="font-mono normal-case"
-                >
-                  {s.label}
-                </Badge>
-              ))}
-              {summary.data?.brainRegions?.map((r) => (
-                <Badge
-                  key={`region-${r.label}`}
-                  variant="outline"
-                  className="font-mono normal-case"
-                >
-                  {r.label}
-                </Badge>
-              ))}
-            </div>
-          </CardBody>
-        </Card>
-      )}
+      {/* ── Sidecar: summary pills + provenance ─────────────────────── */}
+      <aside className="space-y-4 min-w-0 order-1 lg:order-2">
+        {summary.isLoading && <CardSkeleton />}
+        {summary.data && <DatasetSummaryCard summary={summary.data} />}
 
-      <p className="text-xs text-fg-muted italic max-w-prose">
-        Phase 3b structural shell — the full Overview (synthesized
-        DatasetSummaryCard + DatasetProvenanceCard + citation modal +
-        document-class index) ports as a follow-up to this PR. The
-        Phase 3b deliverable is the tab-bar a11y fix (audit #65) and
-        the layout that hosts these tabs.
-      </p>
+        {/* Plan B B5 — dataset provenance card (derivation graph,
+            cross-dataset depends_on edges, branches). Errors on
+            provenance degrade silently so a flaky aggregator never
+            blocks the detail view. */}
+        {provenance.data && (
+          <DatasetProvenanceCard provenance={provenance.data} />
+        )}
+      </aside>
     </div>
   );
 }
