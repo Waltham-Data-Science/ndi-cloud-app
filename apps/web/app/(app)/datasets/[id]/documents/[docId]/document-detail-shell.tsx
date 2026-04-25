@@ -1,10 +1,22 @@
 'use client';
 
+/**
+ * Document detail content — `/datasets/[id]/documents/[docId]`.
+ *
+ * Phase 6.5c (cross-repo unification): the structural shell that landed
+ * with Phase 3b is now backed by the real `DocumentDetailView` component
+ * (rich JSON tree + dependencies list + files panel + per-class header).
+ *
+ * The wrapping back-link to the document explorer stays here so the
+ * route owns the navigation chrome and the inner view stays focused on
+ * rendering one document.
+ */
 import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 
 import { Card, CardBody } from '@/components/ui/Card';
 import { useDocument } from '@/lib/api/documents';
+import { DocumentDetailView } from '@/components/app/DocumentDetailView';
 
 export function DocumentDetailShell({
   datasetId,
@@ -25,34 +37,23 @@ export function DocumentDetailShell({
         Back to document explorer
       </Link>
 
-      <Card>
-        <CardBody>
-          {isLoading && (
+      {isLoading && (
+        <Card>
+          <CardBody>
             <p className="text-sm text-fg-muted">Loading document…</p>
-          )}
-          {isError && (
+          </CardBody>
+        </Card>
+      )}
+      {isError && (
+        <Card>
+          <CardBody>
             <p className="text-sm text-fg-secondary">
               Couldn&rsquo;t load document {docId}.
             </p>
-          )}
-          {data && (
-            <>
-              <h2 className="font-display text-base font-semibold text-fg-primary mb-1">
-                {data.name ?? data.ndiId ?? docId}
-              </h2>
-              <p className="text-xs font-mono text-fg-muted mb-3">
-                {data.className} · {data.ndiId}
-              </p>
-              <p className="text-xs text-fg-muted italic">
-                Phase 3b structural shell. The full DocumentDetailPage
-                port (per-class field rendering + binary viewer +
-                dependency graph + appears-elsewhere panel) lands in a
-                follow-up.
-              </p>
-            </>
-          )}
-        </CardBody>
-      </Card>
+          </CardBody>
+        </Card>
+      )}
+      {data && <DocumentDetailView document={data} datasetId={datasetId} />}
     </div>
   );
 }
