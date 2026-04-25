@@ -11,7 +11,12 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
-  NODE_VERSION: '20.18'
+  # Node 22 LTS (≥22.12.0 satisfies rolldown's @rolldown/binding-* engine
+  # requirement of `^20.19.0 || >=22.12.0`. Node 20.18 silently skipped the
+  # linux-x64-gnu binding install — pnpm correctly honored the engine
+  # constraint, but the supportedArchitectures + .npmrc / pnpm-workspace.yaml
+  # config can't paper over an unsatisfied engine field).
+  NODE_VERSION: '22'
   PNPM_VERSION: '10.22.0'
 
 jobs:
