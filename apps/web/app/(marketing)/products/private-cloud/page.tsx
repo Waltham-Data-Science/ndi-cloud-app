@@ -51,25 +51,35 @@ export default function PrivateCloudPage() {
             backgroundRepeat: 'repeat',
           }}
         />
-        <div className="relative max-w-[1200px] mx-auto">
-          <div className="inline-flex items-center gap-2 text-xs font-bold tracking-eyebrow uppercase text-white/70 mb-5">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-brand-blue-3" />
+        {/* Hero inner: center alignment per source `.heroInner { text-align: center }`.
+            Same pattern as the LabChat hero (#22) and home hero (#21) —
+            the eyebrow pill + halo dot pattern, the centered display
+            heading, and the centered CTA row. */}
+        <div className="relative max-w-[1200px] mx-auto text-center">
+          <div
+            className="inline-flex items-center gap-2 text-[11px] font-bold tracking-[0.16em] uppercase text-brand-blue-3 mb-5 px-3.5 py-1.5 rounded-pill"
+            style={{ background: 'rgba(23, 167, 255, 0.12)' }}
+          >
+            <span
+              className="inline-block w-1.5 h-1.5 rounded-full bg-brand-blue-3"
+              style={{ boxShadow: '0 0 0 3px rgba(93, 193, 255, 0.25)' }}
+            />
             NDI Data Browser · For labs
           </div>
           <h1
-            className="font-display font-extrabold leading-[1.1] tracking-tight text-white mb-5 m-0 max-w-[900px]"
+            className="font-display font-extrabold leading-[1.1] tracking-tight text-white mb-5 m-0 max-w-[900px] mx-auto"
             style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)' }}
           >
             Every session, every version,{' '}
-            <em className="not-italic text-brand-blue-3">one workspace.</em>
+            <em className="not-italic text-brand-blue">one workspace.</em>
           </h1>
-          <p className="text-[17px] leading-relaxed text-white/80 max-w-[720px] mb-8 m-0">
+          <p className="text-[17px] leading-relaxed text-white/80 max-w-[720px] mx-auto mb-8 m-0">
             The Data Browser is where your lab works. Upload sessions from your
             rig or analysis workstation, organize them into datasets, add
             openMINDS metadata, and publish your work with a Crossref-registered
             DOI — all backed by the open NDI data model.
           </p>
-          <div className="flex gap-3 flex-wrap mb-12">
+          <div className="flex gap-3 flex-wrap justify-center mb-12">
             <Link
               href="/create-account"
               className="inline-flex items-center justify-center font-semibold whitespace-nowrap rounded-pill text-sm px-5 py-2 bg-ndi-teal text-white shadow-cta hover:-translate-y-px transition-transform duration-(--duration-base) ease-(--ease-out) no-underline"
@@ -86,19 +96,34 @@ export default function PrivateCloudPage() {
             </MarketingButton>
           </div>
 
-          {/* Browser-mockup frame around the screenshot */}
-          <div className="rounded-xl overflow-hidden bg-bg-surface shadow-xl max-w-[1140px] mx-auto">
+          {/* Mockup frame: dark `#1a1f2b` chrome + translateY(60px) bleed
+              + macOS traffic-light dots + translucent URL capsule. Same
+              pattern as the LabChat hero mockup (#22). Source
+              `.mockupFrame` SCSS — restores the z-axis depth effect that
+              bleeds into the heroFade band below. */}
+          <div
+            className="relative max-w-[1140px] mx-auto rounded-t-2xl px-3 pt-3 text-left"
+            style={{
+              background: '#1a1f2b',
+              transform: 'translateY(60px)',
+              boxShadow:
+                '0 40px 80px -20px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06)',
+            }}
+          >
             <div
               aria-hidden
-              className="flex items-center gap-3 px-4 py-2.5 bg-gray-100 border-b border-border-subtle"
+              className="flex items-center gap-2 px-2.5 pt-2 pb-3.5"
             >
               <div className="flex gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-red-400 inline-block" />
-                <span className="w-3 h-3 rounded-full bg-amber-400 inline-block" />
-                <span className="w-3 h-3 rounded-full bg-green-400 inline-block" />
+                <span className="w-[11px] h-[11px] rounded-full inline-block" style={{ background: '#ff5f57' }} />
+                <span className="w-[11px] h-[11px] rounded-full inline-block" style={{ background: '#febc2e' }} />
+                <span className="w-[11px] h-[11px] rounded-full inline-block" style={{ background: '#28c840' }} />
               </div>
-              <div className="flex-1 flex items-center justify-center gap-2 text-xs text-fg-muted bg-white rounded-md px-3 py-1 mx-3">
-                <span className="text-fg-muted">
+              <div
+                className="flex-1 max-w-[420px] mx-auto rounded-md px-3 py-1.5 font-mono text-[11px] text-white/60 inline-flex items-center justify-center gap-2"
+                style={{ background: 'rgba(255, 255, 255, 0.06)' }}
+              >
+                <span className="inline-flex items-center text-white/50">
                   <svg
                     width="10"
                     height="10"
@@ -115,7 +140,6 @@ export default function PrivateCloudPage() {
                 </span>
                 app.ndi-cloud.com / vanhooser-lab / datasets
               </div>
-              <div className="w-[54px]" />
             </div>
             <Image
               src="/mockups/data-browser.png"
@@ -123,14 +147,27 @@ export default function PrivateCloudPage() {
               width={1140}
               height={700}
               priority
-              className="block w-full h-auto"
+              className="block w-full h-auto rounded-t-md"
             />
           </div>
         </div>
       </section>
 
-      {/* CAPABILITIES */}
-      <section className="px-7 py-20 bg-bg-canvas">
+      {/* HERO FADE — bridges dark hero → white capabilities band, masking
+          the otherwise-hard edge. Same 100px gradient as LabChat (#22). */}
+      <div
+        aria-hidden
+        className="h-[100px]"
+        style={{
+          background:
+            'linear-gradient(180deg, #001438 0%, var(--color-bg-surface) 100%)',
+        }}
+      />
+
+      {/* CAPABILITIES — white per source `.section` (no explicit bg, inherits
+          `.pageMain { background: var(--white) }`). Was bg-bg-canvas
+          (cream) in the original port. */}
+      <section className="px-7 py-20 bg-bg-surface">
         <div className="max-w-[1100px] mx-auto">
           <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
             What it does
@@ -181,8 +218,12 @@ export default function PrivateCloudPage() {
         </div>
       </section>
 
-      {/* WORKFLOW */}
-      <section className="px-7 py-20 bg-bg-surface">
+      {/* WORKFLOW — cream wash band per source `.workflowBand
+          { background: var(--brand-cream) }`. Was bg-bg-surface (white) in
+          the original port — the cream gives this band visual separation
+          from the white capabilities band above and the white session-detail
+          split below. */}
+      <section className="px-7 py-20 bg-bg-canvas">
         <div className="max-w-[1100px] mx-auto">
           <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
             Workflow
@@ -214,8 +255,11 @@ export default function PrivateCloudPage() {
         </div>
       </section>
 
-      {/* SESSION DETAIL SPLIT */}
-      <section className="px-7 py-20 bg-bg-canvas">
+      {/* SESSION DETAIL SPLIT — white per source `.section` (no explicit
+          bg, page-bg-inherited white). Was bg-bg-canvas (cream) in the
+          original port; cream → white restores the source's
+          cream-workflow → white-session-detail visual rhythm. */}
+      <section className="px-7 py-20 bg-bg-surface">
         <div className="max-w-[1100px] mx-auto grid grid-cols-2 max-[840px]:grid-cols-1 gap-12 items-start">
           <div>
             <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
@@ -283,10 +327,19 @@ export default function PrivateCloudPage() {
         </div>
       </section>
 
-      {/* ECOSYSTEM */}
+      {/* ECOSYSTEM (dark band) — `--color-bg-depth` (#0d1117 near-black)
+          per source `.ecoBand { background: var(--bg-depth) }`. Was navy
+          `--color-bg-inverse` in the original port. EcoRows are wrapped
+          in a unified translucent-white container with flush
+          `border-top` dividers (no individual card borders) — restores
+          the source's `.ecoRows { background: rgba(255,255,255,0.04);
+          overflow: hidden; border-radius: 14px; }` composition. Active
+          row gets a translucent-blue wash + the arrow morphs into a
+          pill-shaped uppercase "You're here" badge. Same pattern as the
+          home-page bridge container (#21). */}
       <section
         className="px-7 py-20 text-white"
-        style={{ background: 'var(--color-bg-inverse)' }}
+        style={{ background: 'var(--color-bg-depth)' }}
       >
         <div className="max-w-[1100px] mx-auto">
           <div className="text-xs font-bold tracking-eyebrow uppercase text-brand-blue-3 mb-3">
@@ -301,7 +354,13 @@ export default function PrivateCloudPage() {
             and queryable through LabChat. One account, three products.
           </p>
 
-          <div className="flex flex-col gap-3">
+          <div
+            className="rounded-xl overflow-hidden"
+            style={{
+              background: 'rgba(255, 255, 255, 0.04)',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+            }}
+          >
             <EcoRow
               num="01"
               title="Data Commons"
@@ -468,23 +527,39 @@ function EcoRow({
   href?: string;
   active?: boolean;
 }) {
+  // Single-row layout inside the unified ecosystem container. No own
+  // border (parent provides outer card); top divider on every row except
+  // the first via `first:border-t-0`. Source `.ecoRow` SCSS uses 56px /
+  // 1fr / auto grid with `border-top: 1px solid rgba(255,255,255,0.08)`.
+  // Active row uses translucent-blue background `rgba(23,167,255,0.08)`
+  // + the arrow morphs into a pill-shaped uppercase "You're here" badge
+  // matching the home-page bridge container's design.
   const inner = (
     <div
-      className={`flex items-center gap-5 p-4 rounded-lg border transition-colors duration-(--duration-base) ease-(--ease-out) ${
-        active
-          ? 'bg-white/8 border-brand-blue-3/40'
-          : 'bg-white/3 border-white/8 hover:bg-white/6'
-      }`}
+      className="grid grid-cols-[56px_1fr_auto] gap-6 items-center px-7 py-6 first:border-t-0 transition-colors duration-(--duration-base) ease-(--ease-out)"
+      style={{
+        background: active ? 'rgba(23, 167, 255, 0.08)' : 'transparent',
+        borderTop: '1px solid rgba(255, 255, 255, 0.08)',
+      }}
     >
-      <div className="font-display font-bold text-2xl text-brand-blue-3 shrink-0 w-12">
+      <div className="font-mono text-[0.9rem] font-semibold tracking-[0.06em] text-brand-blue-3">
         {num}
       </div>
-      <div className="flex-1">
-        <div className="text-base font-semibold text-white mb-0.5">{title}</div>
-        <div className="text-sm text-white/65">{desc}</div>
+      <div className="min-w-0">
+        <div className="text-[1.1rem] font-bold text-white leading-tight mb-1">
+          {title}
+        </div>
+        <div className="text-[0.9rem] text-white/65">{desc}</div>
       </div>
       <span
-        className={`text-sm font-semibold shrink-0 ${active ? 'text-brand-blue-3' : 'text-white/50'}`}
+        className={
+          active
+            ? 'inline-flex items-center text-brand-blue-3 text-[10.5px] font-bold tracking-[0.12em] uppercase px-2.5 py-1 rounded-pill whitespace-nowrap'
+            : 'font-mono text-[1.1rem] text-white/40 whitespace-nowrap transition-transform duration-(--duration-base) ease-(--ease-out)'
+        }
+        style={
+          active ? { background: 'rgba(23, 167, 255, 0.14)' } : undefined
+        }
       >
         {active ? "You're here" : '→'}
       </span>
@@ -495,7 +570,10 @@ function EcoRow({
     return inner;
   }
   return (
-    <Link href={href} className="no-underline">
+    <Link
+      href={href}
+      className="no-underline block hover:[&>div]:bg-white/[0.04] focus:outline-none focus-visible:[&>div]:bg-white/[0.04]"
+    >
       {inner}
     </Link>
   );
