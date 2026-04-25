@@ -45,30 +45,42 @@ export default function LabChatPage() {
             backgroundRepeat: 'repeat',
           }}
         />
-        <div className="relative max-w-[1200px] mx-auto">
-          <div className="inline-flex items-center gap-2 text-xs font-bold tracking-eyebrow uppercase text-white/70 mb-5">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-brand-blue-3" />
+        {/* Hero inner: centered alignment per source `.heroInner { text-align: center }`.
+            Audit flagged the original target as left-aligned across the whole
+            hero (eyebrow, h1, lede, CTAs) — this restores the source's
+            symmetric center composition. The mockup frame below sits inside
+            the same `text-center` container; its `max-w-[1140px] mx-auto`
+            keeps the macOS-window chrome visually centered too. */}
+        <div className="relative max-w-[1200px] mx-auto text-center">
+          <div
+            className="inline-flex items-center gap-2 text-[11px] font-bold tracking-[0.16em] uppercase text-brand-blue-3 mb-5 px-3.5 py-1.5 rounded-pill"
+            style={{ background: 'rgba(23, 167, 255, 0.12)' }}
+          >
+            <span
+              className="inline-block w-1.5 h-1.5 rounded-full bg-brand-blue-3"
+              style={{ boxShadow: '0 0 0 3px rgba(93, 193, 255, 0.25)' }}
+            />
             LabChat · Per-lab AI, bespoke deploy
           </div>
           <h1
-            className="font-display font-extrabold leading-[1.1] tracking-tight text-white mb-5 m-0 max-w-[900px]"
+            className="font-display font-extrabold leading-[1.1] tracking-tight text-white mb-5 m-0 max-w-[900px] mx-auto"
             style={{ fontSize: 'clamp(2rem, 5vw, 3.5rem)' }}
           >
             Ask your lab&rsquo;s knowledge{' '}
-            <em className="not-italic text-brand-blue-3">anything.</em>
+            <em className="not-italic text-brand-blue">anything.</em>
           </h1>
-          <p className="text-[17px] leading-relaxed text-white/80 max-w-[720px] mb-3 m-0">
+          <p className="text-[17px] leading-relaxed text-white/80 max-w-[720px] mx-auto mb-3 m-0">
             An AI assistant grounded in your lab&rsquo;s papers, protocols, and
             NDI Cloud datasets. Every answer cites the specific source it came
             from. Your corpus stays in your lab&rsquo;s index — we don&rsquo;t
             use it to train models, and answers don&rsquo;t pull from the open
             web.
           </p>
-          <p className="text-sm text-white/60 max-w-[720px] mb-8 m-0 italic">
+          <p className="text-sm text-brand-blue-3 max-w-[680px] mx-auto mb-7 m-0">
             LabChat is deployed per lab — each lab gets its own index and URL.
             Setup usually takes about a day.
           </p>
-          <div className="flex gap-3 flex-wrap mb-12">
+          <div className="flex gap-3 flex-wrap justify-center mb-12">
             <MarketingButton
               as="a"
               href="mailto:info@walthamdatascience.com?subject=LabChat%20deployment%20for%20our%20lab"
@@ -87,18 +99,37 @@ export default function LabChatPage() {
             </MarketingButton>
           </div>
 
-          <div className="rounded-xl overflow-hidden bg-bg-surface shadow-xl max-w-[1140px] mx-auto">
+          {/* Mockup frame: dark `#1a1f2b` chrome, top-only rounded corners,
+              translateY(60px) bleed into the next section, deep two-layer
+              shadow (vertical drop + faint white inner ring). Source
+              `.mockupFrame` SCSS — restores the "z-axis depth" effect the
+              audit flagged. The browser-chrome dots use macOS traffic-light
+              colors (#ff5f57 / #febc2e / #28c840) per source `.dots`; the URL
+              capsule is `rgba(255,255,255,0.06)` translucent on the dark
+              chrome. The frame stays `text-left` inside the centered hero so
+              the URL pill renders as expected (centered inline-flex). */}
+          <div
+            className="relative max-w-[1140px] mx-auto rounded-t-2xl px-3 pt-3 text-left"
+            style={{
+              background: '#1a1f2b',
+              transform: 'translateY(60px)',
+              boxShadow:
+                '0 40px 80px -20px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(255, 255, 255, 0.06)',
+            }}
+          >
             <div
               aria-hidden
-              className="flex items-center gap-3 px-4 py-2.5 bg-gray-100 border-b border-border-subtle"
+              className="flex items-center gap-2 px-2.5 pt-2 pb-3.5"
             >
               <div className="flex gap-1.5">
-                <span className="w-3 h-3 rounded-full bg-red-400 inline-block" />
-                <span className="w-3 h-3 rounded-full bg-amber-400 inline-block" />
-                <span className="w-3 h-3 rounded-full bg-green-400 inline-block" />
+                <span className="w-[11px] h-[11px] rounded-full inline-block" style={{ background: '#ff5f57' }} />
+                <span className="w-[11px] h-[11px] rounded-full inline-block" style={{ background: '#febc2e' }} />
+                <span className="w-[11px] h-[11px] rounded-full inline-block" style={{ background: '#28c840' }} />
               </div>
-              <div className="flex-1 flex items-center justify-center gap-2 text-xs text-fg-muted bg-white rounded-md px-3 py-1 mx-3">
-                <span className="text-fg-muted">
+              <div className="flex-1 max-w-[460px] mx-auto rounded-md px-3 py-1.5 font-mono text-[11px] text-white/60 inline-flex items-center justify-center gap-2"
+                style={{ background: 'rgba(255, 255, 255, 0.06)' }}
+              >
+                <span className="inline-flex items-center text-white/50">
                   <svg
                     width="10"
                     height="10"
@@ -115,7 +146,6 @@ export default function LabChatPage() {
                 </span>
                 labchat.ndi-cloud.com / vanhooser-lab / threads / feb24-v1
               </div>
-              <div className="w-[54px]" />
             </div>
             <Image
               src="/mockups/labchat-chat.png"
@@ -123,11 +153,29 @@ export default function LabChatPage() {
               width={1140}
               height={700}
               priority
-              className="block w-full h-auto"
+              className="block w-full h-auto rounded-t-md"
             />
           </div>
         </div>
       </section>
+
+      {/* HERO FADE — bridges the dark hero to the white "What it does" band
+          below, masking the otherwise-hard edge between
+          `var(--grad-depth)` and `bg-bg-canvas`. Height 100px, gradient
+          starts at `#001438` (matches the brand-navy mid-step in
+          --grad-depth) and fades to white. Adds the visual landing pad
+          that the source has across all four product/info pages. The
+          mockup frame above bleeds 60px down into this band via
+          translateY, so this gradient functions as both a hero outro and
+          a visual spotlight under the mockup. */}
+      <div
+        aria-hidden
+        className="h-[100px]"
+        style={{
+          background:
+            'linear-gradient(180deg, #001438 0%, var(--color-bg-canvas) 100%)',
+        }}
+      />
 
       {/* WHAT IT DOES */}
       <section className="px-7 py-20 bg-bg-canvas">
@@ -165,8 +213,14 @@ export default function LabChatPage() {
         </div>
       </section>
 
-      {/* CHAT PREVIEW SPLIT */}
-      <section className="px-7 py-20 bg-bg-surface">
+      {/* CHAT PREVIEW SPLIT — cream wash band per source `.chatSection
+          { background: var(--brand-cream) }`. The chat-preview pane inside
+          this section is dark `#0d1117` so the dark "AI terminal" reads
+          high-contrast against the cream and the brand-blue citation
+          pills pop. Audit flagged the original target as light-on-light
+          (white section + light bubbles) which lost the source's
+          intentional theme contrast. */}
+      <section className="px-7 py-20 bg-brand-cream">
         <div className="max-w-[1100px] mx-auto grid grid-cols-2 max-[840px]:grid-cols-1 gap-12 items-start">
           <div>
             <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
@@ -201,35 +255,74 @@ export default function LabChatPage() {
             </ul>
           </div>
 
-          {/* Chat preview */}
-          <div className="flex flex-col gap-4">
+          {/* Chat preview — dark "AI terminal" surface. Source
+              `.chatPreview { background: #0d1117 }` with translucent
+              user/AI bubbles. User bubble carries `rgba(23,167,255,0.12)`
+              translucent blue (NOT teal — the brand-blue ties the chat
+              metaphor to the data-citation theme on the rest of the page);
+              AI bubble is barely-visible white at 3% on the dark surface.
+              CitePills + source numbers use brand-blue per source
+              `.citePill { background: var(--brand-blue) }`. */}
+          <div
+            className="rounded-xl p-5 text-white"
+            style={{
+              background: '#0d1117',
+              border: '1px solid rgba(255, 255, 255, 0.08)',
+            }}
+          >
             {/* User bubble */}
-            <div className="self-end max-w-[85%] bg-ndi-teal text-white rounded-xl rounded-br-sm p-4 shadow-sm">
-              <div className="text-[10px] font-bold tracking-wide uppercase text-white/70 mb-1.5">
+            <div
+              className="rounded-[10px] p-4 mb-3"
+              style={{
+                background: 'rgba(23, 167, 255, 0.12)',
+                border: '1px solid rgba(23, 167, 255, 0.2)',
+              }}
+            >
+              <div className="text-[10px] font-bold tracking-[0.12em] uppercase text-white/45 mb-1.5">
                 You
               </div>
-              <div className="text-sm leading-relaxed">
+              <div className="text-sm leading-relaxed text-white/90">
                 What stimuli did we use for the Feb-&rsquo;24 V1 cohort, and
                 which sessions passed QC?
               </div>
             </div>
 
             {/* AI bubble */}
-            <div className="self-start max-w-[95%] bg-bg-canvas border border-border-subtle rounded-xl rounded-bl-sm p-4 shadow-sm">
-              <div className="text-[10px] font-bold tracking-wide uppercase text-ndi-teal mb-1.5">
+            <div
+              className="rounded-[10px] p-4"
+              style={{
+                background: 'rgba(255, 255, 255, 0.03)',
+                border: '1px solid rgba(255, 255, 255, 0.08)',
+              }}
+            >
+              <div className="text-[10px] font-bold tracking-[0.12em] uppercase text-white/45 mb-1.5">
                 LabChat
               </div>
-              <div className="text-sm leading-relaxed text-fg-primary mb-4">
+              <div className="text-sm leading-relaxed text-white/90 mb-4">
                 The Feb-&rsquo;24 V1 cohort used two stimulus families
-                <CitePill n={1} />: <strong>drifting gratings</strong> (4 cardinal
-                directions, 0.04 cpd) and <strong>natural movies</strong> from{' '}
-                <code className="font-mono text-xs">vanhooser_nat_lib_v3</code>. Of
-                22 sessions, <strong>17 passed QC</strong>
+                <CitePill n={1} />: <strong className="text-white font-semibold">drifting gratings</strong> (4 cardinal
+                directions, 0.04 cpd) and <strong className="text-white font-semibold">natural movies</strong> from{' '}
+                <code
+                  className="font-mono text-[0.88em] px-1.5 py-px rounded"
+                  style={{ background: 'rgba(255, 255, 255, 0.06)' }}
+                >
+                  vanhooser_nat_lib_v3
+                </code>. Of
+                22 sessions, <strong className="text-white font-semibold">17 passed QC</strong>
                 <CitePill n={2} /> (sessions 211–217, 219, 221, 223–232). Raw data
-                is in dataset <code className="font-mono text-xs">v1_cohort_feb24</code>
+                is in dataset{' '}
+                <code
+                  className="font-mono text-[0.88em] px-1.5 py-px rounded"
+                  style={{ background: 'rgba(255, 255, 255, 0.06)' }}
+                >
+                  v1_cohort_feb24
+                </code>
                 <CitePill n={3} />.
               </div>
-              <div className="flex flex-col gap-2 mb-3 pt-3 border-t border-border-subtle">
+              <div
+                className="flex flex-col gap-2 mb-3 pt-3"
+                style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}
+              >
                 <SourceRow
                   n={1}
                   title="Feb-’24 V1 cohort protocol"
@@ -246,7 +339,7 @@ export default function LabChatPage() {
                   sub="NDI Cloud · 22 sessions · 4.8 GB"
                 />
               </div>
-              <div className="text-xs text-fg-muted">
+              <div className="text-[10.5px] tracking-wide text-white/35">
                 3 citations · 2 datasets · 12ms search
               </div>
             </div>
@@ -288,10 +381,18 @@ export default function LabChatPage() {
         </div>
       </section>
 
-      {/* SECURITY (dark band) */}
+      {/* SECURITY (dark band) — `--color-bg-depth` (#0d1117 near-black)
+          per source `.secBand { background: var(--bg-depth) }`. The
+          previous target used `--color-bg-inverse` (#002054 navy) which
+          read as a teal/navy product band rather than the source's
+          intentional "encryption / private terminal" near-black aesthetic.
+          The CTA band immediately below uses `var(--grad-depth)` (a
+          dark-blue gradient) — the near-black security band creates a
+          subtle z-axis transition into it rather than two adjacent navy
+          bands of similar intensity. */}
       <section
         className="px-7 py-20 text-white"
-        style={{ background: 'var(--color-bg-inverse)' }}
+        style={{ background: 'var(--color-bg-depth)' }}
       >
         <div className="max-w-[1100px] mx-auto grid grid-cols-2 max-[840px]:grid-cols-1 gap-12">
           <div>
@@ -415,23 +516,50 @@ function Step({
   );
 }
 
+/**
+ * Inline citation pill — superscript number badge in the LabChat AI bubble.
+ *
+ * Source `.citePill` uses `var(--brand-blue)` (#17a7ff) on white text —
+ * the citations carry the same blue accent as the data-discovery hero
+ * eyebrow on every other product page. Earlier port used teal which read
+ * as a separate "products page" accent and broke the visual through-line.
+ * Using inline `style.background` rather than a Tailwind class because
+ * the rendered span sits inside dark-bubble translucency where any
+ * dimming from the bubble alpha breaks the color contract.
+ */
 function CitePill({ n }: { n: number }) {
   return (
-    <sup className="inline-flex items-center justify-center bg-ndi-teal-light text-ndi-teal text-[10px] font-bold rounded-full w-4 h-4 ml-0.5">
+    <sup
+      className="inline-flex items-center justify-center text-white text-[9px] font-bold rounded px-1 py-px ml-0.5 align-super"
+      style={{ background: 'var(--color-brand-blue)' }}
+    >
       {n}
     </sup>
   );
 }
 
+/**
+ * Source-row inside the AI bubble's reference list — numbered circle +
+ * title + monospaced subtitle. Inside the dark chat preview surface, so
+ * tile bg is white@3%, title is white, sub is white/45 monospace.
+ * Source `.srcN { background: var(--brand-blue) }` — circle color matches
+ * the inline CitePill so the number visually links.
+ */
 function SourceRow({ n, title, sub }: { n: number; title: string; sub: string }) {
   return (
-    <div className="flex items-start gap-3 text-xs">
-      <div className="shrink-0 w-5 h-5 rounded-full bg-ndi-teal-light text-ndi-teal font-bold inline-flex items-center justify-center text-[10px]">
+    <div
+      className="flex items-start gap-3 px-3 py-2.5 rounded-md text-[12.5px]"
+      style={{ background: 'rgba(255, 255, 255, 0.03)' }}
+    >
+      <div
+        className="shrink-0 w-5 h-5 rounded-full text-white font-bold inline-flex items-center justify-center text-[10px]"
+        style={{ background: 'var(--color-brand-blue)' }}
+      >
         {n}
       </div>
       <div>
-        <div className="text-fg-primary font-semibold mb-0.5">{title}</div>
-        <div className="text-fg-muted">{sub}</div>
+        <div className="text-white font-medium mb-0.5">{title}</div>
+        <div className="font-mono text-[10.5px] text-white/45">{sub}</div>
       </div>
     </div>
   );
