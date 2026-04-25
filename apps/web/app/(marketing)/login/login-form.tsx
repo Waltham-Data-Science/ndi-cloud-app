@@ -7,7 +7,7 @@ import { useState, type FormEvent } from 'react';
 
 import { ApiError } from '@/lib/api/client';
 import { login } from '@/lib/api/auth';
-import { AuthCard } from '@/components/marketing/AuthCard';
+import { AuthSplitLayout } from '@/components/marketing/AuthSplitLayout';
 import { Field, FormError } from '@/components/marketing/AuthForm';
 import { MarketingButton } from '@/components/marketing/Button';
 
@@ -49,22 +49,26 @@ export function LoginForm() {
   }
 
   return (
-    <AuthCard
-      heading="Log in"
-      description={<>Sign in to your NDI Cloud account.</>}
-      footer={
+    <AuthSplitLayout
+      marketingEyebrow="Welcome back"
+      marketingTitle={
         <>
-          Don&rsquo;t have an account?{' '}
-          <Link href="/create-account" className="text-ndi-teal hover:underline">
-            Create one
-          </Link>
-          .{' · '}
-          <Link href="/forgot-password" className="text-ndi-teal hover:underline">
-            Forgot password?
-          </Link>
+          Welcome back to your <em>lab&rsquo;s workspace.</em>
         </>
       }
+      marketingSubtitle="Sign in to the NDI Data Browser, check progress on in-flight datasets, and publish new work to the Data Commons."
+      marketingFeatures={[
+        'HIPAA-aware storage with per-tenant isolation',
+        'Crossref-registered DOIs on published datasets',
+        'Intan, Blackrock, Spike2, and SpikeGadgets file readers in NDI-MATLAB/Python',
+      ]}
     >
+      <h1 className="font-display text-[1.85rem] font-extrabold tracking-tight text-fg-primary leading-tight mb-2 m-0">
+        Log in
+      </h1>
+      <p className="text-[0.92rem] text-fg-secondary mb-7 m-0">
+        Sign in to your lab&rsquo;s workspace.
+      </p>
       <form onSubmit={handleSubmit} noValidate>
         {error && <FormError>{error}</FormError>}
         <Field
@@ -94,7 +98,17 @@ export function LoginForm() {
         >
           {submitting ? 'Signing in…' : 'Log in'}
         </MarketingButton>
+        <div className="mt-5 pt-5 border-t border-border-subtle text-sm text-fg-muted">
+          Don&rsquo;t have an account?{' '}
+          <Link href="/create-account" className="text-ndi-teal hover:underline">
+            Create one
+          </Link>
+          {' · '}
+          <Link href="/forgot-password" className="text-ndi-teal hover:underline">
+            Forgot password?
+          </Link>
+        </div>
       </form>
-    </AuthCard>
+    </AuthSplitLayout>
   );
 }
