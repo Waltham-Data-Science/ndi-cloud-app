@@ -12,9 +12,17 @@ test('marketing home loads with display heading', async ({ page }) => {
   await expect(page.locator('h1')).toContainText('Neuroscience datasets');
 });
 
-test('data browser catalog placeholder loads', async ({ page }) => {
+test('data browser catalog (RSC) loads with the published-datasets heading', async ({
+  page,
+}) => {
   await page.goto('/datasets');
-  await expect(page.locator('h1')).toHaveText('Datasets');
+  // Phase 3a turned this from a placeholder into RSC + ISR with a real
+  // hero heading. Match the substring rather than the full string so a
+  // future copy revision (e.g. "Open neuroscience datasets") doesn't
+  // immediately fail this gate.
+  await expect(page.locator('h1')).toContainText(
+    /Published neuroscience datasets/i,
+  );
 });
 
 test('404 route renders not-found page', async ({ page }) => {
