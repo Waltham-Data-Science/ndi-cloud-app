@@ -21,6 +21,20 @@ vi.mock('@/lib/api/client', () => ({
   apiFetch: vi.fn(),
 }));
 
+// Phase 6.5b: PivotShell now mounts the real `<PivotView>` which calls
+// `useRouter()` for grain navigation. Mock it so the rendering tests
+// below stay focused on the shell's nav contract.
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({
+    push: vi.fn(),
+    replace: vi.fn(),
+    refresh: vi.fn(),
+    back: vi.fn(),
+    forward: vi.fn(),
+    prefetch: vi.fn(),
+  }),
+}));
+
 import { apiFetch } from '@/lib/api/client';
 import { TableShell } from '@/app/(app)/datasets/[id]/tables/[className]/table-shell';
 import { PivotShell } from '@/app/(app)/datasets/[id]/pivot/[grain]/pivot-shell';
@@ -90,8 +104,19 @@ describe('TableShell', () => {
 });
 
 describe('PivotShell', () => {
+  // Phase 6.5b turned this from a placeholder into a real PivotView
+  // mount. The sub-nav is still rendered unconditionally, but PivotView
+  // calls `useDatasetSummary` + `useDatasetPivot` which both require a
+  // `QueryClientProvider` ancestor. Mock leaves them pending so this
+  // test stays focused on the nav contract.
   it('renders the grain sub-nav with active aria-current', () => {
-    render(<PivotShell datasetId="d1" grain="session" />);
+    mockedApiFetch.mockReturnValue(new Promise(() => {}));
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <PivotShell datasetId="d1" grain="session" />
+      </Wrapper>,
+    );
     const sessionLink = screen.getByRole('link', { name: 'Per session' });
     expect(sessionLink.getAttribute('aria-current')).toBe('page');
     const subjectLink = screen.getByRole('link', { name: 'Per subject' });
