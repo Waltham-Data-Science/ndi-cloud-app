@@ -8,15 +8,38 @@
  * paint. TanStack Query revalidates in the background according to the
  * provider's `staleTime` (60s).
  *
+ * Phase 6.5d (cross-repo unification): adds the `<FacetPanel>` sidebar.
+ * The facets endpoint aggregates across published datasets only — same
+ * anonymous-public guarantee as the dataset list, no per-user state.
+ *
  * Anonymous-public guarantee: this component renders identically for all
  * viewers. No `useSession` reads, no per-user state. Filter / sort /
- * pagination land as a follow-up sub-phase; the architectural piece (RSC
- * + HydrationBoundary + ISR) is what Phase 3a delivers.
+ * pagination still land as a follow-up; this PR adds the chip cloud and
+ * routes chip clicks to `/query?...` so users can discover the research
+ * vocabulary even before the QueryBuilder ships in 6.5e.
  */
+import { useRouter } from 'next/navigation';
+
 import { usePublishedDatasets } from '@/lib/api/datasets';
 import { DatasetCard } from '@/components/app/DatasetCard';
+import { FacetPanel } from '@/components/app/FacetPanel';
 import { CardSkeleton } from '@/components/ui/Skeleton';
 import { formatNumber } from '@/lib/format';
+import type { OntologyTerm } from '@/lib/types/facets';
+
+/** Maps the FacetPanel's `kind` argument to the QueryBuilder field path
+ * a `contains_string` operator should be applied against. The mapping
+ * mirrors the data-browser's `QueryPage` chip-click handlers — once
+ * QueryBuilder ports in 6.5e, both sides agree on field paths. */
+const FACET_KIND_TO_FIELD: Record<
+  'species' | 'brainRegions' | 'strains' | 'sexes',
+  string
+> = {
+  species: 'openminds.fields.preferredOntologyIdentifier',
+  brainRegions: 'openminds.fields.preferredOntologyIdentifier',
+  strains: 'openminds.fields.preferredOntologyIdentifier',
+  sexes: 'openminds.fields.preferredOntologyIdentifier',
+};
 
 export function DatasetsListClient({
   page = 1,
@@ -24,6 +47,57 @@ export function DatasetsListClient({
 }: {
   page?: number;
   pageSize?: number;
+}) {
+  const router = useRouter();
+
+  const handleOntologyChip = (
+    kind: 'species' | 'brainRegions' | 'strains' | 'sexes',
+    term: OntologyTerm,
+  ) => {
+    // Prefer the ontology id (e.g. NCBITaxon:6239) when present — that's
+    // what the backend ontologyTableRow indexes on. Fall back to the
+    // human-readable label if no ontology id was extracted.
+    const value = term.ontologyId ?? term.label;
+    if (!value) return;
+    const field = FACET_KIND_TO_FIELD[kind];
+    const qs = new URLSearchParams({
+      op: 'contains_string',
+      field,
+      param1: value,
+    });
+    router.push(`/query?${qs.toString()}`);
+  };
+
+  const handleProbeTypeChip = (probeType: string) => {
+    const qs = new URLSearchParams({
+      op: 'contains_string',
+      field: 'element.fields.probeType',
+      param1: probeType,
+    });
+    router.push(`/query?${qs.toString()}`);
+  };
+
+  return (
+    <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
+      <aside className="min-w-0">
+        <FacetPanel
+          onSelectOntologyFacet={handleOntologyChip}
+          onSelectProbeType={handleProbeTypeChip}
+        />
+      </aside>
+      <section className="min-w-0">
+        <DatasetsList page={page} pageSize={pageSize} />
+      </section>
+    </div>
+  );
+}
+
+function DatasetsList({
+  page,
+  pageSize,
+}: {
+  page: number;
+  pageSize: number;
 }) {
   const { data, isLoading, isError, error, refetch } = usePublishedDatasets(
     page,
