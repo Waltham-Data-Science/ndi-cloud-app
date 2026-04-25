@@ -26,6 +26,13 @@
   --color-brand-blue-2: #2eb0ff;
   --color-brand-blue-3: #5dc1ff;
   --color-brand-cream: #fdf7fa;
+  /* App-only focus-ring color, ported from data-browser's --color-brand-500.
+   * Used by `components/ui/Input` and a couple of dataset-detail focus rings.
+   * Sits alongside (not replacing) `--color-ndi-teal` which is the marketing
+   * focus color — the two-tone is intentional: marketing chrome stays teal,
+   * app primitives use a denser blue to contrast against teal CTAs. */
+  --color-brand-500: #0b8bd6;
+  --color-brand-600: #0671ab;
 
   --color-ndi-primary: #002054;
   --color-ndi-primary-dark: #001a44;
@@ -149,6 +156,36 @@
    * from creeping back in by making any UA-default dark-scheme handling
    * impossible. */
   color-scheme: light;
+}
+
+/*
+ * Skeleton shimmer — used by `components/ui/Skeleton` and consumers
+ * (TableSkeleton, CardSkeleton, TableLoadingPanel). Ported from
+ * data-browser's index.css. The `prefers-reduced-motion` opt-out
+ * keeps the animation off for users who request reduced motion at
+ * the OS level — accessibility, not aesthetic.
+ */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-gray-200) 0%,
+    var(--color-gray-100) 50%,
+    var(--color-gray-200) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.4s linear infinite;
+  border-radius: var(--radius-sm);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+  }
 }
 
 /*

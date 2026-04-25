@@ -40,27 +40,23 @@ export default defineConfig({
         'app/sitemap.ts',
         'app/robots.ts',
       ],
-      // Phase 2b baseline floors. The 9 auth pages added in 2b are
-      // mostly client-side form code (handlers + state + API call); the
-      // /login form has a unit-test pattern at
-      // tests/unit/(marketing)/login.test.tsx that the other 8 forms
-      // follow. Comprehensive auth-form coverage lands in Phase 6
-      // (Playwright e2e against a real preview deploy with a real
-      // backend) — that's the authoritative test level for these.
+      // Phase 3a floors — ratcheted up from Phase 2b's 35/33/45/35
+      // baseline as `lib/api/*` + `components/ui/*` ports landed with
+      // their tests carried over from data-browser plus new hook /
+      // primitive smoke tests written in this PR.
       //
-      // For this PR the thresholds drop to just below the measured
-      // baseline (so routine refactor doesn't trip the gate); Phase 3a
-      // ratchets back up as `lib/api/*` + `components/ui/*` ports land
-      // with their full test suites carried over from data-browser.
-      // Values are deliberate floors, not aspirational ceilings.
+      // Measured 2026-04-25 (Phase 3a, after datasets + ui + hooks):
+      // statements 45.30, branches 47.47, functions 50.94, lines 45.00.
       //
-      // Measured 2026-04-25 (Phase 2b, after login-form test added):
-      // statements 37.66, branches 35.98, functions 47.05, lines 36.63.
+      // Floors set ~2 points below measured so routine churn within a
+      // sub-phase doesn't trip the gate; the next sub-phase ratchets
+      // again as Phase 3b–3e ports + audit fixes (#65, #64, #66) land
+      // with their full data-browser test suites.
       thresholds: {
-        statements: 35,
-        branches: 33,
-        functions: 45,
-        lines: 35,
+        statements: 43,
+        branches: 45,
+        functions: 48,
+        lines: 43,
       },
     },
   },
