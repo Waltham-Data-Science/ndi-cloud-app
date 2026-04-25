@@ -1,0 +1,49 @@
+#!/usr/bin/env bash
+#
+# Pre-push hook: enforce author email on every commit being pushed.
+#
+# Vercel + Railway gate deploys on author email being audri@walthamdatascience.com.
+# This hook fails the push locally if any commit in the about-to-be-pushed
+# range has a different author — saves the trip through CI just to fail there.
+#
+# Activate locally with:
+#   git config core.hooksPath .githooks
+#
+# CI also runs the same check as a job step.
+
+set -e
+
+REQUIRED_EMAIL="audri@walthamdatascience.com"
+
+# Read pushed refs from stdin per Git pre-push contract.
+# Format per line: <local ref> <local sha> <remote ref> <remote sha>
+while read -r local_ref local_sha remote_ref remote_sha; do
+  if [ "$local_sha" = "0000000000000000000000000000000000000000" ]; then
+    # Branch deletion — nothing to check.
+    continue
+  fi
+
+  if [ "$remote_sha" = "0000000000000000000000000000000000000000" ]; then
+    # New branch — check all commits reachable from local that aren't on any remote ref.
+    range="$local_sha"
+    range_args="--not --remotes"
+  else
+    range="$remote_sha..$local_sha"
+    range_args=""
+  fi
+
+  bad_commits=$(git log $range $range_args --pretty=format:'%H %ae' 2>/dev/null | awk -v want="$REQUIRED_EMAIL" '$2 != want { print $1 " " $2 }')
+
+  if [ -n "$bad_commits" ]; then
+    echo "❌ Pre-push blocked: commits with non-$REQUIRED_EMAIL author found:" >&2
+    echo "$bad_commits" >&2
+    echo "" >&2
+    echo "Fix by amending each commit:" >&2
+    echo "  git commit --amend --no-edit --author=\"audriB <$REQUIRED_EMAIL>\"" >&2
+    echo "Or rewrite the range:" >&2
+    echo "  git rebase -x \"git commit --amend --no-edit --author='audriB <$REQUIRED_EMAIL>'\" $remote_sha" >&2
+    exit 1
+  fi
+done
+
+exit 0
