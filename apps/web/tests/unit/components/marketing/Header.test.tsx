@@ -56,7 +56,7 @@ beforeEach(() => {
 
 describe('Header (anonymous user, desktop)', () => {
   beforeEach(() => {
-    mockedUseSession.mockReturnValue({ user: null });
+    mockedUseSession.mockReturnValue({ user: null, isLoading: false, error: null });
     stubMatchMedia(false);
   });
 
@@ -121,7 +121,14 @@ describe('Header (anonymous user, desktop)', () => {
 describe('Header (authenticated user, desktop)', () => {
   beforeEach(() => {
     mockedUseSession.mockReturnValue({
-      user: { email: 'audri@walthamdatascience.com', name: 'Audri B' },
+      user: {
+        id: 'u-audri',
+        email: 'audri@walthamdatascience.com',
+        name: 'Audri B',
+        emailVerified: true,
+      },
+      isLoading: false,
+      error: null,
     });
     stubMatchMedia(false);
   });
@@ -142,7 +149,13 @@ describe('Header (authenticated user, desktop)', () => {
 describe('Header user menu (desktop, authenticated)', () => {
   beforeEach(() => {
     mockedUseSession.mockReturnValue({
-      user: { email: 'audri@walthamdatascience.com' },
+      user: {
+        id: 'u-audri',
+        email: 'audri@walthamdatascience.com',
+        emailVerified: true,
+      },
+      isLoading: false,
+      error: null,
     });
     stubMatchMedia(false);
   });
@@ -181,7 +194,7 @@ describe('Header user menu (desktop, authenticated)', () => {
 
 describe('Header (mobile, anonymous)', () => {
   beforeEach(() => {
-    mockedUseSession.mockReturnValue({ user: null });
+    mockedUseSession.mockReturnValue({ user: null, isLoading: false, error: null });
     stubMatchMedia(true);
   });
 
@@ -251,34 +264,31 @@ describe('Header (mobile, anonymous)', () => {
 });
 
 /*
- * Phase 2b reminder — must add an authenticated-Header e2e smoke test
- * (Playwright, not just unit) in the PR that lands the real cookie-
- * backed useSession(). The unit tests in this file mock useSession()
- * so they exercise the JSX branches; the e2e smoke proves the real
- * session cookie + apiFetch('/api/auth/me') round-trip drives the UI
- * end-to-end. The test.todo below surfaces this as a pending test in
- * vitest's output forever — impossible to forget.
+ * Phase 2b reminder DISCHARGED.
  *
- * In Phase 2b: replace test.todo with a real spec at
- * apps/web/tests/e2e/auth-header.spec.ts that:
- *   - logs in via /login using the cookie-flow
- *   - asserts Header shows "My Account" instead of "Log in" / "Create
- *     Account"
- *   - clicks "My Account" → asserts dropdown contains Account /
- *     Bookmarks / Log out
- *   - clicks Log out → asserts redirect to /login + Header reverts to
- *     anonymous CTAs
+ * The integration test that this it.todo was reserving lives at:
+ *   apps/web/tests/unit/components/marketing/Header.auth-integration.test.tsx
+ *
+ * That spec exercises the full real-useSession() + apiFetch() + mocked
+ * `global.fetch` chain (not the JSX-branch-only mocks used in this
+ * file). Phase 6 layers a Playwright e2e on top hitting a real preview
+ * deploy with a real session cookie.
+ *
+ * Leaving this comment block as a paper trail — if a future refactor
+ * wonders why there's an extra integration spec file, this points at
+ * the why.
  */
-describe('Phase 2b reminder', () => {
-  it.todo(
-    'authenticated-Header e2e smoke (real useSession + cookie-flow login)',
-  );
-});
 
 describe('Header (mobile, authenticated)', () => {
   beforeEach(() => {
     mockedUseSession.mockReturnValue({
-      user: { email: 'audri@walthamdatascience.com' },
+      user: {
+        id: 'u-audri',
+        email: 'audri@walthamdatascience.com',
+        emailVerified: true,
+      },
+      isLoading: false,
+      error: null,
     });
     stubMatchMedia(true);
   });
