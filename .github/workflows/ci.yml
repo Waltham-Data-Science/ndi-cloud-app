@@ -124,6 +124,8 @@ jobs:
           name: next-build
           path: apps/web/.next
           retention-days: 3
+          include-hidden-files: true
+          if-no-files-found: error
 
   e2e:
     name: e2e (playwright)
