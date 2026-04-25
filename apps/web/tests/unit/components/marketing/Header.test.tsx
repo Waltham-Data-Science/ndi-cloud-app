@@ -1,0 +1,289 @@
+/**
+ * Tests for the marketing <Header />.
+ *
+ * Coverage focuses on the auth-aware contract (anonymous vs authenticated
+ * CTAs), active-route detection (used by `aria-current="page"` for screen
+ * readers + the `text-brand-blue-3` active style), the
+ * Docs-as-external-only rule (other "external" feeling links like Data
+ * Commons stay same-tab per the cross-domain nav rules), and every click
+ * path that mutates router state — auth pages depend on these working.
+ *
+ * MUI's `useMediaQuery` reads `window.matchMedia` which jsdom doesn't
+ * implement; the test setup provides a stub that defaults to "desktop"
+ * (`matches: false`), letting us assert the desktop branch directly. A
+ * separate test forces mobile via the stub.
+ *
+ * The router push mock is a file-level singleton so tests can assert
+ * `expect(pushMock).toHaveBeenCalledWith(...)` without per-test plumbing.
+ */
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+
+import { Header } from '@/components/marketing/Header';
+import { useSession } from '@/lib/auth/use-session';
+
+vi.mock('@/lib/auth/use-session');
+const pushMock = vi.fn();
+vi.mock('next/navigation', () => ({
+  useRouter: () => ({ push: pushMock }),
+  usePathname: () => '/',
+}));
+
+const mockedUseSession = vi.mocked(useSession);
+
+function stubMatchMedia(mobile: boolean) {
+  const stub = vi.fn().mockImplementation((query: string) => ({
+    matches: mobile && query.includes('max-width:900px'),
+    media: query,
+    addListener: vi.fn(),
+    removeListener: vi.fn(),
+    addEventListener: vi.fn(),
+    removeEventListener: vi.fn(),
+    dispatchEvent: vi.fn(),
+    onchange: null,
+  }));
+  Object.defineProperty(window, 'matchMedia', {
+    writable: true,
+    configurable: true,
+    value: stub,
+  });
+}
+
+beforeEach(() => {
+  pushMock.mockClear();
+});
+
+describe('Header (anonymous user, desktop)', () => {
+  beforeEach(() => {
+    mockedUseSession.mockReturnValue({ user: null });
+    stubMatchMedia(false);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders the brand logo with link to home', () => {
+    render(<Header />);
+    const home = screen.getByRole('link', { name: /ndi cloud home/i });
+    expect(home.getAttribute('href')).toBe('/');
+  });
+
+  it('renders the desktop nav links (Data Commons + product pages + external Docs)', () => {
+    render(<Header />);
+    expect(screen.getByRole('link', { name: /data commons/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /for labs/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^labchat$/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^platform$/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^about$/i })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: /^docs$/i })).toBeInTheDocument();
+  });
+
+  it('opens Data Commons same-tab (cross-domain product nav rule)', () => {
+    render(<Header />);
+    const dc = screen.getByRole('link', { name: /data commons/i });
+    expect(dc.getAttribute('href')).toBe('/datasets');
+    expect(dc.getAttribute('target')).toBeNull();
+  });
+
+  it('opens Docs in a new tab with rel="noopener noreferrer"', () => {
+    render(<Header />);
+    const docs = screen.getByRole('link', { name: /^docs$/i });
+    expect(docs.getAttribute('href')).toBe('https://vh-lab.github.io/NDI-matlab/');
+    expect(docs.getAttribute('target')).toBe('_blank');
+    expect(docs.getAttribute('rel')).toContain('noopener');
+  });
+
+  it('renders Log in + Create Free Account buttons when unauthenticated', () => {
+    render(<Header />);
+    expect(screen.getByRole('button', { name: /log in/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /create free account/i })).toBeInTheDocument();
+    // No "My Account" button because no session.
+    expect(screen.queryByRole('button', { name: /^my account$/i })).toBeNull();
+  });
+
+  it('clicking Log in routes to /login', async () => {
+    const user = userEvent.setup();
+    render(<Header />);
+    await user.click(screen.getByRole('button', { name: /log in/i }));
+    expect(pushMock).toHaveBeenCalledWith('/login');
+  });
+
+  it('clicking Create Free Account routes to /create-account (kebab-case)', async () => {
+    const user = userEvent.setup();
+    render(<Header />);
+    await user.click(screen.getByRole('button', { name: /create free account/i }));
+    expect(pushMock).toHaveBeenCalledWith('/create-account');
+  });
+});
+
+describe('Header (authenticated user, desktop)', () => {
+  beforeEach(() => {
+    mockedUseSession.mockReturnValue({
+      user: { email: 'audri@walthamdatascience.com', name: 'Audri B' },
+    });
+    stubMatchMedia(false);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders the My Account dropdown trigger when authenticated', () => {
+    render(<Header />);
+    expect(screen.getByRole('button', { name: /^my account$/i })).toBeInTheDocument();
+    // Anonymous CTAs gone.
+    expect(screen.queryByRole('button', { name: /log in/i })).toBeNull();
+    expect(screen.queryByRole('button', { name: /create free account/i })).toBeNull();
+  });
+});
+
+describe('Header user menu (desktop, authenticated)', () => {
+  beforeEach(() => {
+    mockedUseSession.mockReturnValue({
+      user: { email: 'audri@walthamdatascience.com' },
+    });
+    stubMatchMedia(false);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('opens the user menu and reveals Account + Bookmarks + Log out', async () => {
+    const user = userEvent.setup();
+    render(<Header />);
+    await user.click(screen.getByRole('button', { name: /^my account$/i }));
+    expect(screen.getByRole('menuitem', { name: /^account$/i })).toBeInTheDocument();
+    // Bookmarks is the cross-domain workspace link — same-tab href to /my.
+    const bookmarks = screen.getByRole('menuitem', { name: /bookmarks/i });
+    expect(bookmarks.getAttribute('href')).toBe('/my');
+    expect(screen.getByRole('menuitem', { name: /log out/i })).toBeInTheDocument();
+  });
+
+  it('clicking Account in the user menu routes to /my-account', async () => {
+    const user = userEvent.setup();
+    render(<Header />);
+    await user.click(screen.getByRole('button', { name: /^my account$/i }));
+    await user.click(screen.getByRole('menuitem', { name: /^account$/i }));
+    expect(pushMock).toHaveBeenCalledWith('/my-account');
+  });
+
+  it('clicking Log out routes to /login (Phase 2a stub; Phase 2b adds real apiFetch logout)', async () => {
+    const user = userEvent.setup();
+    render(<Header />);
+    await user.click(screen.getByRole('button', { name: /^my account$/i }));
+    await user.click(screen.getByRole('menuitem', { name: /log out/i }));
+    expect(pushMock).toHaveBeenCalledWith('/login');
+  });
+});
+
+describe('Header (mobile, anonymous)', () => {
+  beforeEach(() => {
+    mockedUseSession.mockReturnValue({ user: null });
+    stubMatchMedia(true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('renders the hamburger MenuIcon trigger and hides the desktop link row', () => {
+    render(<Header />);
+    expect(screen.getByRole('button', { name: /open navigation menu/i })).toBeInTheDocument();
+    // Desktop link row hidden — Data Commons appears only via the MUI
+    // <Menu> popover after the hamburger is clicked. Direct query for
+    // "Data Commons" in the rendered nav root finds nothing.
+    const navRoot = screen.getByRole('navigation', { name: /primary/i });
+    expect(navRoot.querySelector('a[href="/datasets"]')).toBeNull();
+  });
+
+  it('opens the mobile menu and shows nav links + Log in / Create Account', async () => {
+    const user = userEvent.setup();
+    render(<Header />);
+    await user.click(screen.getByRole('button', { name: /open navigation menu/i }));
+    // The MUI Menu portals into <body>; queries via the document-wide screen.
+    expect(screen.getByRole('menuitem', { name: /data commons/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /log in/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /create free account/i })).toBeInTheDocument();
+  });
+
+  it('clicking an internal nav menuitem routes via Next router (not window.open)', async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    render(<Header />);
+    await user.click(screen.getByRole('button', { name: /open navigation menu/i }));
+    await user.click(screen.getByRole('menuitem', { name: /^platform$/i }));
+    expect(pushMock).toHaveBeenCalledWith('/platform');
+    expect(openSpy).not.toHaveBeenCalled();
+  });
+
+  it('clicking the external Docs menuitem opens a new window (not router.push)', async () => {
+    const user = userEvent.setup();
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    render(<Header />);
+    await user.click(screen.getByRole('button', { name: /open navigation menu/i }));
+    await user.click(screen.getByRole('menuitem', { name: /^docs/i }));
+    expect(openSpy).toHaveBeenCalledWith(
+      'https://vh-lab.github.io/NDI-matlab/',
+      '_blank',
+      'noopener,noreferrer',
+    );
+    expect(pushMock).not.toHaveBeenCalled();
+  });
+
+  it('clicking Log in mobile menuitem routes to /login', async () => {
+    const user = userEvent.setup();
+    render(<Header />);
+    await user.click(screen.getByRole('button', { name: /open navigation menu/i }));
+    await user.click(screen.getByRole('menuitem', { name: /log in/i }));
+    expect(pushMock).toHaveBeenCalledWith('/login');
+  });
+
+  it('clicking Create Free Account mobile menuitem routes to /create-account', async () => {
+    const user = userEvent.setup();
+    render(<Header />);
+    await user.click(screen.getByRole('button', { name: /open navigation menu/i }));
+    await user.click(screen.getByRole('menuitem', { name: /create free account/i }));
+    expect(pushMock).toHaveBeenCalledWith('/create-account');
+  });
+});
+
+describe('Header (mobile, authenticated)', () => {
+  beforeEach(() => {
+    mockedUseSession.mockReturnValue({
+      user: { email: 'audri@walthamdatascience.com' },
+    });
+    stubMatchMedia(true);
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it('shows My Account + Log out (not Log in / Create Account) in the mobile menu', async () => {
+    const user = userEvent.setup();
+    render(<Header />);
+    await user.click(screen.getByRole('button', { name: /open navigation menu/i }));
+    expect(screen.getByRole('menuitem', { name: /my account/i })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: /log out/i })).toBeInTheDocument();
+    expect(screen.queryByRole('menuitem', { name: /^log in$/i })).toBeNull();
+  });
+
+  it('clicking My Account mobile menuitem routes to /my-account', async () => {
+    const user = userEvent.setup();
+    render(<Header />);
+    await user.click(screen.getByRole('button', { name: /open navigation menu/i }));
+    await user.click(screen.getByRole('menuitem', { name: /^my account$/i }));
+    expect(pushMock).toHaveBeenCalledWith('/my-account');
+  });
+
+  it('clicking Log out mobile menuitem routes to /login (Phase 2a stub)', async () => {
+    const user = userEvent.setup();
+    render(<Header />);
+    await user.click(screen.getByRole('button', { name: /open navigation menu/i }));
+    await user.click(screen.getByRole('menuitem', { name: /log out/i }));
+    expect(pushMock).toHaveBeenCalledWith('/login');
+  });
+});

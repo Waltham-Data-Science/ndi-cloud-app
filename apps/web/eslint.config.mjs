@@ -17,6 +17,38 @@ const config = [
   {
     rules: {
       'react/jsx-no-target-blank': 'error',
+      // Allow `_`-prefixed names for intentionally-discarded destructure
+      // rests + unused function args. Standard ESLint convention; lets
+      // patterns like `const { foo: _foo, ...rest } = props` (extract to
+      // strip from the spread, but don't reference) compile clean.
+      '@typescript-eslint/no-unused-vars': [
+        'warn',
+        {
+          argsIgnorePattern: '^_',
+          varsIgnorePattern: '^_',
+          caughtErrorsIgnorePattern: '^_',
+          destructuredArrayIgnorePattern: '^_',
+        },
+      ],
+    },
+  },
+  {
+    /*
+     * Phase boundary enforcement: data-browser feature components must
+     * not pull in MUI. MUI is permitted in `components/marketing/` for
+     * the responsive nav menu where its a11y lift is real, and in
+     * `app/(marketing)/` auth pages (Phase 2b: Formik forms wrap MUI
+     * inputs). Everywhere else — and especially `components/app/`
+     * (the data-browser feature surface) and `components/ui/`
+     * (cross-cutting headless primitives) — uses Tailwind utility
+     * classes + the headless primitives in `components/ui/`.
+     *
+     * Flat-config glob targeting limits the rule to the directories
+     * where MUI is wrong; the marketing surfaces are exempt by virtue
+     * of not matching this glob.
+     */
+    files: ['components/app/**/*.{ts,tsx}', 'components/ui/**/*.{ts,tsx}'],
+    rules: {
       'no-restricted-imports': [
         'error',
         {
@@ -24,7 +56,7 @@ const config = [
             {
               group: ['@mui/*'],
               message:
-                'MUI imports are not allowed in components/app/. Use the headless primitives in components/ui/ (Button, Modal, etc.). MUI is permitted only in components/marketing/.',
+                'MUI imports are not allowed in components/app/ or components/ui/. Use the headless primitives in components/ui/ (Button, Modal, etc.). MUI is permitted only in components/marketing/ and the (marketing) auth pages.',
             },
           ],
         },
