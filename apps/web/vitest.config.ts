@@ -39,20 +39,31 @@ export default defineConfig({
         'app/**/not-found.tsx',
         'app/sitemap.ts',
         'app/robots.ts',
+        // macOS Finder duplicates ("foo 2.ts", "foo 2.tsx", "foo 2/")
+        // are local-only artifacts that aren't tracked by git but
+        // appear on disk during local dev. ESLint already ignores them
+        // (see `apps/web/eslint.config.mjs`); exclude from coverage so
+        // they don't pile zero-coverage rows into the global numerator.
+        // The hygiene CI catches any that get accidentally committed.
+        '**/* 2.{ts,tsx}',
+        '**/* 2/**',
       ],
-      // Phase 3d floors — ratcheted again. OntologyPopover rewritten
-      // on FloatingPanel (audit #66 close) + ontology-utils + lib/api/
-      // ontology landed with their full test suites.
+      // Phase 6.5a floors — ratcheted again. SummaryTableView ported with
+      // its 15-test suite (B6a canonical-column defaults, ontology cell
+      // rendering, XLS/CSV/JSON export, dual-clock epoch cells). The
+      // hidden boost in this ratchet: Finder-dup files are now excluded
+      // from the denominator (see exclude block above), so coverage
+      // measures real source files only.
       //
-      // Measured 2026-04-25 (Phase 3d, after OntologyPopover):
-      // statements 56.20, branches 56.53, functions 60.28, lines 55.85.
+      // Measured 2026-04-25 (Phase 6.5a):
+      // statements 63.19, branches 58.61, functions 65.29, lines 63.6.
       //
-      // Floors set ~2 points below measured.
+      // Floors set ~3 points below measured.
       thresholds: {
-        statements: 54,
-        branches: 54,
-        functions: 58,
-        lines: 53,
+        statements: 60,
+        branches: 56,
+        functions: 62,
+        lines: 60,
       },
     },
   },
