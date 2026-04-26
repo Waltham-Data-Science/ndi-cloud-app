@@ -20,6 +20,7 @@ describe('lib/env schema', () => {
       expect(result.data.NODE_ENV).toBe('development');
       expect(result.data.UPSTREAM_API_URL).toBeUndefined();
       expect(result.data.INTERNAL_API_URL).toBeUndefined();
+      expect(result.data.NEXT_PUBLIC_SENTRY_DSN).toBeUndefined();
     }
   });
 
@@ -28,11 +29,28 @@ describe('lib/env schema', () => {
       NODE_ENV: 'production',
       UPSTREAM_API_URL: 'https://ndb-v2-production.up.railway.app',
       INTERNAL_API_URL: 'https://ndb-v2-production.up.railway.app',
+      NEXT_PUBLIC_SENTRY_DSN: 'https://abc123@o12345.ingest.us.sentry.io/67890',
     });
     expect(result.success).toBe(true);
     if (result.success) {
       expect(result.data.NODE_ENV).toBe('production');
       expect(result.data.UPSTREAM_API_URL).toBe('https://ndb-v2-production.up.railway.app');
+      expect(result.data.NEXT_PUBLIC_SENTRY_DSN).toBe(
+        'https://abc123@o12345.ingest.us.sentry.io/67890',
+      );
+    }
+  });
+
+  it('rejects malformed NEXT_PUBLIC_SENTRY_DSN', () => {
+    const result = schema.safeParse({
+      NEXT_PUBLIC_SENTRY_DSN: 'not-a-url',
+    });
+    expect(result.success).toBe(false);
+    if (!result.success) {
+      const dsnIssue = result.error.issues.find((i) =>
+        i.path.includes('NEXT_PUBLIC_SENTRY_DSN'),
+      );
+      expect(dsnIssue).toBeDefined();
     }
   });
 

@@ -20,6 +20,15 @@ export const schema = z.object({
   // Phase 3a: RSC server-side fetch target (bypasses the Vercel rewrite to
   // avoid double-hop). Optional until catalog RSC ships.
   INTERNAL_API_URL: z.string().url().optional(),
+
+  // Phase 6.7 A8: Sentry DSN. NEXT_PUBLIC_ prefix because the SDK reads it
+  // from both runtimes — server-side via instrumentation.ts and
+  // client-side via the lazy module-level init in app/(*)/error.tsx.
+  // A Sentry DSN is by design publicly embeddable in client bundles
+  // (Sentry's threat model relies on per-project rate limits, not DSN
+  // secrecy). When unset, `Sentry.init({ dsn: undefined })` is a no-op
+  // so dev / un-provisioned builds work without error capture.
+  NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof schema>;
