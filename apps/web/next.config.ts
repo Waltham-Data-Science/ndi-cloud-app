@@ -17,7 +17,7 @@ const config: NextConfig = {
   /*
    * Permanent (308) redirects for legacy URLs.
    *
-   * Two categories:
+   * Three categories:
    *
    * (A) camelCase → kebab-case auth routes. The new monorepo standardizes
    *     on kebab-case URLs (App Router file-based + better SEO + matches
@@ -33,6 +33,17 @@ const config: NextConfig = {
    *     the actual app routes once Phase 3a/3b ship. Only the routes
    *     that DON'T have a 1:1 file in this repo (advanced search,
    *     bookmarks, share-data) keep redirecting.
+   *
+   * (C) Phase 6.7 G5 — legacy table-class slug aliases. The source SPA
+   *     (`ndi-data-browser-v2/frontend`) silently coerced these short-
+   *     form slugs to their canonical equivalents at render time
+   *     (`coerceTableType` in `frontend/src/pages/TableTab.tsx`). The
+   *     new App Router can't transparently rename — the FastAPI backend
+   *     only knows the canonical names, so a bookmarked URL like
+   *     `/datasets/:id/tables/probes` would be broken post-cutover.
+   *     308 makes bookmarks self-healing: legacy URL clicked once
+   *     updates the bookmark to canonical. Empty-class case mirrors
+   *     the source SPA's `<Navigate to="subject" replace />` fallback.
    */
   async redirects() {
     return [
@@ -53,6 +64,19 @@ const config: NextConfig = {
       { source: '/advancedSearch', destination: '/query', permanent: true },
       { source: '/bookmarks', destination: '/my', permanent: true },
       { source: '/shareData', destination: '/my', permanent: true },
+
+      // (C) G5: legacy table-class slug aliases (bookmark self-healing)
+      { source: '/datasets/:id/tables/subjects',   destination: '/datasets/:id/tables/subject',           permanent: true },
+      { source: '/datasets/:id/tables/probes',     destination: '/datasets/:id/tables/element',           permanent: true },
+      { source: '/datasets/:id/tables/probe',      destination: '/datasets/:id/tables/element',           permanent: true },
+      { source: '/datasets/:id/tables/elements',   destination: '/datasets/:id/tables/element',           permanent: true },
+      { source: '/datasets/:id/tables/epochs',     destination: '/datasets/:id/tables/element_epoch',     permanent: true },
+      { source: '/datasets/:id/tables/epoch',      destination: '/datasets/:id/tables/element_epoch',     permanent: true },
+      { source: '/datasets/:id/tables/treatments', destination: '/datasets/:id/tables/treatment',         permanent: true },
+      { source: '/datasets/:id/tables/locations',  destination: '/datasets/:id/tables/probe_location',    permanent: true },
+      { source: '/datasets/:id/tables/openminds',  destination: '/datasets/:id/tables/openminds_subject', permanent: true },
+      // Empty-class fallback (parity with source SPA's <Navigate to="subject" replace />)
+      { source: '/datasets/:id/tables',            destination: '/datasets/:id/tables/subject',           permanent: true },
     ];
   },
 
