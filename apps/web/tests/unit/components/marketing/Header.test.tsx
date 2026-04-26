@@ -17,8 +17,10 @@
  * `expect(pushMock).toHaveBeenCalledWith(...)` without per-test plumbing.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render as rtlRender, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import type { ReactElement } from 'react';
 
 import { Header } from '@/components/marketing/Header';
 import { useSession } from '@/lib/auth/use-session';
@@ -30,7 +32,26 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/',
 }));
 
+// Header.handleLogout calls `logout()` from lib/api/auth — mock so tests
+// don't actually fire /api/auth/logout.
+const logoutMock = vi.fn(() => Promise.resolve());
+vi.mock('@/lib/api/auth', () => ({
+  logout: () => logoutMock(),
+}));
+
 const mockedUseSession = vi.mocked(useSession);
+
+// Each test gets a fresh QueryClient — `Header.handleLogout` calls
+// `queryClient.clear()` which we want to spy on per-test (B5).
+let testQueryClient: QueryClient;
+function render(ui: ReactElement) {
+  testQueryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false, gcTime: Infinity } },
+  });
+  return rtlRender(
+    <QueryClientProvider client={testQueryClient}>{ui}</QueryClientProvider>,
+  );
+}
 
 function stubMatchMedia(mobile: boolean) {
   const stub = vi.fn().mockImplementation((query: string) => ({
@@ -52,6 +73,7 @@ function stubMatchMedia(mobile: boolean) {
 
 beforeEach(() => {
   pushMock.mockClear();
+  logoutMock.mockClear();
 });
 
 describe('Header (anonymous user, desktop)', () => {
@@ -183,11 +205,36 @@ describe('Header user menu (desktop, authenticated)', () => {
     expect(pushMock).toHaveBeenCalledWith('/my-account');
   });
 
-  it('clicking Log out routes to /login (Phase 2a stub; Phase 2b adds real apiFetch logout)', async () => {
+  it('clicking Log out calls logout() + clears the query cache + routes to /login (B5)', async () => {
     const user = userEvent.setup();
     render(<Header />);
+    const clearSpy = vi.spyOn(testQueryClient, 'clear');
     await user.click(screen.getByRole('button', { name: /^my account$/i }));
     await user.click(screen.getByRole('menuitem', { name: /log out/i }));
+
+    // Real backend logout (not the Phase 2a router-only stub).
+    expect(logoutMock).toHaveBeenCalledTimes(1);
+    // Cache leak fix: queryClient.clear drops the persisted previous-user
+    // datasets / session entries so localStorage doesn't leak across users.
+    expect(clearSpy).toHaveBeenCalledTimes(1);
+    // Route to login last (covers the success path; the failure path is
+    // covered separately).
+    expect(pushMock).toHaveBeenCalledWith('/login');
+  });
+
+  it('clicking Log out completes the local teardown even when the API fails', async () => {
+    logoutMock.mockRejectedValueOnce(new Error('network'));
+    const user = userEvent.setup();
+    render(<Header />);
+    const clearSpy = vi.spyOn(testQueryClient, 'clear');
+    await user.click(screen.getByRole('button', { name: /^my account$/i }));
+    await user.click(screen.getByRole('menuitem', { name: /log out/i }));
+
+    expect(logoutMock).toHaveBeenCalledTimes(1);
+    // Even when /api/auth/logout fails, the local teardown still runs:
+    // user perceives logout, next /api/auth/me catches any still-valid
+    // cookie. Vercel function logs capture the upstream failure.
+    expect(clearSpy).toHaveBeenCalledTimes(1);
     expect(pushMock).toHaveBeenCalledWith('/login');
   });
 });
@@ -314,11 +361,15 @@ describe('Header (mobile, authenticated)', () => {
     expect(pushMock).toHaveBeenCalledWith('/my-account');
   });
 
-  it('clicking Log out mobile menuitem routes to /login (Phase 2a stub)', async () => {
+  it('clicking Log out mobile menuitem calls logout() + clears cache + routes to /login (B5)', async () => {
     const user = userEvent.setup();
     render(<Header />);
+    const clearSpy = vi.spyOn(testQueryClient, 'clear');
     await user.click(screen.getByRole('button', { name: /open navigation menu/i }));
     await user.click(screen.getByRole('menuitem', { name: /log out/i }));
+
+    expect(logoutMock).toHaveBeenCalledTimes(1);
+    expect(clearSpy).toHaveBeenCalledTimes(1);
     expect(pushMock).toHaveBeenCalledWith('/login');
   });
 });
