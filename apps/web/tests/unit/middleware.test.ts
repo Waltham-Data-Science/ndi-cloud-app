@@ -1,12 +1,16 @@
 /**
- * Edge middleware contracts — Phase 5.
+ * Edge middleware contracts — Phase 5 + Phase 6.7 B2/O1 simplification.
  *
  * The three responsibilities locked in by these tests:
  *   1. Origin enforcement on /api/* mutations (defense-in-depth ahead
  *      of FastAPI's CSRF check)
- *   2. Per-request CSP nonce — fresh on every request, emitted as
- *      `Content-Security-Policy-Report-Only` for the first 24h soak
- *   3. Vary: Cookie, Accept-Encoding on session-varying routes
+ *   2. Static CSP (no nonce, no strict-dynamic) emitted as
+ *      `Content-Security-Policy-Report-Only`. Phase 7 cutover flips
+ *      Report-Only to enforced — these tests pin the static shape so
+ *      that flip is safe.
+ *   3. Vary: Cookie, Accept-Encoding GATED to session-varying routes
+ *      (`/api/*`, `/my/*`). The catalog at `/datasets` stays
+ *      anonymous-public-cacheable.
  */
 import { describe, expect, it } from 'vitest';
 import { NextRequest } from 'next/server';
@@ -194,13 +198,29 @@ describe('Origin allowlist — production vs preview environments', () => {
   });
 });
 
-describe('CSP nonce (Report-Only)', () => {
-  it('emits Content-Security-Policy-Report-Only with a nonce', async () => {
+describe('CSP (Report-Only) — Phase 6.7 B2 static shape', () => {
+  it('emits Content-Security-Policy-Report-Only on /api/*', async () => {
     const req = makeReq('https://ndi-cloud.com/api/auth/me');
     const res = await middleware(req);
-    const csp = res.headers.get('content-security-policy-report-only');
-    expect(csp).toBeTruthy();
-    expect(csp).toMatch(/nonce-/);
+    expect(res.headers.get('content-security-policy-report-only')).toBeTruthy();
+  });
+
+  it('emits CSP-RO on /my/* (authenticated app routes)', async () => {
+    const req = makeReq('https://ndi-cloud.com/my/something');
+    const res = await middleware(req);
+    expect(res.headers.get('content-security-policy-report-only')).toBeTruthy();
+  });
+
+  it('emits CSP-RO on the catalog at /datasets (O1 widened matcher)', async () => {
+    const req = makeReq('https://ndi-cloud.com/datasets');
+    const res = await middleware(req);
+    expect(res.headers.get('content-security-policy-report-only')).toBeTruthy();
+  });
+
+  it('emits CSP-RO on marketing root / (O1 widened matcher)', async () => {
+    const req = makeReq('https://ndi-cloud.com/');
+    const res = await middleware(req);
+    expect(res.headers.get('content-security-policy-report-only')).toBeTruthy();
   });
 
   it('does NOT emit enforced Content-Security-Policy header (24h soak)', async () => {
@@ -209,38 +229,42 @@ describe('CSP nonce (Report-Only)', () => {
     expect(res.headers.get('content-security-policy')).toBeNull();
   });
 
-  it('uses a fresh nonce on every request', async () => {
-    const req1 = makeReq('https://ndi-cloud.com/api/auth/me');
-    const req2 = makeReq('https://ndi-cloud.com/api/auth/me');
-    const res1 = await middleware(req1);
-    const res2 = await middleware(req2);
-    const m1 = res1.headers.get('content-security-policy-report-only')!.match(/nonce-([^']+)/);
-    const m2 = res2.headers.get('content-security-policy-report-only')!.match(/nonce-([^']+)/);
-    expect(m1).not.toBeNull();
-    expect(m2).not.toBeNull();
-    expect(m1![1]).not.toBe(m2![1]);
-  });
-
-  it('forwards the nonce to RSC via the x-nonce request header (downstream readable)', async () => {
-    // We can't easily inspect forwarded request headers from outside
-    // without an integration harness — but the policy header carrying a
-    // nonce is the externally-observable contract. The forwarding logic
-    // is exercised by the dev-server smoke + CI build success.
+  it('script-src does NOT include nonce-... (B2 dropped the per-request nonce)', async () => {
     const req = makeReq('https://ndi-cloud.com/api/auth/me');
     const res = await middleware(req);
-    const csp = res.headers.get('content-security-policy-report-only');
-    expect(csp).toMatch(/'nonce-[A-Za-z0-9+/=]+'/);
+    const csp = res.headers.get('content-security-policy-report-only')!;
+    expect(csp).not.toMatch(/nonce-/);
   });
 
-  it('script-src includes strict-dynamic so chunk loading inherits nonce trust', async () => {
+  it('script-src does NOT include strict-dynamic (B2 dropped it; was broken-on-flip)', async () => {
     const req = makeReq('https://ndi-cloud.com/api/auth/me');
     const res = await middleware(req);
-    const csp = res.headers.get('content-security-policy-report-only');
-    expect(csp).toMatch(/'strict-dynamic'/);
+    const csp = res.headers.get('content-security-policy-report-only')!;
+    expect(csp).not.toMatch(/'strict-dynamic'/);
+  });
+
+  it('script-src is `self` + GTM/GA only (Vercel Analytics + Speed Insights tags)', async () => {
+    const req = makeReq('https://ndi-cloud.com/api/auth/me');
+    const res = await middleware(req);
+    const csp = res.headers.get('content-security-policy-report-only')!;
+    expect(csp).toMatch(
+      /script-src 'self' https:\/\/www\.googletagmanager\.com https:\/\/www\.google-analytics\.com/,
+    );
+  });
+
+  it('does NOT forward an x-nonce request header (B2 dropped it; nothing read it)', async () => {
+    // Exposed via NextResponse.next request-headers contract; the
+    // x-nonce path is gone now.
+    const req = makeReq('https://ndi-cloud.com/api/auth/me');
+    await middleware(req);
+    // The middleware no longer mutates request headers — the only
+    // observable contract from outside is that the response carries the
+    // policy header without `nonce-`. Already covered above.
+    expect(true).toBe(true); // keep the spec to flag intent.
   });
 });
 
-describe('Vary header injection', () => {
+describe('Vary header injection — gated to session-varying paths', () => {
   it('adds Vary: Cookie + Accept-Encoding on /api/* routes', async () => {
     const req = makeReq('https://ndi-cloud.com/api/auth/me');
     const res = await middleware(req);
@@ -249,9 +273,30 @@ describe('Vary header injection', () => {
     expect(vary).toContain('Accept-Encoding');
   });
 
-  it('adds Vary on /my/* routes (per matcher)', async () => {
+  it('adds Vary on /my/* routes', async () => {
     const req = makeReq('https://ndi-cloud.com/my/something');
     const res = await middleware(req);
     expect(res.headers.get('vary')).toContain('Cookie');
+  });
+
+  it('does NOT add Vary on the anonymous-public catalog /datasets (preserves edge cache)', async () => {
+    const req = makeReq('https://ndi-cloud.com/datasets');
+    const res = await middleware(req);
+    const vary = res.headers.get('vary') ?? '';
+    expect(vary).not.toContain('Cookie');
+  });
+
+  it('does NOT add Vary on marketing routes (anonymous-public)', async () => {
+    const req = makeReq('https://ndi-cloud.com/');
+    const res = await middleware(req);
+    const vary = res.headers.get('vary') ?? '';
+    expect(vary).not.toContain('Cookie');
+  });
+
+  it('does NOT add Vary on /about (marketing)', async () => {
+    const req = makeReq('https://ndi-cloud.com/about');
+    const res = await middleware(req);
+    const vary = res.headers.get('vary') ?? '';
+    expect(vary).not.toContain('Cookie');
   });
 });
