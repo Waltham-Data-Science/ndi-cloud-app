@@ -39,6 +39,20 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <body className="antialiased">
+        {/*
+          Skip-to-content link — WCAG 2.4.1 (Bypass Blocks). First focusable
+          element on every page. Visually hidden until focused via keyboard,
+          at which point it pins to the top-center of the viewport with a
+          dark navy background + white text. Targets `#main-content` (the
+          `<main>` anchor inside both `(marketing)` and `(app)` route group
+          layouts). Ported from ndi-web-app-wds/_app.tsx + globals.scss.
+         */}
+        <a
+          href="#main-content"
+          className="sr-only focus:not-sr-only focus:fixed focus:top-0 focus:left-1/2 focus:-translate-x-1/2 focus:z-[9999] focus:px-6 focus:py-3 focus:bg-brand-navy focus:text-white focus:font-semibold focus:text-sm focus:rounded-b-md focus:no-underline focus:shadow-lg"
+        >
+          Skip to main content
+        </a>
         <Providers>{children}</Providers>
         {/*
           Analytics + Speed Insights — Phase 5. Free on Vercel Pro.
