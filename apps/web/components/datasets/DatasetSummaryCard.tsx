@@ -124,7 +124,7 @@ function CountsSection({
               {i.label}
             </dt>
             <dd className="font-mono text-sm text-gray-800">
-              {new Intl.NumberFormat().format(i.value)}
+              {new Intl.NumberFormat('en-US').format(i.value)}
             </dd>
           </div>
         ))}

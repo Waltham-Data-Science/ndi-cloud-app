@@ -8,11 +8,18 @@
  * which is the drill-down route that opts out of this layout's chrome
  * via the REBUILD-8 chrome-gate (`DatasetDetailChromeGate`).
  */
+import type { Metadata } from 'next';
+
 import { DocumentsShell } from './documents-shell';
 
 interface PageProps {
   params: Promise<{ id: string }>;
 }
+
+// Per-tab title; root layout's template wraps to "Documents · NDI Cloud".
+export const metadata: Metadata = {
+  title: 'Documents',
+};
 
 export default async function DocumentsPage({ params }: PageProps) {
   const { id } = await params;

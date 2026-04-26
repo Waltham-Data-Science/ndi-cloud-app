@@ -110,7 +110,7 @@ export function MyDatasetsTable({
         cell: ({ row }) =>
           row.original.documentCount != null ? (
             <span className="font-mono text-xs text-fg-secondary">
-              {row.original.documentCount.toLocaleString()}
+              {row.original.documentCount.toLocaleString('en-US')}
             </span>
           ) : (
             <span className="text-fg-muted">—</span>

@@ -122,11 +122,11 @@ export function DatasetCard({ dataset }: DatasetCardProps) {
             <MetaCell label="Documents">
               {summary?.counts.totalDocuments != null ? (
                 <span className="font-mono">
-                  {summary.counts.totalDocuments.toLocaleString()}
+                  {summary.counts.totalDocuments.toLocaleString('en-US')}
                 </span>
               ) : dataset.documentCount != null ? (
                 <span className="font-mono">
-                  {dataset.documentCount.toLocaleString()}
+                  {dataset.documentCount.toLocaleString('en-US')}
                 </span>
               ) : (
                 <span className="text-fg-muted">—</span>
@@ -135,7 +135,7 @@ export function DatasetCard({ dataset }: DatasetCardProps) {
             {summary && summary.counts.subjects > 0 && (
               <MetaCell label="Subjects">
                 <span className="font-mono">
-                  {summary.counts.subjects.toLocaleString()}
+                  {summary.counts.subjects.toLocaleString('en-US')}
                 </span>
               </MetaCell>
             )}
