@@ -229,3 +229,36 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
+
+/*
+ * Global keyboard-visible focus ring (WCAG 2.4.7 — Focus Visible).
+ * Per-component overrides are still welcome (e.g., inline nav links that
+ * use a colored text state instead of an outline), but EVERY interactive
+ * element gets at least this as a baseline so the site isn't unusable
+ * for keyboard users. `:focus-visible` fires only when the browser
+ * decides focus came from keyboard nav — it doesn't show a ring around
+ * mouse-clicked buttons. Ported from
+ * ndi-web-app-wds/app/src/styles/globals.scss.
+ */
+:focus-visible {
+  outline: 2px solid var(--color-brand-blue-3);
+  outline-offset: 2px;
+}
+
+/*
+ * Home-page institution marquee — `prefers-reduced-motion` opt-out
+ * (WCAG 2.3.3 — Animation from Interactions). When the user prefers
+ * reduced motion, kill the sliding loop and let the doubled logo set
+ * wrap into a static band so the logos remain visible (just not
+ * animated). The `.home-marquee-track` hook lives in
+ * `app/(marketing)/page.tsx`. Ported from
+ * ndi-web-app-wds/app/src/styles/HomeCommons.module.scss.
+ */
+@media (prefers-reduced-motion: reduce) {
+  .home-marquee-track {
+    animation: none !important;
+    flex-wrap: wrap;
+    justify-content: center;
+    white-space: normal;
+  }
+}

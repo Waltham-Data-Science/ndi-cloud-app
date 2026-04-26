@@ -48,4 +48,20 @@ describe('RootLayout', () => {
     expect(html).toMatch(/<body[^>]*>[\s\S]*data-testid="child"[\s\S]*<\/body>/);
     expect(html).toContain('hello');
   });
+
+  it('renders the skip-to-content link as the first focusable element (WCAG 2.4.1)', () => {
+    // The skip link MUST appear before any other interactive content in
+    // the body so that the very first Tab keypress lands on it. The
+    // route-group layouts wire `id="main-content"` onto their <main>
+    // anchors so this href targets a real element.
+    const html = render(<div data-testid="child">hello</div>);
+    // Anchor exists with the right href + visible text
+    expect(html).toMatch(/<a\b[^>]*href="#main-content"[^>]*>[\s\S]*?Skip to main content[\s\S]*?<\/a>/);
+    // And it sits before the children — first focusable in body order
+    const skipIdx = html.indexOf('Skip to main content');
+    const childIdx = html.indexOf('data-testid="child"');
+    expect(skipIdx).toBeGreaterThan(-1);
+    expect(childIdx).toBeGreaterThan(-1);
+    expect(skipIdx).toBeLessThan(childIdx);
+  });
 });
