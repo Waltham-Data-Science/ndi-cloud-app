@@ -141,6 +141,21 @@ export default function AboutPage() {
         </div>
       </section>
 
+      {/* Hero fade — Phase 6.6 PR-D polish.
+       * 80px gradient transition from depth-gradient hero bottom to
+       * the TEAM section's cream bg. Source: About.module.scss
+       * `.heroFade { height: 80px; background: linear-gradient(180deg,
+       * #001438 0%, white 100%); }`. Tokenized for the monorepo so the
+       * fade follows --color-brand-navy → --color-bg-canvas. */}
+      <div
+        aria-hidden
+        className="h-20"
+        style={{
+          background:
+            'linear-gradient(180deg, var(--color-brand-navy) 0%, var(--color-bg-canvas) 100%)',
+        }}
+      />
+
       {/* TEAM */}
       <section className="px-7 py-20 bg-bg-canvas">
         <div className="max-w-[1100px] mx-auto">
@@ -158,11 +173,19 @@ export default function AboutPage() {
 
           <div className="grid grid-cols-3 max-[840px]:grid-cols-2 max-[480px]:grid-cols-1 gap-6">
             {teamMembers.map((member) => (
+              // Phase 6.6 PR-D polish: hover state per source SCSS
+              // `.teamCard:hover { border-color: ndi-teal-border;
+              // transform: translateY(-2px); box-shadow: shadow-md; }`.
+              // Wraps the existing card visual; the `transition-all`
+              // honors `--duration-base` + `--ease-out` per token spec.
               <div
                 key={member.name}
-                className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-sm flex flex-col items-center text-center"
+                className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-sm flex flex-col items-center text-center transition-all duration-(--duration-base) ease-(--ease-out) hover:border-ndi-teal-border hover:-translate-y-0.5 hover:shadow-md"
               >
-                <div className="w-[120px] h-[120px] rounded-full overflow-hidden bg-bg-muted flex items-center justify-center mb-4">
+                {/* Phase 6.6 PR-D polish: 2px ndi-teal-light photo
+                 * ring per source `.teamPhoto { border: 2px solid
+                 * ndi-teal-light; }`. */}
+                <div className="w-[120px] h-[120px] rounded-full overflow-hidden bg-bg-muted flex items-center justify-center mb-4 border-2 border-ndi-teal-light">
                   {member.photo ? (
                     <Image
                       src={member.photo}
@@ -257,22 +280,53 @@ export default function AboutPage() {
         </div>
       </section>
 
-      {/* SfN — bright accent band */}
-      <section className="px-7 py-16 bg-ndi-teal text-white" id="sfn">
-        <div className="max-w-[1100px] mx-auto text-center">
+      {/* SfN — dark band with blue radial glow (Phase 6.6 PR-D polish).
+       *
+       * Source `.sfnSection` is `bg-bg-depth` (near-black `#0d1117`)
+       * with a `::after` 500x500px blue radial glow at top-right
+       * (rgba(23,167,255,0.15) → transparent 70%). This replaces the
+       * previous bright teal band — the dark+glow treatment matches
+       * the marketing chrome (CTA, Bridge, etc.) and creates visual
+       * cadence rather than a jarring teal flash between the
+       * partnerships and CTA sections.
+       */}
+      <section
+        className="relative overflow-hidden px-7 py-16 text-white"
+        style={{ background: 'var(--color-bg-depth)' }}
+        id="sfn"
+      >
+        {/* Blue radial glow — top-right offset by negative half-width,
+         * matches source `&::after { width: 500px; height: 500px;
+         * radius: 50%; background: radial-gradient(circle, rgba(23,167,255,0.15) 0%, transparent 70%);
+         * top: -250px; right: -150px; }`. */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute"
+          style={{
+            width: 500,
+            height: 500,
+            top: -250,
+            right: -150,
+            borderRadius: '50%',
+            background:
+              'radial-gradient(circle, rgba(23, 167, 255, 0.15) 0%, transparent 70%)',
+          }}
+        />
+        <div className="relative max-w-[1100px] mx-auto text-center">
           <div className="text-xs font-bold tracking-eyebrow uppercase text-white/80 mb-3">
             Where to find us
           </div>
           <h2
-            className="font-display font-bold leading-[1.2] mb-3 m-0"
-            style={{ fontSize: 'clamp(1.75rem, 4vw, 2.5rem)' }}
+            className="font-display font-extrabold leading-[1.1] tracking-tight mb-3 m-0"
+            style={{ fontSize: 'clamp(1.75rem, 4vw, 2.75rem)' }}
           >
-            SfN 2025 <em className="not-italic">·</em> San Diego.
+            SfN 2025 <em className="not-italic text-brand-blue-3">·</em> San
+            Diego.
           </h2>
           <p className="text-lg font-semibold m-0 mb-2">
             Nov 8–12 · San Diego Convention Center · Booth TBD
           </p>
-          <p className="text-base text-white/85 max-w-[600px] mx-auto m-0">
+          <p className="text-base text-white/75 max-w-[600px] mx-auto m-0">
             Drop by to see the Data Browser live and ask what LabChat can do with
             your lab&rsquo;s papers.
           </p>
