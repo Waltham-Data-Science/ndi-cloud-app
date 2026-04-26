@@ -19,7 +19,10 @@ import type { Metadata } from 'next';
 import { MyDatasetsClient } from './my-datasets-client';
 
 export const metadata: Metadata = {
-  title: 'My workspace · NDI Cloud',
+  // Bare title; root layout's `template: '%s · NDI Cloud'` adds the
+  // suffix. (Pre-hotfix this had a literal " · NDI Cloud" that the
+  // template doubled into "My workspace · NDI Cloud · NDI Cloud".)
+  title: 'My workspace',
   alternates: { canonical: '/my' },
   robots: { index: false }, // authenticated; not crawlable
 };

@@ -16,7 +16,8 @@ import type { Metadata } from 'next';
 import { QueryShell } from './query-shell';
 
 export const metadata: Metadata = {
-  title: 'Query · NDI Cloud',
+  // Bare title; root layout's `template: '%s · NDI Cloud'` adds the suffix.
+  title: 'Query',
   description:
     'Cross-dataset query: filter by species, brain region, probe, subject, session, epoch across every dataset on NDI Cloud.',
   alternates: { canonical: '/query' },
