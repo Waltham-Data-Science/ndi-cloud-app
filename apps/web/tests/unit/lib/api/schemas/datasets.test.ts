@@ -81,7 +81,10 @@ describe('DatasetListResponseSchema', () => {
       ],
     });
     expect(result.datasets).toHaveLength(2);
-    expect(result.datasets[0].id).toBe('a');
+    // Tuple-narrow via destructure so noUncheckedIndexedAccess
+    // doesn't flag possibly-undefined access.
+    const [first] = result.datasets;
+    expect(first?.id).toBe('a');
   });
 
   it('also accepts catalog pages whose rows happen to use `_id`', () => {
@@ -92,6 +95,7 @@ describe('DatasetListResponseSchema', () => {
       totalNumber: 1,
       datasets: [{ _id: 'x', name: 'Xenon' }],
     });
-    expect(result.datasets[0].id).toBe('x');
+    const [first] = result.datasets;
+    expect(first?.id).toBe('x');
   });
 });
