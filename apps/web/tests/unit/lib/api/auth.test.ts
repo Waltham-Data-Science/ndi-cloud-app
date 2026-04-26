@@ -62,7 +62,14 @@ describe('lib/api/auth wrappers', () => {
       const fixture = mockAuthUser();
       mockedApiFetch.mockResolvedValueOnce(fixture);
       await expect(me()).resolves.toEqual(fixture);
-      expect(mockedApiFetch).toHaveBeenCalledWith('/api/auth/me');
+      // CQ1: me() now passes `schema: MeResponseSchema` to apiFetch so
+      // a backend shape drift surfaces as RESPONSE_SHAPE_INVALID
+      // instead of a silent null-deref. The schema arg is opaque here;
+      // we assert the path + presence of a parse method.
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        '/api/auth/me',
+        expect.objectContaining({ schema: expect.objectContaining({ parse: expect.any(Function) }) }),
+      );
     });
 
     it('returns null on 401 (treats logged-out as a normal state)', async () => {
@@ -81,12 +88,26 @@ describe('lib/api/auth wrappers', () => {
     // user-facing label and prop name stay as "Email" — only the JSON
     // wire field name differs (Cognito treats email as the username
     // field). See AUTH_CONTRACT_AUDIT.md.
-    mockedApiFetch.mockResolvedValueOnce(mockAuthUser());
-    await login('a@b.com', 'pw');
-    expect(mockedApiFetch).toHaveBeenCalledWith('/api/auth/login', {
-      method: 'POST',
-      body: { username: 'a@b.com', password: 'pw' },
+    //
+    // CQ1: login() now returns the wire shape `{ ok, user, expiresAt }`
+    // (was previously a typed-as-AuthUser cast that never matched the
+    // backend response). Mock returns the right shape; assertion uses
+    // objectContaining so the schema arg is asserted-by-shape rather
+    // than by reference equality.
+    mockedApiFetch.mockResolvedValueOnce({
+      ok: true,
+      user: { id: 'u-1' },
+      expiresAt: 1761504000 + 3600,
     });
+    await login('a@b.com', 'pw');
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      '/api/auth/login',
+      expect.objectContaining({
+        method: 'POST',
+        body: { username: 'a@b.com', password: 'pw' },
+        schema: expect.objectContaining({ parse: expect.any(Function) }),
+      }),
+    );
   });
 
   it('logout posts to /api/auth/logout', async () => {

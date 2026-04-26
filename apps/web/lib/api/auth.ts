@@ -15,16 +15,24 @@
  * + signup flows.
  */
 
+import type { z } from 'zod';
+
 import { apiFetch } from './client';
+import { LoginResponseSchema, MeResponseSchema } from './schemas/auth';
+
+export type { LoginResponse } from './schemas/auth';
 
 /**
  * Mirrors FastAPI's `MeResponse` Pydantic model
  * (`backend/routers/auth.py:27-39`) verbatim. The wire is
  * mixed-case — `userId`, `organizationIds`, `isAdmin`, `issuedAt`,
  * `lastActive`, `expiresAt` are camelCase; `email_hash` is the only
- * snake_case field. The frontend type matches the JSON shape
- * exactly so `apiFetch<AuthUser>('/api/auth/me')` is a pure cast,
- * no transform layer.
+ * snake_case field.
+ *
+ * CQ1: this type is now derived from `MeResponseSchema` (zod). Runtime
+ * validation on `/api/auth/me` ensures a backend shape drift surfaces
+ * as a typed `RESPONSE_SHAPE_INVALID` ApiError instead of a downstream
+ * null-deref. The legacy `apiFetch<AuthUser>` cast is gone.
  *
  * `email` and `name` are NOT on the cookie session — FastAPI returns
  * a 16-char SHA-256 prefix as `email_hash` and never carries the
@@ -35,30 +43,20 @@ import { apiFetch } from './client';
  *
  * AUTH_CONTRACT_AUDIT.md is the canonical record. See B4.
  */
-export type AuthUser = {
-  userId: string;
-  /** 16-char SHA-256 prefix of the user's email (deduplicates without reversibility). */
-  email_hash: string;
-  /** Org IDs the user belongs to; cached on the FastAPI session at login. */
-  organizationIds: string[];
-  /** Cloud-admin flag — drives `/my` scope-toggle visibility (REBUILD-6). */
-  isAdmin: boolean;
-  /** Session issuance timestamp (unix seconds). */
-  issuedAt: number;
-  /** Session last-touched timestamp (unix seconds). */
-  lastActive: number;
-  /** Cloud access-token expiry (unix seconds) — NOT the session cookie's expiry. */
-  expiresAt: number;
-};
+export type AuthUser = z.infer<typeof MeResponseSchema>;
 
 /**
  * GET /api/auth/me — returns the current session's user, or null on
  * 401/unauthenticated. Most consumers want this through the
  * useSession() hook which adds TanStack Query caching.
+ *
+ * CQ1: zod-validates the response shape via `MeResponseSchema`. A
+ * backend rename or missing field surfaces as `RESPONSE_SHAPE_INVALID`
+ * (status 200) instead of a silent null-deref downstream.
  */
 export async function me(): Promise<AuthUser | null> {
   try {
-    return await apiFetch<AuthUser>('/api/auth/me');
+    return await apiFetch('/api/auth/me', { schema: MeResponseSchema });
   } catch (err) {
     // 401 = unauthenticated → caller's "logged-out" state, not an error
     // worth bubbling up. Other errors (5xx, network) re-throw.
@@ -81,11 +79,25 @@ export async function me(): Promise<AuthUser | null> {
  * keeps `email` as its public parameter name (matches the form's
  * user-facing "Email" label) and renames only on the wire. See
  * AUTH_CONTRACT_AUDIT.md.
+ *
+ * CQ1: return type is now `LoginResponse` — the actual `{ ok, user,
+ * expiresAt }` wire shape — instead of `AuthUser`. The Phase 2b code
+ * declared `Promise<AuthUser>` but the backend never returned that
+ * shape (the type was a lie). Callers don't actually read the return
+ * value; they invalidate the `['session']` query and let `useSession`
+ * re-read `/api/auth/me`. This makes the declaration honest.
+ *
+ * Schema-validates the response so a backend wire-shape drift surfaces
+ * as `RESPONSE_SHAPE_INVALID` instead of a downstream cast failure.
  */
-export async function login(email: string, password: string): Promise<AuthUser> {
-  return apiFetch<AuthUser>('/api/auth/login', {
+export async function login(
+  email: string,
+  password: string,
+): Promise<import('./schemas/auth').LoginResponse> {
+  return apiFetch('/api/auth/login', {
     method: 'POST',
     body: { username: email, password },
+    schema: LoginResponseSchema,
   });
 }
 
