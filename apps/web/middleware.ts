@@ -1,17 +1,17 @@
 /**
- * Edge Middleware — Phase 5.
+ * Edge Middleware — Phase 5 + Phase 6.7 B2 simplification.
  *
  * Three responsibilities:
  *
- * 1. **Per-request CSP nonce.** A fresh nonce per request is forwarded
- *    to the RSC tree via the `x-nonce` request header (RSC reads via
- *    `headers().get('x-nonce')`) and emitted on the response as a
- *    `Content-Security-Policy-Report-Only` header. The Report-Only
- *    flavor is intentional for the first 24h of production traffic —
- *    we collect violation reports and verify nothing legitimate trips
- *    before flipping to enforced `Content-Security-Policy`. The static
- *    `vercel.json` headers config can't carry a per-request value, so
- *    CSP lives here.
+ * 1. **Static CSP** in Report-Only mode. The previous design used a
+ *    per-request nonce + `'strict-dynamic'`, but the nonce was never
+ *    threaded into the rendered HTML (no layout/page reads
+ *    `headers().get('x-nonce')`). Flipping Report-Only to enforced
+ *    would have white-screened every Next.js client chunk because
+ *    `'strict-dynamic'` requires a nonce-trusted parent script. B2
+ *    drops the nonce path entirely — Next.js's hashed chunk filenames
+ *    work fine with plain `script-src 'self'`. Phase 7 cutover flips
+ *    Report-Only to enforced; that flip is now safe.
  *
  * 2. **Origin enforcement on `/api/*` mutations.** Defense-in-depth ahead
  *    of FastAPI's own CSRF check. A POST/PUT/PATCH/DELETE arriving with
@@ -24,8 +24,9 @@
  *    for no benefit, so the matcher excludes it deliberately.
  *
  * **NOT used for cookie migration.** Phase 4 sets `Domain=.ndi-cloud.com`
- * via the FastAPI cookie attrs; Phase 7 forces re-login via SESSION_SECRET
- * rotation. Middleware does NOT rewrite or invalidate cookies.
+ * via the FastAPI cookie attrs; Phase 7 forces re-login via
+ * SESSION_ENCRYPTION_KEY rotation. Middleware does NOT rewrite or
+ * invalidate cookies.
  */
 import { NextRequest, NextResponse } from 'next/server';
 
@@ -74,100 +75,93 @@ function getAllowedOrigins(): Set<string> {
 const RAILWAY_API = 'https://ndb-v2-production.up.railway.app';
 
 export function middleware(req: NextRequest): NextResponse {
+  const path = req.nextUrl.pathname;
+
   // 1. Origin enforcement on /api/* mutations.
-  if (
-    req.nextUrl.pathname.startsWith('/api/') &&
-    MUTATING_METHODS.has(req.method)
-  ) {
+  if (path.startsWith('/api/') && MUTATING_METHODS.has(req.method)) {
     const origin = req.headers.get('origin');
     if (origin && !getAllowedOrigins().has(origin)) {
       return new NextResponse('Origin not allowed', { status: 403 });
     }
   }
 
-  // 2. Per-request CSP nonce.
-  const nonce = generateNonce();
-  const csp = buildCsp(nonce);
-
-  // Forward nonce to RSC via request header (read in app/layout.tsx via
-  // headers().get('x-nonce')).
-  const requestHeaders = new Headers(req.headers);
-  requestHeaders.set('x-nonce', nonce);
-
-  const res = NextResponse.next({ request: { headers: requestHeaders } });
-
-  // CSP ships in Report-Only mode for the first 24h of production
-  // traffic. Phase 6 follow-up flips to enforced `Content-Security-Policy`
-  // after a clean burn-in (no legitimate-script violations in the report
-  // logs). Both header names below are deliberate: the policy header
-  // and a `Reporting-Endpoints` directive (deferred — Phase 6 wires
-  // the report-to endpoint).
-  res.headers.set('Content-Security-Policy-Report-Only', csp);
+  // 2. Static CSP. No per-request nonce — Next.js's hashed chunk
+  //    filenames are stable across requests, so `script-src 'self'` is
+  //    sufficient. The Report-Only header is set on every response;
+  //    Phase 7 cutover flips it to `Content-Security-Policy` (enforced)
+  //    after the soak.
+  const res = NextResponse.next();
+  res.headers.set('Content-Security-Policy-Report-Only', CSP_POLICY);
 
   // 3. Vary: Cookie, Accept-Encoding on routes that vary by session.
-  //    The matcher (below) only invokes middleware for /api/* + /my/*,
-  //    so we don't need to re-check the path here.
-  const existing = res.headers.get('vary') ?? '';
-  const parts = new Set(
-    existing
-      .split(',')
-      .map((s) => s.trim())
-      .filter(Boolean),
-  );
-  parts.add('Cookie');
-  parts.add('Accept-Encoding');
-  res.headers.set('Vary', Array.from(parts).join(', '));
+  //    Gated to `/api/*` and `/my/*` only. The catalog at `/datasets`
+  //    is anonymous-public (RSC + ISR) — adding Vary: Cookie there
+  //    would defeat edge caching for no benefit. Marketing pages (`/`,
+  //    `/about`, etc.) are also anonymous-public.
+  if (path.startsWith('/api/') || path.startsWith('/my')) {
+    const existing = res.headers.get('vary') ?? '';
+    const parts = new Set(
+      existing
+        .split(',')
+        .map((s) => s.trim())
+        .filter(Boolean),
+    );
+    parts.add('Cookie');
+    parts.add('Accept-Encoding');
+    res.headers.set('Vary', Array.from(parts).join(', '));
+  }
 
   return res;
 }
 
 /**
- * Cryptographically random base64 nonce. Edge runtime exposes
- * `crypto.randomUUID` (Web Crypto). 36 hex chars from the UUID base64-encoded
- * give a 192-bit nonce — well above the 128-bit minimum for CSP.
- */
-function generateNonce(): string {
-  const uuid = crypto.randomUUID();
-  // Edge runtime has Buffer-incompatible globals; use a TextEncoder + btoa.
-  return btoa(uuid);
-}
-
-/**
- * Compose the CSP policy string with a per-request nonce.
- *
- * `'strict-dynamic'` lets dynamically-loaded chunks inherit the trust
- * of the nonce'd parent script — required for Next.js's chunk loader.
+ * Static CSP policy. No nonce — `script-src 'self'` works because
+ * Next.js produces hashed chunk filenames; the `'self'` allowlist
+ * covers them all. Removing `'strict-dynamic'` removes the
+ * nonce-required-for-chunks bind that the previous design had.
  *
  * `connect-src` includes the Railway API so client-side fetches via
  * `apiFetch` to `/api/*` (Vercel rewrite → Railway) and the catalog
  * RSC's server-side prefetch (when not bypassing via INTERNAL_API_URL)
  * pass the policy.
+ *
+ * GTM/GA hosts are listed in `script-src` because Vercel Analytics +
+ * Speed Insights load tagging snippets from those origins. If those
+ * are dropped, narrow the directive to `'self'` only.
  */
-function buildCsp(nonce: string): string {
-  return [
-    "default-src 'self'",
-    `script-src 'self' 'nonce-${nonce}' 'strict-dynamic' https://www.googletagmanager.com https://www.google-analytics.com`,
-    "style-src 'self' 'unsafe-inline'",
-    "img-src 'self' data: https://*.ndi-cloud.com",
-    `connect-src 'self' ${RAILWAY_API} https://www.google-analytics.com https://vitals.vercel-insights.com`,
-    "font-src 'self' data:",
-    "frame-ancestors 'none'",
-    "base-uri 'self'",
-    "form-action 'self'",
-  ].join('; ');
-}
+const CSP_POLICY = [
+  "default-src 'self'",
+  "script-src 'self' https://www.googletagmanager.com https://www.google-analytics.com",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data: https://*.ndi-cloud.com",
+  `connect-src 'self' ${RAILWAY_API} https://www.google-analytics.com https://vitals.vercel-insights.com`,
+  "font-src 'self' data:",
+  "frame-ancestors 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+].join('; ');
 
 export const config = {
   /*
-   * Matcher omits `/datasets/:path*` deliberately: the catalog is RSC +
-   * ISR and renders identically for all viewers (anonymous-public
-   * guarantee). Adding `Vary: Cookie` defeats edge caching for no
-   * benefit.
+   * Phase 6.7 O1: matcher widened from `['/api/:path*', '/my/:path*']`
+   * to cover the entire surface (marketing + catalog + app + api).
+   * Without the per-request nonce (B2), the CSP is now a static
+   * string applied to every response — widening the matcher means
+   * the catalog at `/datasets` (which renders user-submitted dataset
+   * titles + descriptions — exactly the routes most likely to host
+   * XSS-relevant content) and the marketing pages now both pick up
+   * the CSP header.
    *
-   * The matcher also omits the marketing routes (`/`, `/about`, etc.)
-   * because the CSP nonce only affects `<Script>` tags and the marketing
-   * surface doesn't ship inline scripts. If a future marketing page
-   * needs a nonce, extend the matcher then.
+   * Vary: Cookie / Origin enforcement are gated on path-specific
+   * `if (path.startsWith(...))` branches inside `middleware()` itself,
+   * so the catalog's anonymous-public edge cache isn't poisoned by
+   * a Vary: Cookie addition.
+   *
+   * The negative-lookahead pattern excludes Next.js internal paths
+   * (`_next/static`, `_next/image`, `favicon.ico`) — those are
+   * already CSP-covered via the `vercel.json` static headers and
+   * don't need per-request middleware overhead on every prefetched
+   * chunk.
    */
-  matcher: ['/api/:path*', '/my/:path*'],
+  matcher: ['/((?!_next/static|_next/image|favicon.ico).*)'],
 };
