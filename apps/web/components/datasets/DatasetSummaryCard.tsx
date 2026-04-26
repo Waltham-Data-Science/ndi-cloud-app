@@ -17,7 +17,7 @@
  * Full strings are preserved, never truncated (amendment §4.B1).
  */
 import { Info } from 'lucide-react';
-import { useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { Badge } from '@/components/ui/Badge';
 import {
@@ -466,7 +466,25 @@ function SummaryFooter({
   computedAt: string;
   extractionWarnings: string[];
 }) {
-  const age = useMemo(() => humanizeAge(computedAt), [computedAt]);
+  // Hydration-safe age: SSR renders the absolute ISO timestamp; the
+  // client switches to the relative form ("5m ago") after first paint.
+  // Pre-fix, `humanizeAge` called `Date.now()` directly in render,
+  // which gave SSR and client different "5s ago" / "6s ago" strings →
+  // React error #418 hydration mismatch on every dataset detail
+  // visit. The relative form is the desired UX; we only defer its
+  // computation to after hydration so SSR + first client paint match.
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    // Canonical hydration-deferred toggle: explicitly flip from
+    // server-rendered output to client-only output AFTER first paint.
+    // This is the standard SSR-safe pattern for content that must
+    // differ between server and client (here: relative time, which
+    // depends on Date.now()). The eslint rule's "you might not need
+    // an effect" doesn't apply — we DO need it, exactly once on mount.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setIsMounted(true);
+  }, []);
+  const displayAge = isMounted ? humanizeAge(computedAt) : `at ${computedAt}`;
   const [warningsOpen, setWarningsOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
   return (
@@ -474,7 +492,7 @@ function SummaryFooter({
       className="flex items-center justify-between border-t border-gray-200 pt-2 text-[10px] text-gray-500"
       data-testid="summary-footer"
     >
-      <span data-testid="summary-computed-at">Last computed {age}</span>
+      <span data-testid="summary-computed-at">Last computed {displayAge}</span>
       {extractionWarnings.length > 0 && (
         <button
           ref={toggleRef}
