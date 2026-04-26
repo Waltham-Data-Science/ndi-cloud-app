@@ -47,7 +47,10 @@ import { DatasetsListClient } from './datasets-client';
 export const revalidate = 60;
 
 export const metadata: Metadata = {
-  title: 'Published datasets · NDI Cloud',
+  // Bare title; root layout's `template: '%s · NDI Cloud'` adds the suffix.
+  // (Pre-hotfix: this had a literal " · NDI Cloud" that the template then
+  //  doubled into "Published datasets · NDI Cloud · NDI Cloud".)
+  title: 'Published datasets',
   description:
     'Browse the NDI Data Commons — open neuroscience datasets with Crossref DOIs, OpenMINDS metadata, and full provenance.',
   alternates: { canonical: '/datasets' },

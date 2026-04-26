@@ -43,8 +43,12 @@ export async function generateStaticParams() {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params;
+  // Title intentionally omitted — the parent layout's
+  // `generateMetadata` (Phase 6.7 A2) sets the per-dataset title and
+  // the root layout's template wraps it with " · NDI Cloud". A page-
+  // level title here would override the layout's per-dataset name
+  // with a generic constant.
   return {
-    title: `Dataset · NDI Cloud`,
     alternates: { canonical: `/datasets/${id}/overview` },
   };
 }
