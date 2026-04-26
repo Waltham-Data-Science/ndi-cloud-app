@@ -14,10 +14,14 @@ import { Footer } from '@/components/marketing/Footer';
 
 describe('Footer', () => {
   it('renders all four section titles', () => {
+    // Phase 6.6 PR-G a11y polish: column titles were `<h5>` (heading-
+    // order violation — page had h1 + h2 already; jumping to h5 here
+    // skipped h3+h4). Now rendered as `<p>` with the same visual
+    // styling. Assert against the visible text rather than role.
     render(<Footer />);
-    expect(screen.getByRole('heading', { name: /products/i, level: 5 })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /company/i, level: 5 })).toBeInTheDocument();
-    expect(screen.getByRole('heading', { name: /get in touch/i, level: 5 })).toBeInTheDocument();
+    expect(screen.getByText(/^Products$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Company$/i)).toBeInTheDocument();
+    expect(screen.getByText(/^Get in touch$/i)).toBeInTheDocument();
   });
 
   it('links the Data Commons entry to the same-origin /datasets path (post-unification)', () => {
