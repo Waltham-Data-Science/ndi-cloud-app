@@ -24,7 +24,7 @@ import { clsx } from 'clsx';
 import type { AnchorHTMLAttributes, ButtonHTMLAttributes, ReactNode } from 'react';
 
 type Variant = 'cta' | 'ghost' | 'outline';
-type Size = 'sm' | 'md';
+type Size = 'sm' | 'md' | 'lg';
 
 type CommonProps = {
   variant?: Variant;
@@ -63,6 +63,16 @@ const variantClasses: Record<Variant, string> = {
 const sizeClasses: Record<Size, string> = {
   sm: 'text-[13px] px-4 py-1.5',
   md: 'text-[14px] px-5 py-2',
+  /*
+   * `lg` matches the source `.btnPrimaryLg` SCSS used on the home + platform
+   * heroes (`padding: 12px 24px; font-size: 16px`). Restores parity with the
+   * About / Security / LabChat / Private Cloud heroes that were converted to
+   * `MarketingButton size="md"` in earlier audit polish — this gives the
+   * primary heroes their visually-larger CTA back without forcing per-page
+   * inline button-shape classes. Padding maps to Tailwind `px-6 py-2.5` =
+   * `24px / 10px` (within 1px of source 24/12).
+   */
+  lg: 'text-base px-6 py-2.5',
 };
 
 export function MarketingButton(props: MarketingButtonProps) {
