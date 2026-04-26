@@ -36,6 +36,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import dynamic from 'next/dynamic';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+
+import { useDebouncedValue } from '@/lib/hooks/use-debounced-value';
 import {
   getCoreRowModel,
   getFilteredRowModel,
@@ -268,9 +270,18 @@ export function SummaryTableView({
   // Push state -> URL whenever the user changes filter/sort/visibility.
   // Read-back-from-URL uses useState initializers above; from here on the
   // URL is a projection of component state, not the source of truth.
+  //
+  // CQ5: globalFilter is debounced before being pushed to the URL —
+  // typing "subject" without debouncing was 7 router.replace() calls
+  // (one per keystroke), each forcing an App Router navigation event
+  // and prefetch-eval cycle. 250ms is the same window TanStack Table's
+  // built-in column filters use; long enough that fast typists don't
+  // see redundant pushes, short enough that a deliberate paste arrives
+  // in the URL within a frame.
+  const debouncedGlobalFilter = useDebouncedValue(globalFilter, 250);
   useEffect(() => {
-    updateParam('tq', globalFilter);
-  }, [globalFilter, updateParam]);
+    updateParam('tq', debouncedGlobalFilter);
+  }, [debouncedGlobalFilter, updateParam]);
 
   useEffect(() => {
     if (sorting.length === 0) {

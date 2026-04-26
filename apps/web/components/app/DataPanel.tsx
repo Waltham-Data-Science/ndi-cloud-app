@@ -1,7 +1,7 @@
 'use client';
 
-import { useState } from 'react';
 import { Activity, ImageIcon, LineChart, Video } from 'lucide-react';
+import dynamic from 'next/dynamic';
 
 import {
   useBinaryKind,
@@ -13,10 +13,25 @@ import {
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
 
-import { FitcurveChart } from './FitcurveChart';
 import { ImageViewer } from './ImageViewer';
-import { TimeseriesChart } from './TimeseriesChart';
 import { VideoPlayer } from './VideoPlayer';
+
+// CQ5: Dynamic imports for the uPlot-backed chart components. uPlot is
+// the largest single asset in this view (~30 KB gz with the CSS), and
+// most users hitting a dataset detail page don't open the binary
+// preview at all. Splitting them out keeps the main app bundle smaller;
+// the chart chunk loads only when DataPanel decides to render one.
+//
+// `ssr: false` because uPlot touches `window`/`document` on construct
+// and we never want the chart to attempt to render on the server.
+const TimeseriesChart = dynamic(
+  () => import('./TimeseriesChart').then((m) => ({ default: m.TimeseriesChart })),
+  { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
+);
+const FitcurveChart = dynamic(
+  () => import('./FitcurveChart').then((m) => ({ default: m.FitcurveChart })),
+  { ssr: false, loading: () => <Skeleton className="h-48 w-full" /> },
+);
 
 interface DataPanelProps {
   datasetId: string;
@@ -37,10 +52,13 @@ interface DataPanelProps {
  * shows the type-detection skeleton.
  */
 export function DataPanel({ datasetId, documentId }: DataPanelProps) {
-  // setImageFrame is wired so the page can eventually refetch specific
-  // frames from the backend; we hold the setter but don't need the value
-  // at the parent level (ImageViewer tracks it internally).
-  const [, setImageFrame] = useState<number | undefined>(undefined);
+  // CQ5: removed dead `setImageFrame` state. Previously DataPanel held
+  // a destructured-setter `[, setImageFrame] = useState(...)` and wired
+  // it as `<ImageViewer onFrameChange={setImageFrame}>` for "eventual"
+  // upstream refetch, but the value side was never read and the
+  // refetch wiring never landed — every onFrameChange call was a no-op
+  // upstream. ImageViewer tracks the frame internally; without a
+  // consumer there's nothing for the parent to do here.
   const { data: kindInfo, isLoading: kindLoading } = useBinaryKind(datasetId, documentId);
   const kind = kindInfo?.kind ?? 'unknown';
 
@@ -92,7 +110,7 @@ export function DataPanel({ datasetId, documentId }: DataPanelProps) {
           (imgLoading ? (
             <Skeleton className="h-64 w-full" />
           ) : imgData ? (
-            <ImageViewer data={imgData} onFrameChange={setImageFrame} />
+            <ImageViewer data={imgData} />
           ) : null)}
         {isVideo &&
           (vidLoading ? (
