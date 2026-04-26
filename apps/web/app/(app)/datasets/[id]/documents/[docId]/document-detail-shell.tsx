@@ -23,6 +23,7 @@ import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
 
 import { AppearsElsewhere } from '@/components/app/AppearsElsewhere';
+import { DependencyGraphView } from '@/components/app/DependencyGraphView';
 import { DocumentDetailView } from '@/components/app/DocumentDetailView';
 import { ErrorState } from '@/components/errors/ErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -132,11 +133,13 @@ export function DocumentDetailShell({
           {doc.data && (
             <>
               <DocumentDetailView document={doc.data} datasetId={datasetId} />
-              {/* REBUILD-9 (DependencyGraphView) + REBUILD-10
-                  (DataPanel + 4 binary viewers) land here in subsequent
-                  rebuilds. Both will be `next/dynamic({ ssr: false })`
-                  to keep D3 + uPlot off the document-detail initial-paint
-                  bundle — same model as source's `lazy(() => import())`. */}
+              {/* REBUILD-10 (DataPanel + 4 binary viewers) lands here
+                  next, gated via `next/dynamic({ ssr: false })` for
+                  uPlot. */}
+              <DependencyGraphView
+                datasetId={datasetId}
+                documentId={docId}
+              />
               <AppearsElsewhere
                 datasetId={datasetId}
                 documentId={docId}
