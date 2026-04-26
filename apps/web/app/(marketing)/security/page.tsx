@@ -72,6 +72,24 @@ export default function SecurityPage() {
         </div>
       </section>
 
+      {/*
+       * Hero fade — soft 40px gradient transition from the dark hero
+       * gradient bottom (`#002054` brand-navy) into the cream
+       * `--color-bg-canvas` of the pillars section. Visual seam fix
+       * matching `ndi-web-app-wds/app/src/pages/security/Security.module.scss`'s
+       * `.heroFade` rule (height: 40px, 180deg dark→light gradient).
+       * Decorative; `aria-hidden` because it's purely a transitional
+       * stripe, not content.
+       */}
+      <div
+        aria-hidden
+        className="h-10"
+        style={{
+          background:
+            'linear-gradient(180deg, var(--color-brand-navy) 0%, var(--color-bg-canvas) 100%)',
+        }}
+      />
+
       {/* PILLARS */}
       <section className="px-7 py-20 bg-bg-canvas">
         <div className="max-w-[1100px] mx-auto">
