@@ -1,12 +1,17 @@
 import type { MetadataRoute } from 'next';
 
 /**
- * Static sitemap for marketing routes.
+ * Static sitemap for marketing routes + the catalog landing.
  *
- * Phase 2a-2 — covers all 5 simpler content pages plus the chrome
- * routes that landed in Phase 2a-1. Phase 2a-3 adds /platform once
- * that complex page port lands. Phase 3a will add dynamic dataset
- * routes via a server-side enumeration against the FastAPI catalog.
+ * Covers the marketing surface (home, /datasets, /products/*,
+ * /about, /security, /platform). Per-dataset URLs are intentionally
+ * NOT enumerated here:
+ *   - The catalog page itself surfaces dataset cards with internal links,
+ *     so search engines crawl into individual dataset URLs from that
+ *     entry point.
+ *   - Build-time enumeration would require a Railway round-trip on every
+ *     ISR rebuild and would still drift between rebuilds; the static-
+ *     marketing-routes-only sitemap is simpler and correct.
  *
  * Search engines crawl this at /sitemap.xml automatically — Next 16's
  * file-based metadata routing handles the URL.

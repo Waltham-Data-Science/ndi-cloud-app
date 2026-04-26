@@ -30,9 +30,10 @@ import { MarketingButton } from '@/components/marketing/Button';
  * links to the data-browser surfaces.
  *
  * Routes to /login if useSession() resolves to user=null. The
- * redirect happens client-side in a useEffect; Phase 5 wires Edge
- * Middleware so unauthenticated users hitting /my-account get a
- * server-side 302 to /login before any HTML ships.
+ * redirect happens client-side in a useEffect — the Edge Middleware
+ * (`apps/web/middleware.ts`) is intentionally scoped to Origin /
+ * CSP work and does not perform cookie-based 302s. See `/my/page.tsx`
+ * for the rationale on keeping auth-gate client-side.
  */
 export function MyAccountClient() {
   const router = useRouter();

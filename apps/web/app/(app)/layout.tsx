@@ -9,10 +9,12 @@ import { Header } from '@/components/marketing/Header';
  * Mirrors the marketing layout's shape — single `<main>` anchor in the
  * layout, pages render their own content as fragments / divs. The only
  * delta from marketing is conceptual: this group's pages may be
- * authenticated. Phase 5 wires Edge Middleware that 302s
- * unauthenticated requests on `/my*` paths to `/login?returnTo=...`
- * before HTML even ships, but server-side that's transparent to this
- * layout.
+ * authenticated, but the auth gate runs client-side inside each
+ * authenticated page (see `/my` and `/my-account` for the pattern).
+ * The Edge Middleware (`apps/web/middleware.ts`) is intentionally
+ * scoped to Origin enforcement + CSP — it does not perform cookie-
+ * based 302s on auth-protected routes (would warrant its own PR + e2e
+ * spec; see `/my/page.tsx` header for the rationale).
  */
 export default function AppLayout({
   children,

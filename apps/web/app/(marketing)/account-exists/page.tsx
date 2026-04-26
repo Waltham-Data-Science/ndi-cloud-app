@@ -9,17 +9,11 @@ import { MarketingButton } from '@/components/marketing/Button';
 /**
  * /account-exists — informational page shown when a user attempts to
  * sign up with an email that already has a (pending) account. The
- * primary action is "send a fresh verification code" which kicks the
- * existing account back into the email-verification flow.
- *
- * Phase 2a stub: the resend API call is deferred to Phase 2b alongside
- * the rest of the auth flow rewrite. Today's button action just routes
- * to /account-verification — preserving the navigation contract so the
- * page is wired top-to-bottom even without the API. Phase 2b's commit
- * replaces the route push with a real apiFetch('/api/auth/resend')
- * call + status-driven branching (success → /account-verification,
- * "InvalidParameterException" → /login, default → /account-verification
- * with email prefill).
+ * primary action is "send a fresh verification code" which routes the
+ * user to /account-verification (where the actual `resendConfirmation`
+ * call happens — keeping the resend logic on the destination page
+ * rather than this gateway means a single source of truth for the
+ * resend flow regardless of entry point).
  *
  * Wrapped in <Suspense> so the useSearchParams() hook (which suspends
  * during prerender per Next 16's strict-mode behavior) renders cleanly
@@ -39,9 +33,9 @@ function AccountExistsClient() {
   const email = searchParams.get('email');
 
   function handleResend() {
-    // Phase 2a stub: navigate to verification regardless. Phase 2b's
-    // real implementation calls apiFetch('/api/auth/resend', { ... })
-    // and branches based on response code.
+    // Routes to /account-verification with the email prefilled — the
+    // verification page owns the actual `resendConfirmation` call so
+    // this gateway and the standard flow share one resend codepath.
     const target = email
       ? `/account-verification?email=${encodeURIComponent(email)}`
       : '/account-verification';

@@ -5,8 +5,8 @@ import { Header } from '@/components/marketing/Header';
  * Marketing route group layout. Wraps all `(marketing)/*` pages with the
  * sticky glass-morphic Header (links + auth CTAs) and the dark four-column
  * Footer. Both are pure presentation; the auth-aware bits in Header read
- * `useSession()` (Phase 2a stub returns `null`; Phase 2b/3a wires real
- * session state).
+ * `useSession()` which returns the real session state (Phase 3a wired
+ * the cookie-backed session via TanStack Query).
  */
 export default function MarketingLayout({ children }: { children: React.ReactNode }) {
   return (

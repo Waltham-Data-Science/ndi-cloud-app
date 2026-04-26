@@ -1,19 +1,14 @@
 /**
- * Dataset detail Overview tab — Phase 3b structural shell.
+ * Dataset detail Overview tab.
  *
- * **Pre-renders the top-20 most-trafficked datasets at build time**
- * via `generateStaticParams` against `/api/datasets/published`. Top-20
- * detail URLs ship as static HTML; the rest fall through to on-demand
- * ISR with `revalidate: 60`.
+ * Renders the ported overview content (DatasetSummaryCard,
+ * DatasetProvenanceCard, abstract, class counts, cite + use-this-data
+ * modals) via `<OverviewContent>` (Phase 6.6 REBUILD-3c).
  *
- * Phase 3b lays the hero + tab bar around this page (in `[id]/layout.tsx`).
- * The Overview-specific content (DatasetSummaryCard, DatasetProvenanceCard,
- * abstract + class counts) lands in a follow-up port — it depends on
- * `components/datasets/DatasetSummaryCard.tsx` (533 LOC) +
- * `DatasetProvenanceCard.tsx` (264 LOC) + `CiteModal.tsx` +
- * `UseThisDataModal.tsx`. Phase 3b ships the structural shell so the tab
- * bar a11y gate (#65) can close; content port ships as a separate
- * sub-phase to keep this PR reviewable.
+ * **Pre-renders the top-20 most-trafficked datasets at build time** via
+ * `generateStaticParams` against `/api/datasets/published`. Top-20 detail
+ * URLs ship as static HTML; the rest fall through to on-demand ISR with
+ * `revalidate: 60`.
  */
 import type { Metadata } from 'next';
 

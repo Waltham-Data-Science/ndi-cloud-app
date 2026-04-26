@@ -5,25 +5,19 @@ import { useQuery } from '@tanstack/react-query';
 import { me, type AuthUser } from '@/lib/api/auth';
 
 /**
- * Real session hook — Phase 2b.
+ * Session hook — backed by TanStack Query against `/api/auth/me`.
  *
- * Replaces the Phase 2a stub. Backed by TanStack Query, which gives
- * us:
- *   - one `/api/auth/me` call shared across every consumer per page
- *   - automatic refetch on window focus + cache invalidation when
- *     login/logout mutate the cache
+ *   - One `/api/auth/me` call shared across every consumer per page.
+ *   - Automatic refetch on window focus + cache invalidation when
+ *     `login` / `logout` mutate the cache.
  *   - SSR-safe: returns the unauthenticated state during prerender
- *     (the queryFn no-ops on the server because document.cookie is
- *     undefined in apiFetch's CSRF read path)
+ *     (the queryFn no-ops on the server because `document.cookie` is
+ *     undefined in apiFetch's CSRF read path).
  *
- * The shape stays compatible with the Phase 2a stub (`{ user }`) so
- * Header.tsx and AccountSidebar.tsx don't need to change. Adds
- * `isLoading` and `error` so consumers that care about the
- * pre-resolution state can render a skeleton or hide auth-aware UI.
- *
- * Phase 3a layers PersistQueryClientProvider on top so a fresh page
- * load hydrates from localStorage instead of showing a flash of
- * "Log in / Create Account" while /api/auth/me round-trips.
+ * The cache is layered with `PersistQueryClientProvider` (see
+ * `app/providers.tsx`) so a fresh page load hydrates from localStorage
+ * instead of showing a flash of "Log in / Create Account" while
+ * `/api/auth/me` round-trips.
  */
 export type Session = {
   user: AuthUser | null;

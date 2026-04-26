@@ -3,11 +3,15 @@
 /**
  * Client-side providers tree.
  *
- * Phase 1: just QueryClient.
- * Phase 3a (here): adds PersistQueryClientProvider with a localStorage
- * persister so /datasets, /datasets/[id], and /my paint with last-known
- * data on revisit before TanStack Query revalidates in the background.
- * Phase 5 will mount <Analytics /> + <SpeedInsights /> alongside.
+ * Composition history (kept brief because it explains *why* this file
+ * has what it has, not future work):
+ *   - Phase 1 wired `QueryClient` only.
+ *   - Phase 3a layered `PersistQueryClientProvider` with a localStorage
+ *     persister so `/datasets`, `/datasets/[id]`, and `/my` paint with
+ *     last-known data on revisit before TanStack Query revalidates.
+ *   - Vercel `<Analytics>` + `<SpeedInsights>` mount in `app/layout.tsx`
+ *     (server-side / global), NOT here — this provider tree is purely
+ *     client-side state.
  *
  * QueryClient is created via useState so HMR doesn't tear down the cache.
  *
