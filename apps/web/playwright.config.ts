@@ -9,8 +9,8 @@ import { defineConfig, devices } from '@playwright/test';
  *      `pnpm start` (production build of the Next server) on
  *      127.0.0.1:3000 and points the suite at it. Specs gated on
  *      `PLAYWRIGHT_PREVIEW_URL` (cookie-roundtrip, csp-headers,
- *      cache-headers, skew-protection) auto-skip in this mode because
- *      they rely on real Vercel infrastructure.
+ *      cache-headers) auto-skip in this mode because they rely on
+ *      real Vercel infrastructure.
  *
  *   2. **Preview / production verification** — `PLAYWRIGHT_PREVIEW_URL`
  *      points at a live Vercel deploy URL. Specs target that URL via
