@@ -9,6 +9,7 @@ import {
   type DistributionUngroupedResponse,
 } from '@/lib/api/visualize';
 import type { TableResponse } from '@/lib/api/tables';
+import { classifyColumns } from '@/lib/viewer/math';
 import { Button } from '@/components/ui/Button';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ErrorState } from '@/components/errors/ErrorState';
@@ -220,48 +221,7 @@ function ungroupedToViolin(
   };
 }
 
-function classifyColumns(table: TableResponse): {
-  numericCols: string[];
-  categoricalCols: string[];
-} {
-  const numericCols: string[] = [];
-  const categoricalCols: string[] = [];
-  const rows = table.rows;
-  for (const col of table.columns) {
-    const key = col.key;
-    let numericHits = 0;
-    let totalHits = 0;
-    const distinct = new Set<string>();
-    for (const row of rows) {
-      const v = row[key];
-      if (v === null || v === undefined || v === '') continue;
-      totalHits++;
-      const n = coerceNumber(v);
-      if (Number.isFinite(n)) {
-        numericHits++;
-      } else {
-        distinct.add(String(v));
-      }
-    }
-    if (totalHits === 0) continue;
-    const numericRatio = numericHits / totalHits;
-    if (numericRatio >= 0.7) {
-      numericCols.push(key);
-    } else if (distinct.size > 0 && distinct.size <= 20) {
-      categoricalCols.push(key);
-    }
-  }
-  return { numericCols, categoricalCols };
-}
-
-function coerceNumber(v: unknown): number {
-  if (typeof v === 'number') return v;
-  if (typeof v === 'string') {
-    const n = Number(v);
-    return Number.isFinite(n) ? n : NaN;
-  }
-  if (v && typeof v === 'object' && 'devTime' in (v as Record<string, unknown>)) {
-    return coerceNumber((v as Record<string, unknown>).devTime);
-  }
-  return NaN;
-}
+// `classifyColumns` and `coerceNumber` extracted to
+// `apps/web/lib/viewer/math.ts` (CQ3) so the column-classification
+// logic can be unit-tested in isolation. Behavior unchanged — this
+// is a pure refactor.
