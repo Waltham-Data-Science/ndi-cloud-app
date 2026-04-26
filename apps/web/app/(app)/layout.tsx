@@ -22,7 +22,11 @@ export default function AppLayout({
   return (
     <>
       <Header />
-      <main className="min-h-[calc(100vh-160px)]">{children}</main>
+      {/* `id="main-content"` is the skip-to-content anchor wired in
+          `app/layout.tsx` — WCAG 2.4.1 (Bypass Blocks). */}
+      <main id="main-content" className="min-h-[calc(100vh-160px)]">
+        {children}
+      </main>
       <Footer />
     </>
   );
