@@ -18,6 +18,7 @@ vi.mock('@/lib/api/client', () => ({
 }));
 
 import {
+  fetchDatasetServer,
   fetchPublishedDatasets,
   useClassCounts,
   useDataset,
@@ -169,6 +170,100 @@ describe('lib/api/datasets — hook URL contracts', () => {
       await expect(
         fetchPublishedDatasets('https://api.example.com', 1, 20),
       ).rejects.toThrow(/Catalog prefetch failed.*502/);
+    });
+  });
+
+  describe('fetchDatasetServer (A2 generateMetadata helper)', () => {
+    // The helper is intentionally non-throwing — generateMetadata is a
+    // best-effort enhancement; failure must fall back to a generic title
+    // rather than blocking the page render. These tests pin that
+    // contract.
+    it('returns the parsed dataset on 200', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ id: 'd1', name: 'Mouse cortex 2024' }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+      const result = await fetchDatasetServer(
+        'https://api.example.com',
+        'd1',
+      );
+      expect(result?.name).toBe('Mouse cortex 2024');
+    });
+
+    it('forwards the cookie header when provided', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 'd1', name: 'x' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+      await fetchDatasetServer(
+        'https://api.example.com',
+        'd1',
+        'session=abc; XSRF-TOKEN=xyz',
+      );
+      expect(fetchSpy).toHaveBeenCalledWith(
+        'https://api.example.com/api/datasets/d1',
+        expect.objectContaining({
+          headers: expect.objectContaining({
+            Cookie: 'session=abc; XSRF-TOKEN=xyz',
+            Accept: 'application/json',
+          }),
+          cache: 'no-store',
+        }),
+      );
+      fetchSpy.mockRestore();
+    });
+
+    it('omits the Cookie header when no cookie passed', async () => {
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(JSON.stringify({ id: 'd1', name: 'x' }), {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+      );
+      await fetchDatasetServer('https://api.example.com', 'd1');
+      const call = fetchSpy.mock.calls[0];
+      const init = call?.[1] as RequestInit & {
+        headers: Record<string, string>;
+      };
+      expect(init.headers.Cookie).toBeUndefined();
+      fetchSpy.mockRestore();
+    });
+
+    it('returns null on 404 (private dataset, anon viewer)', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response('not found', { status: 404 }),
+      );
+      const result = await fetchDatasetServer(
+        'https://api.example.com',
+        'gone',
+      );
+      expect(result).toBeNull();
+    });
+
+    it('returns null on 401 (org-private dataset, no cookie)', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response('unauthorized', { status: 401 }),
+      );
+      const result = await fetchDatasetServer(
+        'https://api.example.com',
+        'private',
+      );
+      expect(result).toBeNull();
+    });
+
+    it('returns null on network error (no throw)', async () => {
+      vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(
+        new Error('econnreset'),
+      );
+      const result = await fetchDatasetServer(
+        'https://api.example.com',
+        'd1',
+      );
+      expect(result).toBeNull();
     });
   });
 });

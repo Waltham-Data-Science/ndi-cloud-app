@@ -265,3 +265,40 @@ export async function fetchPublishedDatasets(
   }
   return (await res.json()) as DatasetListResponse;
 }
+
+/**
+ * Phase 6.7 A2 — server-side dataset fetch for `generateMetadata`.
+ *
+ * Used by `/datasets/[id]/layout.tsx` to set the document title to
+ * `${dataset.name} · NDI Cloud`. Closes audit follow-up #67 (the
+ * source SPA's `useDocumentTitle` per-route title was not yet ported
+ * into the App Router metadata API).
+ *
+ * Forwards the caller's cookies so authenticated org-private datasets
+ * resolve correctly (otherwise they 401 and we fall back to a generic
+ * title). Returns `null` on any failure — generateMetadata callers
+ * use that to choose between specific and fallback titles. Failure
+ * is intentionally non-throwing because metadata generation is a
+ * best-effort enhancement, never a page-blocker.
+ */
+export async function fetchDatasetServer(
+  baseUrl: string,
+  id: string,
+  cookieHeader?: string,
+): Promise<DatasetRecord | null> {
+  const headers: Record<string, string> = { Accept: 'application/json' };
+  if (cookieHeader) headers['Cookie'] = cookieHeader;
+  try {
+    const res = await fetch(`${baseUrl}/api/datasets/${id}`, {
+      headers,
+      // Server-side fetch — bypass Next's fetch cache. Title staleness
+      // is bounded by route revalidate (usually short for dataset pages).
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as DatasetRecord;
+  } catch {
+    // Network blip / Railway flap — return null and let caller fall back.
+    return null;
+  }
+}
