@@ -14,13 +14,15 @@ import { commonsSearchUrl } from '@/lib/urls';
  * here, just below the page export — same pattern, just with Tailwind
  * utility classes instead of SCSS Module classes.
  *
- * The Diagram-2 "scattered filesystems" visualization in the source
- * uses absolute-positioned nodes + a free-form SVG mesh of connector
- * paths. That's preserved structurally as a positioned-grid here; the
- * exact pixel positions are simplified to a 2x3 grid since Tailwind
- * doesn't have a clean utility for "scatter at these specific
- * coordinates" and the visual intent ("messy, no clear path") reads
- * the same.
+ * The Diagram-2 "scattered filesystems" visualization uses
+ * absolute-positioned nodes + a free-form SVG mesh of dashed connector
+ * paths per the source. The "messy" composition IS the rhetorical
+ * point of the diagram — an earlier port simplified this to a flat
+ * 3×2 grid which lost the visual intent. Restored to the source's
+ * exact `top` / `left` / `transform: rotate()` values from
+ * `Home.module.scss:879-966` (`SCATTER_NODES` table below). On very
+ * narrow viewports (≤520px) the absolutes can't read against the
+ * 300px container height, so they collapse to a 2-col fallback grid.
  *
  * Pure RSC. The "See the diagrams" link uses a plain `<a href="#how">`
  * anchor — no client-side smooth-scroll polyfill needed; modern
@@ -274,17 +276,62 @@ export default function PlatformPage() {
                   a drive dies or a student leaves, the data can go with them.
                 </p>
 
-                {/* Scatter visualization — 6 nodes positioned across a 2x3 grid */}
-                <div className="grid grid-cols-3 gap-2 mb-6">
-                  {[
-                    'Drive-1',
-                    'rig2-ssd',
-                    'Box folder',
-                    'lab-server',
-                    'grad-laptop',
-                    'Email attach.',
-                  ].map((label) => (
-                    <ScatterNode key={label} label={label} />
+                {/* Scatter visualization — 6 absolute-positioned, individually
+                    rotated nodes connected by a free-form SVG mesh of dashed
+                    paths. The "messy" composition IS the rhetorical point of
+                    Diagram-2 (the audit's "reads the same as a flat 3×2
+                    grid" framing was wrong). Source coordinates from
+                    `Home.module.scss:879-966` (.mess / .messLines /
+                    .messNode + .scatter1..6 individual rotations + offsets).
+                    SVG path d-strings copied verbatim from
+                    `pages/platform/index.tsx:233-244`. Hidden on very
+                    narrow viewports (≤520px) since the absolutes need the
+                    container's 300px height + ≥320px width to read; the
+                    mobile fallback below stacks the same nodes 2-up. */}
+                <div
+                  aria-hidden
+                  className="relative h-[300px] mb-6 max-[520px]:hidden"
+                >
+                  <svg
+                    className="absolute inset-0 pointer-events-none w-full h-full"
+                    viewBox="0 0 320 300"
+                    preserveAspectRatio="none"
+                  >
+                    {/* Source `.messLines path`: stroke #c44848, width 1,
+                        dasharray "2 3", opacity 0.35. */}
+                    <g
+                      stroke="#c44848"
+                      strokeWidth="1"
+                      fill="none"
+                      strokeDasharray="2 3"
+                      opacity="0.35"
+                    >
+                      <path d="M60 40 Q 180 80 240 55" />
+                      <path d="M80 50 Q 150 140 240 130" />
+                      <path d="M110 155 Q 180 130 280 130" />
+                      <path d="M100 155 Q 80 190 140 225" />
+                      <path d="M260 130 Q 210 170 275 230" />
+                      <path d="M140 225 Q 200 245 280 235" />
+                    </g>
+                  </svg>
+                  {SCATTER_NODES.map((n) => (
+                    <ScatterNode
+                      key={n.label}
+                      label={n.label}
+                      style={{
+                        top: n.top,
+                        left: n.left,
+                        transform: `rotate(${n.rot}deg)`,
+                      }}
+                    />
+                  ))}
+                </div>
+                {/* Mobile fallback — small-screen layout that still
+                    communicates "scattered" without the absolute positions
+                    that need height to read. */}
+                <div className="hidden max-[520px]:grid grid-cols-2 gap-2 mb-6">
+                  {SCATTER_NODES.map((n) => (
+                    <ScatterNode key={n.label} label={n.label} />
                   ))}
                 </div>
                 <div className="flex justify-between text-xs text-red-700 border-t border-red-200 pt-3">
@@ -668,16 +715,75 @@ function Legend({ children }: { children: React.ReactNode }) {
   );
 }
 
-function ScatterNode({ label }: { label: string }) {
+/**
+ * Source coordinates for the 6 scatter nodes (Diagram-2 messy
+ * filesystems). Verbatim from `Home.module.scss:911-940` (.scatter1
+ * through .scatter6) — the asymmetric layout + per-node rotations are
+ * the "messy" rhetorical signal of the diagram. Top/left strings carry
+ * `px` for direct application via inline `style`.
+ */
+const SCATTER_NODES: ReadonlyArray<{
+  label: string;
+  top: string;
+  left: string;
+  rot: number;
+}> = [
+  { label: 'Drive-1', top: '10px', left: '6px', rot: -4 },
+  { label: 'rig2-ssd', top: '36px', left: '178px', rot: 3 },
+  { label: 'Box folder', top: '120px', left: '28px', rot: 2 },
+  { label: 'lab-server', top: '108px', left: '220px', rot: -5 },
+  { label: 'grad-laptop', top: '204px', left: '80px', rot: 1 },
+  { label: 'Email attach.', top: '210px', left: '240px', rot: -2 },
+];
+
+/**
+ * `.messNode` per source `Home.module.scss:899-909` — translucent
+ * pink fill, red-tinted border, rounded 10px, min-width 110px,
+ * pink-foreground label. The optional `style` prop provides the
+ * absolute `top`/`left`/`transform` overrides used in the scatter
+ * container; without it, the node renders inline (used by the mobile
+ * fallback grid).
+ */
+function ScatterNode({
+  label,
+  style,
+}: {
+  label: string;
+  style?: React.CSSProperties;
+}) {
   return (
-    <div className="bg-white border border-red-200 rounded-md px-2 py-1.5 flex items-center gap-1.5 text-[11px] text-fg-secondary">
-      <span className="text-red-400" aria-hidden>
-        <svg width="11" height="11" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2">
+    <div
+      className="inline-flex items-center gap-2 rounded-[10px] px-3 py-[9px] min-w-[110px]"
+      style={{
+        background: '#fbeded',
+        border: '1.5px solid #e9b8b8',
+        position: style ? 'absolute' : 'relative',
+        ...style,
+      }}
+    >
+      <span
+        aria-hidden
+        className="inline-flex items-center justify-center w-[22px] h-[22px] rounded-[5px] text-white shrink-0"
+        style={{ background: '#c44848' }}
+      >
+        <svg
+          width="11"
+          height="11"
+          viewBox="0 0 16 16"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        >
           <rect x="3" y="4" width="10" height="8" rx="1" />
           <path d="M3 7h10" />
         </svg>
       </span>
-      <span className="font-mono">{label}</span>
+      <span
+        className="font-mono font-bold text-[12px] whitespace-nowrap"
+        style={{ color: '#8f2e2e' }}
+      >
+        {label}
+      </span>
     </div>
   );
 }
