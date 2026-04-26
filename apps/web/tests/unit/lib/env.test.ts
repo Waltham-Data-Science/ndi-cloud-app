@@ -20,7 +20,6 @@ describe('lib/env schema', () => {
       expect(result.data.NODE_ENV).toBe('development');
       expect(result.data.UPSTREAM_API_URL).toBeUndefined();
       expect(result.data.INTERNAL_API_URL).toBeUndefined();
-      expect(result.data.EDGE_CONFIG).toBeUndefined();
     }
   });
 
@@ -29,7 +28,6 @@ describe('lib/env schema', () => {
       NODE_ENV: 'production',
       UPSTREAM_API_URL: 'https://ndb-v2-production.up.railway.app',
       INTERNAL_API_URL: 'https://ndb-v2-production.up.railway.app',
-      EDGE_CONFIG: 'https://edge-config.vercel.com/abc',
     });
     expect(result.success).toBe(true);
     if (result.success) {

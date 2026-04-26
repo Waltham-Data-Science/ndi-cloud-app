@@ -20,9 +20,6 @@ export const schema = z.object({
   // Phase 3a: RSC server-side fetch target (bypasses the Vercel rewrite to
   // avoid double-hop). Optional until catalog RSC ships.
   INTERNAL_API_URL: z.string().url().optional(),
-
-  // Phase 5: Edge Config connection string. Optional until middleware ships.
-  EDGE_CONFIG: z.string().url().optional(),
 });
 
 export type Env = z.infer<typeof schema>;

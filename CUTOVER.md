@@ -31,8 +31,6 @@ swap. The agent that ran Phases 1-6 stops here. **You** drive Phase 7.
       `https://ndb-v2-production.up.railway.app`.
 - [ ] **`INTERNAL_API_URL` env var set** (same value, used by RSC
       catalog prefetch to bypass the rewrite double-hop).
-- [ ] **`EDGE_CONFIG` connection string set** (Phase 5 follow-up).
-      `ndi-flags` Edge Config store created with `FEATURE_PIVOT_V1: false`.
 - [ ] **Skew Protection enabled** (Vercel UI: project → Settings →
       Functions → Skew Protection). Verify with:
 
