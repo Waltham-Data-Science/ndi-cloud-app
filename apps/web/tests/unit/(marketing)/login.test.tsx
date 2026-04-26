@@ -14,6 +14,10 @@
  *   - email_not_verified code → redirect to /account-not-confirmed
  *   - non-401 error → generic "try again" message
  *   - submit button disables during in-flight request
+ *
+ * Selector note (M5): the password Field renders a "Show password" toggle
+ * button. Use `getByLabelText(/^password$/i)` (anchored) to match only the
+ * form label and not the toggle's aria-label.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
@@ -72,7 +76,7 @@ describe('LoginForm', () => {
     );
 
     await user.type(screen.getByLabelText(/email/i), 'audri@walthamdatascience.com');
-    await user.type(screen.getByLabelText(/password/i), 'pw-correct');
+    await user.type(screen.getByLabelText(/^password$/i), 'pw-correct');
     await user.click(screen.getByRole('button', { name: /log in/i }));
 
     expect(mockedLogin).toHaveBeenCalledWith(
@@ -98,7 +102,7 @@ describe('LoginForm', () => {
     );
 
     await user.type(screen.getByLabelText(/email/i), 'audri@walthamdatascience.com');
-    await user.type(screen.getByLabelText(/password/i), 'pw-correct');
+    await user.type(screen.getByLabelText(/^password$/i), 'pw-correct');
     await user.click(screen.getByRole('button', { name: /log in/i }));
 
     await waitFor(() => {
@@ -117,7 +121,7 @@ describe('LoginForm', () => {
     );
 
     await user.type(screen.getByLabelText(/email/i), 'audri@walthamdatascience.com');
-    await user.type(screen.getByLabelText(/password/i), 'pw-wrong');
+    await user.type(screen.getByLabelText(/^password$/i), 'pw-wrong');
     await user.click(screen.getByRole('button', { name: /log in/i }));
 
     await waitFor(() => {
@@ -141,7 +145,7 @@ describe('LoginForm', () => {
     );
 
     await user.type(screen.getByLabelText(/email/i), 'unverified@example.com');
-    await user.type(screen.getByLabelText(/password/i), 'pw-correct');
+    await user.type(screen.getByLabelText(/^password$/i), 'pw-correct');
     await user.click(screen.getByRole('button', { name: /log in/i }));
 
     await waitFor(() => {
@@ -164,7 +168,7 @@ describe('LoginForm', () => {
     );
 
     await user.type(screen.getByLabelText(/email/i), 'audri@walthamdatascience.com');
-    await user.type(screen.getByLabelText(/password/i), 'pw');
+    await user.type(screen.getByLabelText(/^password$/i), 'pw');
     await user.click(screen.getByRole('button', { name: /log in/i }));
 
     await waitFor(() => {
@@ -185,7 +189,7 @@ describe('LoginForm', () => {
     );
 
     await user.type(screen.getByLabelText(/email/i), 'audri@walthamdatascience.com');
-    await user.type(screen.getByLabelText(/password/i), 'pw');
+    await user.type(screen.getByLabelText(/^password$/i), 'pw');
     await user.click(screen.getByRole('button', { name: /log in/i }));
 
     await waitFor(() => {
