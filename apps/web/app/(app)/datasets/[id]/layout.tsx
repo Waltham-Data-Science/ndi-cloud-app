@@ -1,24 +1,28 @@
 /**
- * Dataset detail layout — Phase 3b.
+ * Dataset detail layout — Phase 3b + REBUILD-8 chrome gate.
  *
  * Wraps every `/datasets/[id]/{overview,tables,pivot,documents}` route
  * with a shared hero band + the from-scratch a11y tab bar (audit #65).
  * The tab bar is URL-routed (`<Link>` + `usePathname`-derived
  * aria-selected), NOT state-controlled — that's the structural fix
- * for the audit. Document detail (`documents/[docId]`) opts OUT via
- * its own nested layout that drops this chrome (matches the
- * data-browser's "outside the Outlet" pattern).
+ * for the audit.
  *
- * Tabs as nested routes (Phase 3b also wires):
+ * Phase 6.6 REBUILD-8: chrome rendering now goes through
+ * `<DatasetDetailChromeGate>`, which conditionally hides the hero +
+ * tab bar + constrained-width section on the document-detail URL
+ * (`/datasets/[id]/documents/[docId]`). Source had document detail
+ * "outside the Outlet" with its own hero; in App Router that's a
+ * client-side pathname check rather than a layout sibling, but the
+ * UX is identical — document detail drops the dataset chrome entirely.
+ *
+ * Tabs as nested routes (still wired here):
  *   `tables/page.tsx`         → server redirect to ./subject
  *   `tables/[className]/page.tsx`
  *   `pivot/[grain]/page.tsx`
- *   `documents/page.tsx`
- *   `documents/[docId]/layout.tsx`  → opt-out wrapper (no tab bar)
- *   `documents/[docId]/page.tsx`
+ *   `documents/page.tsx`              → DocumentExplorer (under chrome)
+ *   `documents/[docId]/page.tsx`      → standalone (chrome hidden)
  */
-import { DatasetDetailHero } from '@/components/app/DatasetDetailHero';
-import { DatasetTabs } from '@/components/app/DatasetTabs';
+import { DatasetDetailChromeGate } from '@/components/app/DatasetDetailChromeGate';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -30,20 +34,7 @@ export default async function DatasetDetailLayout({
   params,
 }: LayoutProps) {
   const { id } = await params;
-
   return (
-    <>
-      <DatasetDetailHero datasetId={id} />
-      <DatasetTabs datasetId={id} />
-      {/*
-        `min-w-0` keeps wide inner tables honest — CSS Grid items default
-        to `min-width: auto`, so without this a table wider than the
-        viewport would push the whole page wider instead of triggering
-        its own overflow-x-auto scroll. (Carried over from data-browser.)
-      */}
-      <section className="mx-auto max-w-[1200px] px-7 py-7 min-w-0">
-        {children}
-      </section>
-    </>
+    <DatasetDetailChromeGate datasetId={id}>{children}</DatasetDetailChromeGate>
   );
 }

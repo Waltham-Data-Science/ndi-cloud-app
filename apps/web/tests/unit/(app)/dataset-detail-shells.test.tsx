@@ -150,18 +150,27 @@ describe('DocumentsShell', () => {
 });
 
 describe('DocumentDetailShell', () => {
-  it('shows a loading message while the document fetch is pending', () => {
+  it('shows skeletons in the hero h1 slot and the body while the fetch is pending', () => {
+    // Phase 6.6 REBUILD-8 swapped the prior "Loading document…" copy for
+    // a depth-gradient hero with a Skeleton in the h1 position plus body
+    // Skeletons (matches source's hero layout). Assert against the
+    // skeleton class directly since the copy is no longer rendered.
     mockedApiFetch.mockReturnValue(new Promise(() => {}));
     const Wrapper = withClient();
-    render(
+    const { container } = render(
       <Wrapper>
         <DocumentDetailShell datasetId="d1" docId="doc-1" />
       </Wrapper>,
     );
-    expect(screen.getByText(/Loading document/i)).toBeInTheDocument();
+    expect(container.querySelectorAll('.skeleton').length).toBeGreaterThan(0);
   });
 
-  it('shows a fallback when the document fetch errors', async () => {
+  it('shows an ErrorState when the document fetch errors', async () => {
+    // Phase 6.6 REBUILD-8 routes errors through `<ErrorState>` (matches
+    // source). For a plain Error (no recovery hint), ErrorState renders
+    // the contact-support branch with `role="alert"` containing the
+    // error message — assert against the role + message text so we
+    // don't pin the exact copy.
     mockedApiFetch.mockRejectedValueOnce(new Error('boom'));
     const Wrapper = withClient();
     render(
@@ -170,19 +179,24 @@ describe('DocumentDetailShell', () => {
       </Wrapper>,
     );
     await waitFor(() => {
-      expect(
-        screen.getByText(/Couldn.t load document doc-1/i),
-      ).toBeInTheDocument();
+      const alert = screen.getByRole('alert');
+      expect(alert).toHaveTextContent(/boom/);
     });
   });
 
-  it('renders the document name when fetched', async () => {
+  it('renders the document name as h1 when fetched', async () => {
+    // The new shell mounts `<AppearsElsewhere>` after the document
+    // resolves, which fetches `/api/datasets/:id/documents/:docId/appears-elsewhere`.
+    // Stub all subsequent calls to a never-resolving promise so the
+    // component shows its loading state without throwing on a missing
+    // mock.
     mockedApiFetch.mockResolvedValueOnce({
       id: 'doc-1',
       name: 'My probe',
       ndiId: 'ndi:abc',
       className: 'element',
     });
+    mockedApiFetch.mockReturnValue(new Promise(() => {}));
     const Wrapper = withClient();
     render(
       <Wrapper>
@@ -191,7 +205,7 @@ describe('DocumentDetailShell', () => {
     );
     await waitFor(() => {
       expect(
-        screen.getByRole('heading', { name: 'My probe' }),
+        screen.getByRole('heading', { level: 1, name: 'My probe' }),
       ).toBeInTheDocument();
     });
   });
