@@ -19,21 +19,44 @@
 import { z } from 'zod';
 
 /**
- * Minimal hard contract for a `DatasetRecord` row in the catalog.
- * - `id` and `name` are non-negotiable; everything else is optional or
- *   nullable in the upstream. Schema kept loose to avoid blocking the
- *   client when the backend ships a new optional field.
- * - `.passthrough()` preserves unknown fields so existing TypeScript
- *   consumers that read `DatasetRecord` (the rich type from
- *   `lib/api/datasets.ts`) keep seeing them — the schema is a
- *   shape-validator, not a type-replacer.
+ * Minimal hard contract for a `DatasetRecord` row.
+ *
+ * - `name` is non-negotiable.
+ * - The cloud is INCONSISTENT about the identifier: the catalog
+ *   endpoint (`/api/datasets/published`) returns `id`; the detail
+ *   endpoint (`/api/datasets/{id}`) returns `_id` (the raw Mongo
+ *   key). Production smoke-tested 2026-04-26: catalog rows had
+ *   `id` only, detail rows had `_id` only. The schema accepts
+ *   either and aliases `_id` → `id` so consumer code (and the
+ *   `DatasetRecord` TypeScript interface) keeps reading `.id`
+ *   uniformly.
+ * - Everything else is optional in the upstream; `.passthrough()`
+ *   preserves unknown fields so existing TypeScript consumers that
+ *   read `DatasetRecord` (the rich type from `lib/api/datasets.ts`)
+ *   keep seeing them — the schema is a shape-validator, not a
+ *   type-replacer.
+ *
+ * If a future cloud cleanup unifies on `id` everywhere, this alias
+ * becomes a no-op (the input already has `id`, no transform needed).
  */
 export const DatasetRecordCoreSchema = z
   .object({
-    id: z.string(),
+    id: z.string().optional(),
+    _id: z.string().optional(),
     name: z.string(),
   })
-  .passthrough();
+  .passthrough()
+  .transform((d) => {
+    // Alias `_id` → `id` when only `_id` is present (detail endpoint).
+    // If both are present (defensive: future-proof), trust `id`.
+    if (typeof d.id !== 'string' && typeof d._id === 'string') {
+      return { ...d, id: d._id };
+    }
+    return d;
+  })
+  .refine((d) => typeof d.id === 'string' && d.id.length > 0, {
+    message: 'DatasetRecord requires either `id` or `_id` (received neither)',
+  });
 
 /**
  * `GET /api/datasets/published?page=N&pageSize=M` — anonymous-public
@@ -47,7 +70,8 @@ export const DatasetListResponseSchema = z.object({
 /**
  * `GET /api/datasets/:id` — single dataset detail. Same loose-shape
  * approach as the list — the cloud ships a rich record and we only
- * pin the fields the UI relies on for the "this is a real dataset"
- * decision.
+ * pin the fields the UI relies on. Note the `_id` aliasing in the
+ * core schema header above — the detail endpoint specifically
+ * needs that path.
  */
 export const DatasetRecordSchema = DatasetRecordCoreSchema;
