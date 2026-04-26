@@ -21,6 +21,14 @@ export const schema = z.object({
   // avoid double-hop). Optional until catalog RSC ships.
   INTERNAL_API_URL: z.string().url().optional(),
 
+  // Phase 6.7 A8: Sentry DSN. NEXT_PUBLIC_ prefix because the SDK reads it
+  // both server-side (instrumentation.ts) and client-side (instrumentation-
+  // client.ts); a Sentry DSN is by design publicly embeddable in client
+  // bundles (Sentry's threat model relies on per-project rate limits, not
+  // DSN secrecy). When unset, `Sentry.init({ dsn: undefined })` is a no-op
+  // so dev / un-provisioned builds work without error capture.
+  NEXT_PUBLIC_SENTRY_DSN: z.string().url().optional(),
+
   // Phase 5: Edge Config connection string. Optional until middleware ships.
   EDGE_CONFIG: z.string().url().optional(),
 });

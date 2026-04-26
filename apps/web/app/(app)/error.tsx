@@ -1,5 +1,6 @@
 'use client';
 
+import * as Sentry from '@sentry/nextjs';
 import { useEffect } from 'react';
 
 import { MarketingButton } from '@/components/marketing/Button';
@@ -13,7 +14,30 @@ import { MarketingButton } from '@/components/marketing/Button';
  * to the marketing error boundary in shape — same friendly card, same
  * Try again / Home affordances. The data-browser feature components
  * land on this when their RSC fetch fails.
+ *
+ * Phase 6.7 A8: Sentry is lazily-initialized at module-load time —
+ * the error.tsx file is its own route chunk, so the @sentry/nextjs
+ * SDK only ships with the initial bundle if a global instrumentation-
+ * client.ts forces it. Keeping the SDK off the initial bundle preserves
+ * the 200 KB gz initial-paint budget. When `NEXT_PUBLIC_SENTRY_DSN` is
+ * unset, init runs with `dsn: undefined` and captureException is a
+ * no-op — dev / un-provisioned builds work without error capture.
+ *
+ * Tradeoff: only errors that hit React error boundaries are captured.
+ * Window-level uncaught errors (setTimeout, unhandled promise rejections
+ * outside React) won't fire this code path. At <10 users + no
+ * always-on Sentry init in instrumentation-client.ts (~75 KB gz cost),
+ * this is the right trade.
  */
+if (typeof window !== 'undefined' && !Sentry.isInitialized()) {
+  Sentry.init({
+    dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+    environment: process.env.NEXT_PUBLIC_VERCEL_ENV ?? 'development',
+    sendDefaultPii: false,
+    tracesSampleRate: 0,
+  });
+}
+
 export default function AppError({
   error,
   reset,
@@ -24,6 +48,10 @@ export default function AppError({
   useEffect(() => {
     // Surface to the browser console in dev + Vercel function logs in prod.
     console.error('[app/error]', error.message, error.digest);
+    Sentry.captureException(error, {
+      tags: { source: 'app/error.tsx' },
+      contexts: { nextjs: { digest: error.digest } },
+    });
   }, [error]);
 
   return (

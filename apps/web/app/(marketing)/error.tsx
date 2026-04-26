@@ -1,5 +1,6 @@
 'use client';
 
+import * as Sentry from '@sentry/nextjs';
 import { useEffect } from 'react';
 
 import { MarketingButton } from '@/components/marketing/Button';
@@ -15,10 +16,22 @@ import { MarketingButton } from '@/components/marketing/Button';
  * `reset()` to re-render the boundary and the page below it without a
  * full navigation.
  *
- * Server-side this is logged to the Vercel function output stream;
- * Phase 5 wires Sentry / Vercel Analytics for client-side error
- * surfacing.
+ * Phase 6.7 A8: Sentry is lazily-initialized at module-load time —
+ * see app/(app)/error.tsx for the rationale. Bundle stays under the
+ * 200 KB gz budget because @sentry/nextjs only ships in the error
+ * route chunk, not the initial bundle. When `NEXT_PUBLIC_SENTRY_DSN`
+ * is unset, init runs with `dsn: undefined` and captureException is
+ * a no-op.
  */
+if (typeof window !== 'undefined' && !Sentry.isInitialized()) {
+  Sentry.init({
+    dsn: process.env.NEXT_PUBLIC_SENTRY_DSN,
+    environment: process.env.NEXT_PUBLIC_VERCEL_ENV ?? 'development',
+    sendDefaultPii: false,
+    tracesSampleRate: 0,
+  });
+}
+
 export default function MarketingError({
   error,
   reset,
@@ -27,10 +40,12 @@ export default function MarketingError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Surface to the browser console in dev + Vercel function logs in prod;
-    // Phase 5 layers Sentry / Vercel Analytics on top for client-side error
-    // aggregation.
+    // Surface to the browser console in dev + Vercel function logs in prod.
     console.error('[marketing/error]', error.message, error.digest);
+    Sentry.captureException(error, {
+      tags: { source: 'marketing/error.tsx' },
+      contexts: { nextjs: { digest: error.digest } },
+    });
   }, [error]);
 
   return (
