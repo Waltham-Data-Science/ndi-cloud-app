@@ -31,6 +31,7 @@ import { useSummaryTable } from '@/lib/api/tables';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { SummaryTableView } from '@/components/app/SummaryTableView';
+import { OntologyTablesView } from '@/components/app/OntologyTablesView';
 
 const COMMON_CLASSES = [
   { id: 'subject', label: 'Subjects' },
@@ -83,11 +84,38 @@ export function TableShell({
 }
 
 /**
- * Inner data-fetching component. Split from the shell so the nav above
- * stays mounted (and keeps its styling + a11y current-state) across
- * fetch lifecycle transitions for the active class.
+ * Dispatch component — picks the right fetch+render branch for the
+ * active class. The `ontology` class has a different response shape
+ * (`{groups: OntologyTableGroup[]}`) so it routes to a dedicated
+ * `<OntologyTablesView>` (which calls its own `useOntologyTables`
+ * hook). All other classes (including `combined`, same envelope as
+ * `subject`/`element`/etc., just a different URL) use the standard
+ * `<StandardTableContent>` below, which calls `useSummaryTable`.
+ *
+ * Splitting the two branches into separate components keeps both
+ * subtrees compliant with React hooks rules — each function calls its
+ * own hooks unconditionally, and the dispatcher just routes between
+ * them by class.
  */
 function TableContent({
+  datasetId,
+  className,
+}: {
+  datasetId: string;
+  className: string;
+}) {
+  if (className === 'ontology') {
+    return <OntologyTablesView datasetId={datasetId} />;
+  }
+  return <StandardTableContent datasetId={datasetId} className={className} />;
+}
+
+/**
+ * Standard fetch + view for every class except `ontology`. Calls
+ * `useSummaryTable(datasetId, className)` for the per-class table —
+ * `combined` lands here too (same envelope, different URL).
+ */
+function StandardTableContent({
   datasetId,
   className,
 }: {
