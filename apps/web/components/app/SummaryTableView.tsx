@@ -34,6 +34,7 @@
  *    ontology term visible in the table so popover opens hit warm.
  */
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import dynamic from 'next/dynamic';
 import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import {
   getCoreRowModel,
@@ -46,6 +47,24 @@ import {
   type VisibilityState,
 } from '@tanstack/react-table';
 import { ArrowUpDown, Download, Eye, EyeOff, Info } from 'lucide-react';
+
+/**
+ * `<QuickPlot>` (Phase 6.6 REBUILD-11) is dynamically imported so D3
+ * (`d3-array`, `d3-scale`, `d3-shape`) ships off the initial-paint
+ * bundle of `/datasets/[id]/tables/[className]`. The card is also
+ * collapsed by default in source — most users never expand it — so
+ * even mounting cost is a "lazy on user intent" rather than a
+ * page-load cost. `ssr: false` keeps the server-render path clean
+ * since D3 can't render server-side anyway.
+ */
+const QuickPlot = dynamic(
+  () =>
+    import('./QuickPlot').then((m) => ({ default: m.QuickPlot })),
+  {
+    ssr: false,
+    loading: () => null,
+  },
+);
 
 import { useBatchOntologyLookup } from '@/lib/api/ontology';
 import type { TableResponse } from '@/lib/api/tables';
@@ -84,6 +103,7 @@ export function SummaryTableView({
   tableType,
   onRowClick,
   columnOntologyPrefixes,
+  datasetId,
 }: SummaryTableViewProps) {
   // URL-persisted table state (M7 §5). Three params, deliberately short
   // names to keep deep-link URLs readable:
@@ -550,20 +570,28 @@ export function SummaryTableView({
       {/* Virtualized scrolling table */}
       <VirtualizedTable table={table} onRowClick={onRowClick} />
 
-      {/* M6 QuickPlot card — DEFERRED.
+      {/* QuickPlot — Phase 6.6 REBUILD-11.
        *
-       * The data-browser source renders a collapsible violin-plot card here
-       * (auto-detects numeric + categorical columns, dispatches
-       * `/api/visualize/distribution` on user click). Porting it requires
-       * `ViolinPlot`, `ErrorState`, and a `useDistribution` hook in
-       * `lib/api/visualize.ts`. None of those are blocking the table view
-       * itself, so this Phase 6.5a PR ships the table without QuickPlot
-       * and the card lands in Phase 6.5a-2 (or rolled into 6.5b alongside
-       * `PivotView`'s uPlot integration).
+       * Collapsible D3 violin-plot card; dispatches
+       * `/api/visualize/distribution` with auto-detected numeric +
+       * categorical columns. Gated on `datasetId && tableType`: the
+       * ontology table (`tableType === 'ontology'`) doesn't carry a
+       * single backend className, so QuickPlot's `className` prop
+       * couldn't resolve a coherent distribution endpoint there.
+       * Source `TableTab.tsx` makes the same gate decision implicitly —
+       * it only renders QuickPlot inside `<SingleClassTableView>` and
+       * `<CombinedTableView>`, never inside `<OntologyTablesView>`.
        *
-       * `datasetId` is still threaded through the props interface so the
-       * card can drop in without an API change.
+       * D3 ships in a deferred chunk via `next/dynamic({ ssr: false })`
+       * above — keeps the summary-table initial-paint bundle flat.
        */}
+      {datasetId && tableType && tableType !== 'ontology' && (
+        <QuickPlot
+          datasetId={datasetId}
+          className={tableType}
+          table={data}
+        />
+      )}
     </div>
   );
 }
