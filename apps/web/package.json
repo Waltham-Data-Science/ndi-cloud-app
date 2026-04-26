@@ -26,7 +26,6 @@
     "@tanstack/react-table": "^8.21.3",
     "@tanstack/react-virtual": "^3.13.24",
     "@vercel/analytics": "^2.0.1",
-    "@vercel/edge-config": "^1.4.3",
     "@vercel/speed-insights": "^2.0.0",
     "clsx": "^2.1.1",
     "d3-array": "^3.2.4",
