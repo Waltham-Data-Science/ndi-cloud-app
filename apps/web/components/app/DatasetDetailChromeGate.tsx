@@ -59,16 +59,31 @@ export function DatasetDetailChromeGate({
 
   return (
     <>
-      <DatasetDetailHero datasetId={datasetId} />
-      <DatasetTabs datasetId={datasetId} />
+      {/* `data-dataset-chrome` (R2): the document-detail page injects
+          an inline <style> that hides this wrapper on initial paint
+          to prevent the chrome-gate hydration flash. The data attribute
+          is the stable selector — class names can change as Tailwind
+          tokens evolve, attribute names stay put. */}
+      <div data-dataset-chrome>
+        <DatasetDetailHero datasetId={datasetId} />
+        <DatasetTabs datasetId={datasetId} />
+      </div>
       {/*
         `min-w-0` keeps wide inner tables honest — CSS Grid items
         default to `min-width: auto`, so without this a table wider
         than the viewport would push the whole page wider instead of
         triggering its own overflow-x-auto scroll. (Carried over from
         the original [id]/layout.tsx pre-REBUILD-8.)
+
+        `data-dataset-chrome-section` (R2): the document-detail page's
+        inline <style> also strips the constrained max-width + padding
+        so the document-detail body renders full-bleed even before
+        hydration removes this section entirely.
       */}
-      <section className="mx-auto max-w-[1200px] px-7 py-7 min-w-0">
+      <section
+        data-dataset-chrome-section
+        className="mx-auto max-w-[1200px] px-7 py-7 min-w-0"
+      >
         {children}
       </section>
     </>
