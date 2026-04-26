@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { useState, type FormEvent } from 'react';
 
 import { ApiError } from '@/lib/api/client';
-import { verifyEmail } from '@/lib/api/auth';
+import { confirmEmail } from '@/lib/api/auth';
 import { AuthCard } from '@/components/marketing/AuthCard';
 import { Field, FormError } from '@/components/marketing/AuthForm';
 import { MarketingButton } from '@/components/marketing/Button';
@@ -26,7 +26,7 @@ export function AccountVerificationForm() {
     setFieldErrors({});
     setSubmitting(true);
     try {
-      await verifyEmail({ email, code });
+      await confirmEmail({ email, code });
       router.push('/login');
     } catch (err) {
       if (err instanceof ApiError) {

@@ -128,14 +128,21 @@ export async function signup(input: {
 }
 
 /**
- * POST /api/auth/verify-email — exchanges the email code for a
+ * POST /api/auth/confirm-email — exchanges the email code for a
  * verified-account state. On success the user can log in.
+ *
+ * The audit (AUTH_CONTRACT_AUDIT.md) chose `confirm-email` (matching
+ * the cloud's `confirmEmailAccount` underlying action verb) as the
+ * canonical endpoint name. The frontend was previously named
+ * `verifyEmail` and called `/api/auth/verify-email` which the backend
+ * never served — every account-verification submit 404'd silently.
+ * Renamed (B3 close-out) to align with the backend's shipped surface.
  */
-export async function verifyEmail(input: {
+export async function confirmEmail(input: {
   email: string;
   code: string;
 }): Promise<{ verified: true }> {
-  return apiFetch('/api/auth/verify-email', {
+  return apiFetch('/api/auth/confirm-email', {
     method: 'POST',
     body: input,
   });

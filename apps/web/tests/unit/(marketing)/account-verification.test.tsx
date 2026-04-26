@@ -11,7 +11,7 @@
  *   present the email field is hidden — there's nothing to edit.
  * - When the email param is absent (user navigated directly), the
  *   email field is shown so they can enter it manually.
- * - Submit hits `verifyEmail({ email, code })`.
+ * - Submit hits `confirmEmail({ email, code })`.
  * - On success, route to `/login`.
  * - `invalid_code` and `expired_code` surface as field-level errors
  *   on the code input.
@@ -27,7 +27,7 @@ import type { ReactNode } from 'react';
 import { AccountVerificationForm } from '@/app/(marketing)/account-verification/account-verification-form';
 
 vi.mock('@/lib/api/auth', () => ({
-  verifyEmail: vi.fn(),
+  confirmEmail: vi.fn(),
 }));
 
 const pushMock = vi.fn();
@@ -37,8 +37,8 @@ vi.mock('next/navigation', () => ({
   useSearchParams: () => searchParamsMock,
 }));
 
-import { verifyEmail as verifyEmailMock } from '@/lib/api/auth';
-const mockedVerify = vi.mocked(verifyEmailMock);
+import { confirmEmail as confirmEmailMock } from '@/lib/api/auth';
+const mockedVerify = vi.mocked(confirmEmailMock);
 
 import { ApiError } from '@/lib/api/client';
 

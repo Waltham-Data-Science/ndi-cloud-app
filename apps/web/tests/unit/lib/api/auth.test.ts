@@ -34,6 +34,7 @@ vi.mock('@/lib/api/client', () => ({
 
 import {
   changePassword,
+  confirmEmail,
   forgotPassword,
   login,
   logout,
@@ -41,7 +42,6 @@ import {
   resendConfirmation,
   resetForgottenPassword,
   signup,
-  verifyEmail,
 } from '@/lib/api/auth';
 import { apiFetch, ApiError } from '@/lib/api/client';
 import { mockAuthUser } from '@/tests/fixtures/auth';
@@ -127,10 +127,15 @@ describe('lib/api/auth wrappers', () => {
     });
   });
 
-  it('verifyEmail posts the code body', async () => {
+  it('confirmEmail posts the code body to /api/auth/confirm-email', async () => {
+    // B3 close-out: renamed from `verifyEmail` to align with the audit's
+    // canonical endpoint name (matches the cloud's `confirmEmailAccount`
+    // action verb). Path was previously `/api/auth/verify-email` which
+    // the backend never served — every account-verification submit
+    // 404'd silently before this rename.
     mockedApiFetch.mockResolvedValueOnce({ verified: true });
-    await verifyEmail({ email: 'a@b.com', code: '123456' });
-    expect(mockedApiFetch).toHaveBeenCalledWith('/api/auth/verify-email', {
+    await confirmEmail({ email: 'a@b.com', code: '123456' });
+    expect(mockedApiFetch).toHaveBeenCalledWith('/api/auth/confirm-email', {
       method: 'POST',
       body: { email: 'a@b.com', code: '123456' },
     });
