@@ -72,15 +72,22 @@ swap. The agent that ran Phases 1-6 stops here. **You** drive Phase 7.
       ```
 
 - [ ] **Announcement email drafted**: "you may need to sign in
-      again" — Phase 7 step 5 rotates SESSION_SECRET, forcing
-      re-login for everyone with a pre-rotation cookie.
-- [ ] **New `SESSION_SECRET` generated and stored in 1Password / vault**:
+      again" — Phase 7 step 5 rotates `SESSION_ENCRYPTION_KEY`, which
+      makes every existing Redis-stored session undecryptable. The
+      session store catches the resulting `InvalidToken` and deletes
+      the bad blob, surfacing as a soft re-auth (the user is bounced
+      to `/login`). Forced re-login is a property of the deploy.
+- [ ] **New `SESSION_ENCRYPTION_KEY` generated and stored in 1Password / vault**:
 
       ```bash
-      python -c "import secrets; print(secrets.token_urlsafe(64))"
+      python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
       ```
 
-      Keep the OLD secret too — rollback restores it.
+      Produces a 44-char base64-urlsafe Fernet key. The
+      `_derive_fernet_key` helper at
+      `ndi-data-browser-v2/backend/auth/session.py:52` accepts either
+      a real Fernet key (preferred) or any string ≥32 chars (SHA-256
+      derived). Keep the OLD key too — rollback restores it.
 - [ ] **Migration window confirmed** with stakeholders.
 
 ## Swap sequence (~30 seconds wall-clock)
@@ -96,11 +103,15 @@ swap. The agent that ran Phases 1-6 stops here. **You** drive Phase 7.
    `app.ndi-cloud.com` as redirect-to-apex
    (`301 https://ndi-cloud.com${path}`) — preserves bookmarks like
    `app.ndi-cloud.com/datasets/d1/overview`.
-5. **Rotate `SESSION_SECRET` on Railway** (`ENV=production` →
-   redeploy). Forced re-login becomes a property of the deploy, not
-   a hope. **Critical**: this step happens AFTER the domain swap, not
-   before — rotating mid-swap could log out users on the still-live
-   `app.ndi-cloud.com` before the new monorepo owns the apex.
+5. **Rotate `SESSION_ENCRYPTION_KEY` on Railway** (`ENV=production`
+   → redeploy). Forced re-login becomes a property of the deploy,
+   not a hope (the new key can't decrypt blobs encrypted under the
+   old key; `SessionStore._read` catches `InvalidToken` and deletes
+   the corrupt entry, then `useSession` resolves to null and the
+   user is bounced to `/login`). **Critical**: this step happens
+   AFTER the domain swap, not before — rotating mid-swap could log
+   out users on the still-live `app.ndi-cloud.com` before the new
+   monorepo owns the apex.
 
 ## Watch window (60 minutes)
 
@@ -115,8 +126,10 @@ swap. The agent that ran Phases 1-6 stops here. **You** drive Phase 7.
   ```
 
 - **Login success rate**: temporary spike in re-login traffic is
-  expected (proves SESSION_SECRET rotation worked). Real failure
-  signal: 4xx on /api/auth/login over the baseline pre-rotation rate.
+  expected (proves `SESSION_ENCRYPTION_KEY` rotation worked — every
+  pre-rotation session decrypts as `InvalidToken` and resolves to
+  null on the next `/api/auth/me`). Real failure signal: 4xx on
+  `/api/auth/login` over the baseline pre-rotation rate.
 
 ## Rollback (30-second hatch)
 
@@ -124,9 +137,10 @@ swap. The agent that ran Phases 1-6 stops here. **You** drive Phase 7.
    old `ndi-web-app`.
 2. Detach `app.ndi-cloud.com` redirect, re-attach to old
    `ndi-data-browser-v2`.
-3. **Revert `SESSION_SECRET`** to the pre-rotation value (from
-   1Password). Without this, the legacy project can't issue valid
-   sessions anymore.
+3. **Revert `SESSION_ENCRYPTION_KEY`** to the pre-rotation value
+   (from 1Password). Without this, sessions issued under the old
+   key remain undecryptable and the legacy project can't restore
+   user sessions for the burn-in window.
 4. Revert FastAPI `Domain=.ndi-cloud.com` change if cookie breakage
    was the trigger (redeploy previous Railway image tag).
 
