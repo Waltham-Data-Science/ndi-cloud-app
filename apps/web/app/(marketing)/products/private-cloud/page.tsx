@@ -180,37 +180,46 @@ export default function PrivateCloudPage() {
             from raw recording to published DOI.
           </p>
 
-          <div className="grid grid-cols-2 max-[720px]:grid-cols-1 gap-5">
-            <CapCard
+          {/* Editorial-style stacked rows. Source `.caps`/`.cap`
+              (PrivateCloud.module.scss:269-313): vertical column with
+              `border-top` on the container + `border-bottom` on each
+              row, `grid-template-columns: 240px 1fr; gap: 40px;
+              padding: 28px 0`. Mobile (≤768px) collapses to a single
+              column with gap: 8px. h3 = 20px brand-navy display, body
+              = 15px secondary at 1.6 leading, max 560px wide. Code
+              chips inside body get a gray-100 wash + brand-navy color
+              per source `.cap p code`. */}
+          <div className="flex flex-col border-t border-border-subtle">
+            <CapRow
               title="Dataset management"
               body="Upload sessions and files, organize them into datasets, track status across your lab. Search by species, probe, region, stimulus, or any metadata field — everything is queryable."
             />
-            <CapCard
+            <CapRow
               title="openMINDS metadata"
               body={
                 <>
                   Every session carries structured openMINDS metadata with real
-                  ontology IDs: species (<code className="font-mono text-xs">NCBITaxon:10090</code>{' '}
-                  · <code className="font-mono text-xs">M. musculus</code>), brain
-                  region (<code className="font-mono text-xs">UBERON:0002436</code> · primary
+                  ontology IDs: species (<code className="font-mono text-[0.88em] bg-gray-100 text-brand-navy px-1.5 py-px rounded-[4px]">NCBITaxon:10090</code>{' '}
+                  · <code className="font-mono text-[0.88em] bg-gray-100 text-brand-navy px-1.5 py-px rounded-[4px]">M. musculus</code>), brain
+                  region (<code className="font-mono text-[0.88em] bg-gray-100 text-brand-navy px-1.5 py-px rounded-[4px]">UBERON:0002436</code> · primary
                   visual cortex), strain, sex, stimulus. Search across your
                   whole lab&rsquo;s work in one query.
                 </>
               }
             />
-            <CapCard
+            <CapRow
               title="DOI publishing"
               body={
                 <>
                   When your dataset is ready, publish it to the NDI Data Commons.
                   A Crossref-registered DOI (under the NDI{' '}
-                  <code className="font-mono text-xs">10.63884</code> prefix) and a
+                  <code className="font-mono text-[0.88em] bg-gray-100 text-brand-navy px-1.5 py-px rounded-[4px]">10.63884</code> prefix) and a
                   public landing page are created so other researchers can cite
                   your work.
                 </>
               }
             />
-            <CapCard
+            <CapRow
               title="MATLAB + Python SDKs"
               body="Same workspace, two SDKs. NDI-MATLAB for rig control and analysis notebooks, NDI-Python for pipelines and batch jobs. Built-in readers for Intan, Blackrock, CED Spike2, and SpikeGadgets."
             />
@@ -427,7 +436,16 @@ export default function PrivateCloudPage() {
   );
 }
 
-function CapCard({
+/**
+ * Capability row in the editorial-style stacked list. Source
+ * `.cap` (PrivateCloud.module.scss:276-313) — `display: grid;
+ * grid-template-columns: 240px 1fr; gap: 40px; padding: 28px 0;
+ * border-bottom: 1px solid var(--border-subtle)`. Mobile (≤768px)
+ * collapses to a single column with gap: 8px. Title h3 is the source's
+ * 20px brand-navy display weight; body is 15px fg-secondary at 1.6
+ * leading, capped at 560px wide.
+ */
+function CapRow({
   title,
   body,
 }: {
@@ -435,11 +453,13 @@ function CapCard({
   body: React.ReactNode;
 }) {
   return (
-    <div className="bg-bg-surface border border-border-subtle rounded-xl p-7 shadow-sm">
-      <h3 className="text-[1.25rem] font-bold text-fg-primary leading-tight mb-3 m-0">
+    <div className="grid grid-cols-[240px_1fr] max-[768px]:grid-cols-1 gap-10 max-[768px]:gap-2 py-7 border-b border-border-subtle">
+      <h3 className="font-display font-bold text-[20px] tracking-tight text-brand-navy m-0 leading-tight">
         {title}
       </h3>
-      <p className="text-sm leading-relaxed text-fg-secondary m-0">{body}</p>
+      <p className="text-[15px] leading-[1.6] text-fg-secondary m-0 max-w-[560px]">
+        {body}
+      </p>
     </div>
   );
 }
