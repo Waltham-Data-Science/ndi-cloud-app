@@ -17,6 +17,7 @@ import type {
 import type { FacetsResponse } from '@/lib/types/facets';
 
 import { apiFetch } from './client';
+import { DatasetListResponseSchema, DatasetRecordSchema } from './schemas/datasets';
 
 export interface Contributor {
   firstName?: string;
@@ -92,6 +93,13 @@ export interface ClassCountsResponse {
  * Anonymous-public catalog read. Identical render for all viewers — no
  * per-user state. Phase 3a's `/datasets` RSC server-prefetches this same
  * query key so the client island hydrates instantly.
+ *
+ * CQ1: zod-validates the listing envelope (`{ totalNumber, datasets:
+ * [...] }`) so a backend shape drift on the catalog (the highest-
+ * traffic anonymous endpoint) surfaces as `RESPONSE_SHAPE_INVALID`
+ * instead of cards rendering with `undefined.name`. Schema is loose-
+ * shape (`.passthrough()` on each row) so a new optional field on
+ * `DatasetRecord` doesn't block the catalog.
  */
 export function usePublishedDatasets(page: number, pageSize: number) {
   return useQuery({
@@ -99,6 +107,7 @@ export function usePublishedDatasets(page: number, pageSize: number) {
     queryFn: () =>
       apiFetch<DatasetListResponse>(
         `/api/datasets/published?page=${page}&pageSize=${pageSize}`,
+        { schema: DatasetListResponseSchema },
       ),
   });
 }
@@ -129,7 +138,14 @@ export function useMyDatasets(enabled: boolean, scope: MyScope = 'mine') {
 export function useDataset(datasetId: string | undefined) {
   return useQuery({
     queryKey: ['dataset', datasetId],
-    queryFn: () => apiFetch<DatasetRecord>(`/api/datasets/${datasetId}`),
+    queryFn: () =>
+      // CQ1: zod-validates the dataset detail. Loose-shape via
+      // `.passthrough()` — the cloud ships rich records with optional
+      // fields that may be added between releases. The schema is a
+      // structural gate, not a type-replacer.
+      apiFetch<DatasetRecord>(`/api/datasets/${datasetId}`, {
+        schema: DatasetRecordSchema,
+      }),
     enabled: !!datasetId,
   });
 }

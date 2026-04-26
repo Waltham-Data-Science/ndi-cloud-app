@@ -19,6 +19,7 @@
  * already set.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { z } from 'zod';
 
 import { ApiError, apiFetch } from '@/lib/api/client';
 
@@ -236,6 +237,104 @@ describe('apiFetch — Phase 3a contract', () => {
       const init = lastCallInit(fetchSpy);
       expect(headerOf(init, 'Content-Type')).toBe('application/json');
       expect(init.body).toBe(JSON.stringify({ email: 'a@b.com', password: 'pw' }));
+    });
+  });
+
+  describe('zod schema validation (CQ1)', () => {
+    // The audit (synthesis §CQ1) flagged that `apiFetch<T>` is a pure
+    // cast — the runtime response could be any shape and TypeScript
+    // would happily believe it matches `T`. A backend rename, a missing
+    // field, or a type drift that wasn't caught by the build would
+    // surface as a downstream null-deref (or worse, silent wrong data)
+    // without any signal back to the caller. The optional `schema`
+    // option closes that gap with runtime validation on 2xx responses.
+    //
+    // The contract:
+    // - `schema` is optional; absence preserves the Phase 2b behavior
+    //   (pure cast, zero runtime cost).
+    // - When set, `schema.parse(json)` runs after JSON.parse; the
+    //   parsed value is what `apiFetch` returns. The schema can
+    //   transform / strip extras / coerce — zod handles that.
+    // - On schema failure, `apiFetch` throws `ApiError(200, { code:
+    //   'RESPONSE_SHAPE_INVALID', ... })`. Status is 200 because the
+    //   wire was 200 — the body just didn't match. Consumers handle
+    //   it the same way they handle any other typed `ApiError`.
+    // - Schema is only consulted on 2xx with JSON bodies. 204s, error
+    //   bodies, and non-JSON 2xx responses are unaffected.
+    //
+    // Schema kept as a structural type (`{ parse: (data: unknown) =>
+    // T }`) so the wrapper is zod-version-agnostic — any library that
+    // exposes a `parse` method works.
+
+    it('returns the parsed value when the schema matches the response', async () => {
+      const schema = z.object({ id: z.string(), email: z.string() });
+      fetchSpy.mockResolvedValueOnce(jsonResponse({ id: 'u-1', email: 'a@b.com' }));
+
+      const result = await apiFetch('/api/auth/me', { schema });
+      expect(result).toEqual({ id: 'u-1', email: 'a@b.com' });
+    });
+
+    it('strips fields not in the schema (zod-driven sanitization)', async () => {
+      // If the backend adds a field (e.g. logging it leaks here),
+      // strip it client-side. zod's default `.parse()` strips by
+      // omission unless `.passthrough()` is opted into.
+      const schema = z.object({ id: z.string() });
+      fetchSpy.mockResolvedValueOnce(
+        jsonResponse({ id: 'u-1', secretBackendField: 'should-not-survive' }),
+      );
+
+      const result = await apiFetch<{ id: string }>('/api/auth/me', { schema });
+      expect(result).toEqual({ id: 'u-1' });
+      expect(result).not.toHaveProperty('secretBackendField');
+    });
+
+    it('throws ApiError(200, RESPONSE_SHAPE_INVALID) when the schema fails', async () => {
+      const schema = z.object({ id: z.string(), email: z.string() });
+      fetchSpy.mockResolvedValueOnce(jsonResponse({ id: 'u-1' /* email missing */ }));
+
+      try {
+        await apiFetch('/api/auth/me', { schema });
+        throw new Error('expected to throw');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ApiError);
+        const apiErr = err as ApiError;
+        expect(apiErr.status).toBe(200);
+        expect(apiErr.code).toBe('RESPONSE_SHAPE_INVALID');
+        // recovery=contact_support — the backend shipped a bad shape;
+        // a retry won't fix that. UI surfaces the requestId for support.
+        expect(apiErr.recovery).toBe('contact_support');
+      }
+    });
+
+    it('does not call schema.parse when no schema is provided (zero overhead)', async () => {
+      fetchSpy.mockResolvedValueOnce(jsonResponse({ id: 'u-1' }));
+      const result = await apiFetch<{ id: string }>('/api/auth/me');
+      expect(result).toEqual({ id: 'u-1' });
+    });
+
+    it('does not validate 204 No Content responses (no body to parse)', async () => {
+      const schema = z.object({ id: z.string() });
+      fetchSpy.mockResolvedValueOnce(new Response(null, { status: 204 }));
+
+      const result = await apiFetch('/api/auth/logout', { method: 'POST', schema });
+      expect(result).toBeUndefined();
+    });
+
+    it('does not validate non-JSON 2xx responses', async () => {
+      // Plain-text 200s (e.g. binary/text endpoints) bypass schema
+      // since there's no JSON to validate. Caller chose `schema` for
+      // a JSON endpoint; if they get text back the cast surface
+      // collapses but there's no schema to apply.
+      const schema = z.object({ id: z.string() });
+      fetchSpy.mockResolvedValueOnce(
+        new Response('plain text body', {
+          status: 200,
+          headers: { 'content-type': 'text/plain' },
+        }),
+      );
+
+      const result = await apiFetch('/api/some/text-endpoint', { schema });
+      expect(result).toBe('plain text body');
     });
   });
 });

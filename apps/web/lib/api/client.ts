@@ -80,6 +80,29 @@ async function ensureCsrfToken(): Promise<string | null> {
   }
 }
 
+/**
+ * Structural type for response-shape validators. Anything with a
+ * `parse(data: unknown) => unknown` method works — primarily zod
+ * schemas, but also any custom validator that exposes a parse-style
+ * API.
+ *
+ * The parse return type is `unknown` (not `T`) on purpose. Schemas
+ * function as a STRUCTURAL gate — they ensure the response matches a
+ * minimum shape, which is enough to catch backend drift. The caller's
+ * declared `apiFetch<T>` return type is what TypeScript sees; the
+ * schema's job is to throw on shape failure, not to narrow types. This
+ * lets a loose schema (`DatasetRecordCoreSchema`, with `.passthrough`)
+ * front a richer client-side TypeScript interface (`DatasetRecord`,
+ * with 30+ optional fields) without forcing every optional field into
+ * the schema. See `apps/web/lib/api/schemas/datasets.ts`.
+ *
+ * Kept structural (not bound to `z.ZodType`) so we don't tie the
+ * fetch wrapper to a single library version.
+ */
+export interface ResponseSchema {
+  parse: (data: unknown) => unknown;
+}
+
 export type ApiFetchInit = Omit<RequestInit, 'body'> & {
   /**
    * Request body. Plain objects are JSON-stringified and Content-Type
@@ -94,6 +117,20 @@ export type ApiFetchInit = Omit<RequestInit, 'body'> & {
    * carry the same key + body within a short window.
    */
   idempotencyKey?: string;
+  /**
+   * Optional zod-style schema (anything with `parse(unknown) => T`).
+   * When set, `apiFetch` runs `schema.parse(json)` after JSON.parse on
+   * 2xx JSON responses — the parsed value is what the caller receives.
+   * On parse failure, `apiFetch` throws `ApiError(status,
+   * { code: 'RESPONSE_SHAPE_INVALID' })`. This is CQ1 — it closes the
+   * cast-as-trust gap where a backend rename or missing field would
+   * surface as a downstream null-deref.
+   *
+   * Schema validation is only applied to 2xx responses with a JSON
+   * content-type. 204s, error bodies, and non-JSON 2xx responses are
+   * unaffected — the schema is silently ignored.
+   */
+  schema?: ResponseSchema;
 };
 
 export async function apiFetch<T = unknown>(
@@ -138,9 +175,15 @@ export async function apiFetch<T = unknown>(
   }
 
   // Strip our extension keys from RequestInit so `fetch` doesn't choke.
-  const { idempotencyKey: _idempotencyKey, body: _body, ...rest } = init;
+  const {
+    idempotencyKey: _idempotencyKey,
+    body: _body,
+    schema: _schema,
+    ...rest
+  } = init;
   void _idempotencyKey;
   void _body;
+  void _schema;
 
   const response = await fetch(path, {
     ...rest,
@@ -178,7 +221,30 @@ export async function apiFetch<T = unknown>(
 
   const contentType = response.headers.get('content-type') ?? '';
   if (contentType.includes('application/json')) {
-    return (await response.json()) as T;
+    const json = (await response.json()) as unknown;
+    // CQ1: optional schema-based runtime validation. Only consulted on
+    // 2xx JSON. Failure → ApiError with code RESPONSE_SHAPE_INVALID at
+    // the original 2xx status (typically 200) — the wire succeeded, the
+    // body shape didn't match. recovery=contact_support because retries
+    // don't fix backend shape drift; UI surfaces requestId for support.
+    if (init.schema) {
+      try {
+        return init.schema.parse(json) as T;
+      } catch (parseError) {
+        throw new ApiError(response.status, {
+          code: 'RESPONSE_SHAPE_INVALID',
+          message:
+            'The server returned an unexpected response shape. Please contact support.',
+          recovery: 'contact_support',
+          requestId: response.headers.get('x-request-id') ?? null,
+          details:
+            parseError instanceof Error
+              ? { message: parseError.message }
+              : { message: String(parseError) },
+        });
+      }
+    }
+    return json as T;
   }
   // Non-JSON 2xx — return text. Caller knows what to do.
   return (await response.text()) as unknown as T;

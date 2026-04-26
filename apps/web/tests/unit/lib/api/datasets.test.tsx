@@ -54,9 +54,17 @@ describe('lib/api/datasets — hook URL contracts', () => {
 
   it('usePublishedDatasets fetches the correct page+pageSize', async () => {
     renderHook(() => usePublishedDatasets(2, 50), { wrapper: withClient() });
+    // CQ1: hook now passes a `schema` for runtime shape validation.
+    // Assertion uses objectContaining so the schema arg is asserted by
+    // shape (presence of a `parse` method) rather than reference
+    // equality — keeps the test resilient if zod's schema-object
+    // implementation details shift between versions.
     await waitFor(() =>
       expect(mockedApiFetch).toHaveBeenCalledWith(
         '/api/datasets/published?page=2&pageSize=50',
+        expect.objectContaining({
+          schema: expect.objectContaining({ parse: expect.any(Function) }),
+        }),
       ),
     );
   });
@@ -84,7 +92,13 @@ describe('lib/api/datasets — hook URL contracts', () => {
   it('useDataset fetches /api/datasets/:id when enabled', async () => {
     renderHook(() => useDataset('d1'), { wrapper: withClient() });
     await waitFor(() =>
-      expect(mockedApiFetch).toHaveBeenCalledWith('/api/datasets/d1'),
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        '/api/datasets/d1',
+        // CQ1: schema arg added for runtime shape validation.
+        expect.objectContaining({
+          schema: expect.objectContaining({ parse: expect.any(Function) }),
+        }),
+      ),
     );
   });
 

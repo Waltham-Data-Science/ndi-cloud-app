@@ -35,7 +35,15 @@ export type ErrorCode =
   | 'BULK_FETCH_TOO_LARGE'
   | 'ONTOLOGY_LOOKUP_FAILED'
   | 'CSRF_INVALID'
-  | 'INTERNAL';
+  | 'INTERNAL'
+  // Client-side: thrown by `apiFetch` when an optional response schema
+  // is provided and the 2xx body doesn't match. Status is the original
+  // 2xx (typically 200) — the wire was fine, the body shape wasn't.
+  // recovery=`contact_support` because retries won't fix a backend
+  // shape drift; UI surfaces requestId so support can correlate.
+  // See `apps/web/lib/api/client.ts` (CQ1) and the schemas under
+  // `apps/web/lib/api/schemas/*.ts`.
+  | 'RESPONSE_SHAPE_INVALID';
 
 /**
  * FastAPI error wire shape (the wrapping envelope). `apiFetch` unwraps

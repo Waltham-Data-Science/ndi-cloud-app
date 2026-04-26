@@ -66,7 +66,15 @@ afterEach(() => {
 
 describe('LoginForm', () => {
   it('submits credentials and routes to /my on success', async () => {
-    mockedLogin.mockResolvedValue(mockAuthUser());
+    // CQ1: login() now returns the wire shape `{ ok, user, expiresAt }`
+    // (was previously a typed-as-AuthUser cast that never actually
+    // matched the backend response). The form doesn't read the value
+    // — it invalidates ['session'] and lets useSession re-read /me.
+    mockedLogin.mockResolvedValue({
+      ok: true,
+      user: { id: mockAuthUser().userId },
+      expiresAt: mockAuthUser().expiresAt,
+    });
     const user = userEvent.setup();
     const Wrapper = withClient();
     render(
@@ -92,7 +100,15 @@ describe('LoginForm', () => {
     searchParamsMock.get.mockImplementation((k: string) =>
       k === 'returnTo' ? '/datasets/d1/overview' : null,
     );
-    mockedLogin.mockResolvedValue(mockAuthUser());
+    // CQ1: login() now returns the wire shape `{ ok, user, expiresAt }`
+    // (was previously a typed-as-AuthUser cast that never actually
+    // matched the backend response). The form doesn't read the value
+    // — it invalidates ['session'] and lets useSession re-read /me.
+    mockedLogin.mockResolvedValue({
+      ok: true,
+      user: { id: mockAuthUser().userId },
+      expiresAt: mockAuthUser().expiresAt,
+    });
     const user = userEvent.setup();
     const Wrapper = withClient();
     render(
