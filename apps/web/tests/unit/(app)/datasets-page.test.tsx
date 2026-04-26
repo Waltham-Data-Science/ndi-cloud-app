@@ -32,10 +32,13 @@ import {
 } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-// Phase 6.5d: DatasetsListClient now mounts FacetPanel + uses
-// `useRouter()` to push chip-click navigations to /query. Mock the
-// hook so this hydration test stays focused on the SSR → CSR cache
-// handoff (the original Phase 3a contract).
+// Phase 6.6 REBUILD-5: DatasetsListClient now mounts the canonical
+// FacetSidebar (checkbox multi-select; replaces the misplaced 6.5d
+// chip cloud) + reads URL params for filter state via
+// `useSearchParams`. Mock both hooks so this hydration test stays
+// focused on the SSR → CSR cache handoff (the original Phase 3a
+// contract). An empty URLSearchParams means no filters are active —
+// the visible-list assertion is straightforward.
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
     push: vi.fn(),
@@ -45,6 +48,8 @@ vi.mock('next/navigation', () => ({
     forward: vi.fn(),
     prefetch: vi.fn(),
   }),
+  useSearchParams: () => new URLSearchParams(),
+  usePathname: () => '/datasets',
 }));
 
 import { DatasetsListClient } from '@/app/(app)/datasets/datasets-client';
