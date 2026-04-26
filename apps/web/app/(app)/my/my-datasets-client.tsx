@@ -1,48 +1,79 @@
 'use client';
 
 /**
- * /my client island.
+ * /my — workspace client island. Phase 6.6 REBUILD-6.
  *
- * Composes the auth gate (`useSession`) + data fetch
- * (`useMyDatasets(enabled, scope)`) + filter chips +
- * `MyDatasetsTable` (virtualized). Audit #64 closes through the
- * `MyDatasetsTable` itself; this island is the page-level wiring.
+ * Ports the full source design from
+ * `ndi-data-browser-v2/frontend/src/pages/MyDatasetsPage.tsx`:
+ *   1. Depth-gradient hero with brandmark pattern overlay, eyebrow +
+ *      admin badge (when `isAdmin`), org-name h1 + sub, scope toggle
+ *      (admin-only), and a 4-column glassmorphic HeroStat row.
+ *   2. Status filter chip row (All / Published / Draft) + view toggle.
+ *   3. Grid view (DatasetCard fan, sm:2 / xl:3) — primary view.
+ *   4. Table view (audit-#64 virtualized `MyDatasetsTable`) —
+ *      power-user dense alternative.
  *
- * **Scope toggle deferred.** The data-browser exposed an admin-only
- * `mine` ↔ `all` scope toggle by reading `MeResponse.isAdmin` (a
- * field in the legacy `/api/auth/me` shape). Phase 2b's `useSession`
- * exposes `AuthUser` (id / email / emailVerified / orgs) without
- * `isAdmin`. The toggle ships when the auth model carries that field
- * — backend already silently downgrades non-admin scope=all requests
- * (no security gap deferring), and 99% of /my views are scope=mine.
+ * Scope toggle: shipped behind `useSession().user.isAdmin` per the
+ * REBUILD-6 dependency-check verification — `MeResponse.is_admin` is
+ * already on the FastAPI payload (`backend/routers/auth.py:97-109`),
+ * we just had to extend `AuthUser` to surface it. No backend
+ * coordination required. The toggle changes the `useMyDatasets(scope)`
+ * fetch key; scope=`all` is the legacy `/datasets/unpublished` admin
+ * firehose. Backend silently downgrades non-admin scope=all → mine, so
+ * this is correct UX (only admins see the toggle, only admins benefit).
+ *
+ * View toggle persists to local component state, not URL — the source
+ * doesn't URL-state it either. Each user picks once per session and
+ * the choice doesn't need to share via deep link.
+ *
+ * Audit #64 (full virtualization for MyDatasets): preserved in the
+ * table view via `<MyDatasetsTable>`. The grid view also benefits
+ * because `DatasetCard` is itself memoized at the source repo and
+ * the catalog already imports it; rendering 200+ cards in a grid is
+ * only a paint cost, not a re-render cost.
  */
+import {
+  HardDrive,
+  FileCheck,
+  Layers,
+  Quote,
+  LayoutGrid,
+  List,
+} from 'lucide-react';
 import { useEffect, useMemo, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { FileCheck, FileText, Layers } from 'lucide-react';
 
-import { useMyDatasets } from '@/lib/api/datasets';
-import { useSession } from '@/lib/auth/use-session';
+import { DatasetCard } from '@/components/app/DatasetCard';
 import { MyDatasetsTable } from '@/components/app/MyDatasetsTable';
+import { Badge } from '@/components/ui/Badge';
 import { CardSkeleton } from '@/components/ui/Skeleton';
+import { useMyDatasets, type MyScope } from '@/lib/api/datasets';
+import { useSession } from '@/lib/auth/use-session';
 import { cn } from '@/lib/cn';
 import { formatBytes, formatNumber } from '@/lib/format';
 
 type StatusFilter = 'all' | 'published' | 'draft';
+type ViewMode = 'grid' | 'table';
 
 export function MyDatasetsClient() {
   const router = useRouter();
   const session = useSession();
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const isAdmin = session.user?.isAdmin === true;
 
-  // Client-side redirect to login when session resolves to null.
-  // Phase 5 replaces this with edge middleware enforcement.
+  const [scope, setScope] = useState<MyScope>('mine');
+  const activeScope: MyScope = isAdmin ? scope : 'mine';
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
+  const [viewMode, setViewMode] = useState<ViewMode>('grid');
+
+  // Client-side redirect to login when session resolves to null. Phase
+  // 5 replaces this with edge middleware enforcement.
   useEffect(() => {
     if (!session.isLoading && session.user === null) {
       router.replace('/login?returnTo=/my');
     }
   }, [session.isLoading, session.user, router]);
 
-  const datasetsQuery = useMyDatasets(session.user !== null, 'mine');
+  const datasetsQuery = useMyDatasets(session.user !== null, activeScope);
 
   const { visible, counts, totalSize } = useMemo(() => {
     const datasets = datasetsQuery.data?.datasets ?? [];
@@ -83,119 +114,235 @@ export function MyDatasetsClient() {
     );
   }
 
+  const orgCount = session.user.orgs?.length ?? 0;
+  const isAllScope = activeScope === 'all';
+
   return (
     <>
+      {/* ── Hero band ───────────────────────────────────────────────── */}
       <section
         className="relative overflow-hidden text-white"
         style={{ background: 'var(--grad-depth)' }}
-        aria-labelledby="my-hero-h1"
+        aria-labelledby="my-hero"
       >
-        <div className="relative mx-auto max-w-[1200px] px-7 py-10">
-          <div className="text-xs font-bold tracking-eyebrow uppercase text-white/55 mb-3">
-            <span className="inline-block h-1.5 w-1.5 rounded-full bg-ndi-teal mr-2 align-middle" />
-            My workspace
+        <div
+          aria-hidden
+          className="absolute inset-0 pointer-events-none"
+          style={{
+            backgroundImage: "url('/brand/ndicloud-emblem.svg')",
+            backgroundSize: '120px',
+            backgroundRepeat: 'repeat',
+            opacity: 0.05,
+          }}
+        />
+        <div className="relative mx-auto max-w-[1200px] px-7 py-12 md:py-14">
+          <div className="flex flex-wrap items-start justify-between gap-4">
+            <div>
+              <div className="text-xs font-bold tracking-eyebrow uppercase text-brand-blue-3 mb-3 flex items-center gap-2">
+                <span
+                  aria-hidden
+                  className="inline-block h-1.5 w-1.5 rounded-full bg-brand-blue-3"
+                />
+                Your workspace
+                {isAdmin && (
+                  <Badge
+                    variant="secondary"
+                    className="ml-2 text-[10px] bg-white/15 text-white border-white/20"
+                  >
+                    admin
+                  </Badge>
+                )}
+              </div>
+              <h1
+                id="my-hero"
+                className="text-white font-display font-extrabold tracking-tight leading-tight text-[2rem] md:text-[2.25rem] mb-2"
+              >
+                {isAllScope
+                  ? 'All in-review datasets, cloud-wide'
+                  : 'My organization’s datasets.'}
+              </h1>
+              <p className="text-white/70 text-[14.5px] leading-relaxed max-w-[620px]">
+                {isAllScope
+                  ? 'Admin debug view — every in-review dataset across every org in the cloud (legacy /datasets/unpublished firehose).'
+                  : 'Every dataset owned by your organization — published, in-review, and drafts. Click a card to inspect subjects, probes, epochs, and raw documents.'}
+              </p>
+            </div>
+
+            {isAdmin && <ScopeToggle value={scope} onChange={setScope} />}
           </div>
-          <h1
-            id="my-hero-h1"
-            className="text-[1.75rem] md:text-[2rem] font-display font-bold tracking-tight leading-tight mb-3"
-          >
-            {session.user.name ?? session.user.email}&rsquo;s datasets
-          </h1>
-          <p className="text-white/65 text-[14px] leading-relaxed max-w-[640px] mb-6">
-            Every dataset uploaded by your organization
-            {session.user.orgs && session.user.orgs.length > 1 ? 's' : ''}.
-            Drafts and in-review entries surface alongside published
-            ones — only the workspace owner sees this view.
-          </p>
-          <div className="flex flex-wrap gap-x-10 gap-y-3 text-[11.5px] text-white/55 pt-5 border-t border-white/10">
-            <Stat icon={Layers} label="Total" value={formatNumber(counts.all)} />
-            <Stat
-              icon={FileCheck}
-              label="Published"
-              value={formatNumber(counts.published)}
-            />
-            <Stat
-              icon={FileText}
-              label="Draft / In review"
-              value={formatNumber(counts.draft)}
-            />
-            <Stat label="Storage" value={formatBytes(totalSize)} />
-          </div>
+
+          {/* Stat strip — glassmorphic 4-column grid. */}
+          {datasetsQuery.data && (
+            <div className="mt-8 grid grid-cols-2 md:grid-cols-4 gap-4">
+              <HeroStat
+                icon={<Layers className="h-3.5 w-3.5" />}
+                label="Total datasets"
+                value={formatNumber(
+                  datasetsQuery.data.totalNumber ??
+                    datasetsQuery.data.datasets.length,
+                )}
+              />
+              <HeroStat
+                icon={<FileCheck className="h-3.5 w-3.5" />}
+                label="Published"
+                value={formatNumber(counts.published)}
+                hint={`${formatNumber(counts.draft)} draft / in-review`}
+              />
+              <HeroStat
+                icon={<HardDrive className="h-3.5 w-3.5" />}
+                label="Storage used"
+                value={formatBytes(totalSize)}
+                hint="across all datasets"
+              />
+              <HeroStat
+                icon={<Quote className="h-3.5 w-3.5" />}
+                label="Organizations"
+                value={formatNumber(orgCount)}
+                hint={orgCount === 1 ? 'one workspace' : 'total'}
+              />
+            </div>
+          )}
         </div>
       </section>
 
-      <div className="px-7 py-7 bg-bg-canvas min-h-[40vh]">
-        <div className="mx-auto max-w-[1200px] space-y-4">
-          <nav
-            aria-label="Status filter"
-            className="flex flex-wrap gap-1.5"
+      {/* ── Body ─────────────────────────────────────────────────────── */}
+      <section className="mx-auto max-w-[1200px] px-7 py-7 bg-bg-canvas min-h-[40vh]">
+        <div className="flex flex-wrap items-center gap-2 mb-5">
+          <FilterChip
+            active={statusFilter === 'all'}
+            onClick={() => setStatusFilter('all')}
+            count={counts.all}
           >
-            <FilterChip
-              active={statusFilter === 'all'}
-              onClick={() => setStatusFilter('all')}
-              count={counts.all}
-            >
-              All
-            </FilterChip>
-            <FilterChip
-              active={statusFilter === 'published'}
-              onClick={() => setStatusFilter('published')}
-              count={counts.published}
-            >
-              Published
-            </FilterChip>
-            <FilterChip
-              active={statusFilter === 'draft'}
-              onClick={() => setStatusFilter('draft')}
-              count={counts.draft}
-            >
-              Draft / In review
-            </FilterChip>
-          </nav>
+            All
+          </FilterChip>
+          <FilterChip
+            active={statusFilter === 'published'}
+            onClick={() => setStatusFilter('published')}
+            count={counts.published}
+          >
+            Published
+          </FilterChip>
+          <FilterChip
+            active={statusFilter === 'draft'}
+            onClick={() => setStatusFilter('draft')}
+            count={counts.draft}
+          >
+            Draft / in-review
+          </FilterChip>
+          <div className="ml-auto">
+            <ViewToggle value={viewMode} onChange={setViewMode} />
+          </div>
+        </div>
 
-          {datasetsQuery.isError && (
-            <div className="rounded-md border border-dashed border-border-subtle bg-bg-surface p-6 text-center">
-              <p className="text-sm text-fg-secondary">
-                Couldn&rsquo;t load your datasets.
+        {datasetsQuery.isError && (
+          <div className="rounded-md border border-dashed border-border-subtle bg-bg-surface p-6 text-center">
+            <p className="text-sm text-fg-secondary">
+              Couldn&rsquo;t load your datasets.
+            </p>
+            <button
+              type="button"
+              onClick={() => void datasetsQuery.refetch()}
+              className="mt-2 text-sm font-semibold text-ndi-teal hover:underline"
+            >
+              Try again
+            </button>
+          </div>
+        )}
+
+        {/* Empty all-datasets state */}
+        {!datasetsQuery.isLoading &&
+          !datasetsQuery.isError &&
+          datasetsQuery.data &&
+          datasetsQuery.data.datasets.length === 0 && (
+            <div className="rounded-lg border border-dashed border-border-subtle bg-white p-12 text-center">
+              <h3 className="text-[16px] font-bold text-brand-navy mb-1">
+                {isAllScope
+                  ? 'No in-review datasets cloud-wide'
+                  : 'No datasets yet in your workspace'}
+              </h3>
+              <p className="text-[13.5px] text-fg-secondary max-w-md mx-auto">
+                {isAllScope
+                  ? 'Switch back to “My org only” for your scoped view.'
+                  : 'Datasets uploaded via NDI Cloud (ndi-matlab, ndi-python, or the Data Browser) will appear here — published work, in-review submissions, and drafts.'}
+              </p>
+            </div>
+          )}
+
+        {/* Filtered-empty state — has datasets but the active chip filters them all out */}
+        {!datasetsQuery.isLoading &&
+          !datasetsQuery.isError &&
+          datasetsQuery.data &&
+          datasetsQuery.data.datasets.length > 0 &&
+          visible.length === 0 && (
+            <div className="rounded-lg border border-dashed border-border-subtle bg-white p-10 text-center">
+              <p className="text-[13.5px] text-fg-secondary">
+                No datasets match the&nbsp;
+                <strong className="text-brand-navy font-semibold">
+                  {statusFilter}
+                </strong>
+                &nbsp;filter.
               </p>
               <button
                 type="button"
-                onClick={() => void datasetsQuery.refetch()}
-                className="mt-2 text-sm font-semibold text-ndi-teal hover:underline"
+                onClick={() => setStatusFilter('all')}
+                className="mt-2 text-[12.5px] text-fg-link hover:underline underline-offset-2"
               >
-                Try again
+                Show all
               </button>
             </div>
           )}
 
-          {!datasetsQuery.isError && (
+        {/* Cards or table */}
+        {!datasetsQuery.isLoading &&
+          !datasetsQuery.isError &&
+          visible.length > 0 &&
+          (viewMode === 'grid' ? (
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+              {visible.map((d) => (
+                <DatasetCard key={d.id} dataset={d} />
+              ))}
+            </div>
+          ) : (
             <MyDatasetsTable datasets={visible} />
-          )}
-        </div>
-      </div>
+          ))}
+      </section>
     </>
   );
 }
 
-function Stat({
+/* ─── HeroStat (glassmorphic stat card) ──────────────────────────── */
+
+function HeroStat({
+  icon,
   label,
   value,
-  icon: Icon,
+  hint,
 }: {
+  icon: React.ReactNode;
   label: string;
   value: string | number;
-  icon?: React.ComponentType<{ className?: string; 'aria-hidden'?: boolean }>;
+  hint?: string;
 }) {
   return (
-    <div className="flex flex-col">
-      <strong className="text-white font-display font-bold text-[17px] tracking-tight leading-none mb-1 inline-flex items-center gap-1.5">
-        {Icon && <Icon className="h-3.5 w-3.5 text-white/65" aria-hidden />}
+    <div
+      className="rounded-lg border border-white/10 p-4"
+      style={{ background: 'rgba(255,255,255,0.05)' }}
+    >
+      <div className="flex items-center gap-1.5 text-[10.5px] font-bold tracking-[0.1em] uppercase text-white/55 mb-2">
+        {icon}
+        <span>{label}</span>
+      </div>
+      <div className="font-display font-bold text-[24px] tracking-tight leading-none text-white mb-1">
         {value}
-      </strong>
-      <span className="uppercase tracking-wider">{label}</span>
+      </div>
+      {hint && (
+        <div className="text-[11.5px] text-white/65 font-mono">{hint}</div>
+      )}
     </div>
   );
 }
+
+/* ─── Status filter chips ────────────────────────────────────────── */
 
 function FilterChip({
   active,
@@ -214,17 +361,141 @@ function FilterChip({
       onClick={onClick}
       aria-pressed={active}
       className={cn(
-        'rounded-full px-3 py-1 text-[12px] font-medium transition-colors',
-        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ndi-teal',
+        'inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[12.5px] font-medium transition-all',
         active
-          ? 'bg-ndi-teal text-white'
-          : 'bg-bg-surface text-fg-secondary ring-1 ring-border-subtle hover:bg-bg-muted',
+          ? 'bg-ndi-teal-light border-ndi-teal-border text-ndi-teal font-semibold'
+          : 'bg-white border-border-subtle text-fg-secondary hover:border-border-strong',
+      )}
+    >
+      <span>{children}</span>
+      <span
+        className={cn(
+          'font-mono text-[11px] px-1.5 py-0 rounded-full',
+          active ? 'bg-white/70' : 'bg-bg-muted',
+        )}
+      >
+        {count}
+      </span>
+    </button>
+  );
+}
+
+/* ─── Admin scope toggle ─────────────────────────────────────────── */
+
+function ScopeToggle({
+  value,
+  onChange,
+}: {
+  value: MyScope;
+  onChange: (next: MyScope) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="Dataset scope"
+      className="inline-flex items-center rounded-full border border-white/15 overflow-hidden text-[12.5px] shrink-0"
+      data-testid="my-scope-toggle"
+      style={{ background: 'rgba(255,255,255,0.06)' }}
+    >
+      <ScopeToggleButton
+        active={value === 'mine'}
+        onClick={() => onChange('mine')}
+      >
+        My org only
+      </ScopeToggleButton>
+      <ScopeToggleButton
+        active={value === 'all'}
+        onClick={() => onChange('all')}
+      >
+        All orgs
+      </ScopeToggleButton>
+    </div>
+  );
+}
+
+function ScopeToggleButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        'px-3.5 py-1.5 font-medium transition-colors',
+        active ? 'bg-white text-brand-navy' : 'text-white/75 hover:text-white',
       )}
     >
       {children}
-      <span className={cn('ml-1.5 font-mono', active ? 'text-white/85' : 'text-fg-muted')}>
-        {count}
-      </span>
+    </button>
+  );
+}
+
+/* ─── View mode toggle (grid / table) ───────────────────────────── */
+
+function ViewToggle({
+  value,
+  onChange,
+}: {
+  value: ViewMode;
+  onChange: (next: ViewMode) => void;
+}) {
+  return (
+    <div
+      role="group"
+      aria-label="View mode"
+      className="inline-flex items-center gap-0 rounded-md border border-border-subtle overflow-hidden bg-white"
+      data-testid="view-toggle"
+    >
+      <ViewToggleButton
+        active={value === 'grid'}
+        onClick={() => onChange('grid')}
+        label="Grid view"
+      >
+        <LayoutGrid className="h-3.5 w-3.5" aria-hidden />
+      </ViewToggleButton>
+      <ViewToggleButton
+        active={value === 'table'}
+        onClick={() => onChange('table')}
+        label="Table view"
+      >
+        <List className="h-3.5 w-3.5" aria-hidden />
+      </ViewToggleButton>
+    </div>
+  );
+}
+
+function ViewToggleButton({
+  active,
+  onClick,
+  label,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      aria-label={label}
+      className={cn(
+        'inline-flex items-center justify-center px-2.5 py-1.5 transition-colors',
+        active
+          ? 'bg-bg-muted text-brand-navy'
+          : 'text-fg-muted hover:text-brand-navy hover:bg-bg-muted/60',
+      )}
+    >
+      {children}
     </button>
   );
 }

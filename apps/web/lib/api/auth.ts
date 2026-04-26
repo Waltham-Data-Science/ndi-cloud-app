@@ -23,6 +23,16 @@ export type AuthUser = {
   name?: string;
   emailVerified: boolean;
   orgs?: Array<{ id: string; name: string; role: 'admin' | 'member' }>;
+  /**
+   * Cloud-admin flag — true for users whose `MeResponse.is_admin` is
+   * true on FastAPI (`backend/routers/auth.py:97-109`). Drives `/my`
+   * scope-toggle visibility (REBUILD-6) and any future admin-only UI
+   * affordances. Optional because older deploys' `/api/auth/me` payload
+   * may not carry the field; the upfront REBUILD-6 verification on
+   * 2026-04-25 confirmed FastAPI populates it today, so defensive
+   * optional only protects against payload-shape changes.
+   */
+  isAdmin?: boolean;
 };
 
 /**
