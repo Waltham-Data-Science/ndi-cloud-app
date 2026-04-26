@@ -41,6 +41,7 @@ import {
   type DatasetListResponse,
 } from '@/lib/api/datasets';
 import { env } from '@/lib/env';
+import { DatasetsHero } from '@/components/datasets/DatasetsHero';
 import { DatasetsListClient } from './datasets-client';
 
 export const revalidate = 60;
@@ -72,29 +73,20 @@ export default async function DatasetsPage() {
   }
 
   return (
-    <div
-      className="px-7 py-12 bg-bg-canvas"
-      aria-labelledby="datasets-h1"
-    >
-      <div className="mx-auto max-w-[1200px]">
-        <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
-          NDI Data Commons · Open access
-        </div>
-        <h1
-          id="datasets-h1"
-          className="text-[2.25rem] md:text-[2.75rem] font-bold tracking-tight text-fg-primary leading-[1.1] mb-3"
-        >
-          Published neuroscience datasets
-        </h1>
-        <p className="text-fg-secondary text-[15px] leading-relaxed max-w-[640px] mb-8">
-          Faceted search across every dataset on NDI Cloud. Filter by
-          species, region, probe, year — every entry carries a Crossref DOI.
-        </p>
+    <HydrationBoundary state={dehydrate(queryClient)}>
+      {/* Full-bleed depth-gradient hero. Reads `totalNumber` from the
+       * shared prefetched query so the "Published datasets" stat renders
+       * synchronously on first paint — no second network request, no
+       * skeleton flash. Phase 6.6 REBUILD-4 closes the catalog-hero
+       * placeholder.
+       */}
+      <DatasetsHero />
 
-        <HydrationBoundary state={dehydrate(queryClient)}>
+      <div className="px-7 py-8 bg-bg-canvas">
+        <div className="mx-auto max-w-[1200px]">
           <DatasetsListClient page={1} pageSize={PAGE_SIZE} />
-        </HydrationBoundary>
+        </div>
       </div>
-    </div>
+    </HydrationBoundary>
   );
 }
