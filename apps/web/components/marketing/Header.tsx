@@ -5,12 +5,14 @@ import { useMediaQuery } from '@mui/material';
 import IconButton from '@mui/material/IconButton';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
+import { useQueryClient } from '@tanstack/react-query';
 import { clsx } from 'clsx';
 import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useState, type CSSProperties, type MouseEvent } from 'react';
 
+import { logout } from '@/lib/api/auth';
 import { commonsSearchUrl, myWorkspaceUrl } from '@/lib/urls';
 import { useSession } from '@/lib/auth/use-session';
 
@@ -77,6 +79,7 @@ export function Header() {
   const { user } = useSession();
   const router = useRouter();
   const pathname = usePathname();
+  const queryClient = useQueryClient();
   const isMobile = useMediaQuery('(max-width:900px)');
   const [anchorMobileNav, setAnchorMobileNav] = useState<HTMLElement | null>(null);
   const [anchorUser, setAnchorUser] = useState<HTMLElement | null>(null);
@@ -85,6 +88,32 @@ export function Header() {
     if (href === '/') return pathname === '/';
     return pathname === href || pathname.startsWith(`${href}/`);
   };
+
+  /**
+   * Real logout: POST /api/auth/logout (FastAPI clears HttpOnly + CSRF
+   * cookies server-side), then clear the WHOLE TanStack cache (not just
+   * `['session']`) so persisted queries from the previous user — saved
+   * dataset lists, /my workspace data, etc. — don't leak across logouts
+   * via the localStorage persister. Then route to /login.
+   *
+   * Pattern matches `my-account-client.tsx::handleLogout`. Wrapping the
+   * API call in try/finally ensures the local teardown runs even if
+   * the network call fails — the user perceives logout success and the
+   * next /api/auth/me catches any still-valid cookie.
+   *
+   * Phase 6.7 cutover-blocker B5 — replaces the Phase 2a stub that
+   * just routed to /login without clearing the session.
+   */
+  async function handleLogout() {
+    try {
+      await logout();
+    } catch {
+      // Even if the API call fails, locally treat the session as gone.
+      // The Vercel function logs will capture the failure.
+    }
+    queryClient.clear();
+    router.push('/login');
+  }
 
   const openMobileMenu = (e: MouseEvent<HTMLElement>) => setAnchorMobileNav(e.currentTarget);
   const closeMobileMenu = () => setAnchorMobileNav(null);
@@ -253,9 +282,7 @@ export function Header() {
                   <MenuItem
                     onClick={() => {
                       closeMobileMenu();
-                      // Phase 2b/3a wires real logout via apiFetch('/api/auth/logout');
-                      // Phase 2a stub clears local session state by routing to login.
-                      router.push('/login');
+                      void handleLogout();
                     }}
                   >
                     Log out
@@ -306,8 +333,7 @@ export function Header() {
                   <MenuItem
                     onClick={() => {
                       closeUserMenu();
-                      // Phase 2b/3a: real logout. See note in mobile branch.
-                      router.push('/login');
+                      void handleLogout();
                     }}
                   >
                     Log out
