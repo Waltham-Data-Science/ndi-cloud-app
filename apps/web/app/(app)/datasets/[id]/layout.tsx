@@ -15,77 +15,41 @@
  * client-side pathname check rather than a layout sibling, but the
  * UX is identical — document detail drops the dataset chrome entirely.
  *
- * Phase 6.7 A2 (hotfix-revised): `generateMetadata` recovers the
- * source SPA's `useDocumentTitle` per-route title (audit #67). Anon
- * fetch via `INTERNAL_API_URL` — `/api/datasets/{id}` is public-
- * readable for published datasets, which covers the common case.
+ * **No `generateMetadata` here.** Phase 6.7 A2 (PR #75) tried to
+ * recover the source SPA's `useDocumentTitle` per-route title by
+ * adding a layout-level `generateMetadata` that fetched the dataset
+ * name. Two production failures resulted:
  *
- * Title resolution:
- *   - INTERNAL_API_URL set + dataset is public → "${name}" (root
- *     layout's `template: '%s · NDI Cloud'` adds the suffix).
- *   - INTERNAL_API_URL unset (dev/test) → "Dataset" → wrapped to
- *     "Dataset · NDI Cloud".
- *   - Fetch fails / dataset is org-private (401) → "Dataset" fallback.
+ *   1. v1 used `cookies()` to forward auth — that opted the route
+ *      into dynamic rendering and conflicted with the Overview
+ *      page's `generateStaticParams` (top-20 prerender). 500.
+ *   2. v2 dropped `cookies()` — but Next.js 16.2 still threw
+ *      `InvariantError: The manifests singleton was not initialized`
+ *      whenever the layout's async `generateMetadata` tried to fetch
+ *      while the child page had `generateStaticParams`. Same 500.
  *
- * **No `cookies()` call** — calling `cookies()` here opted the route
- * into dynamic rendering, which conflicts with the Overview page's
- * `generateStaticParams` (top-20 prerender). The previous version
- * threw `Route used 'cookies' while rendering a static page` and
- * returned a global 500 because errors in `generateMetadata` bypass
- * the `error.tsx` boundary entirely. The trade-off: org-private
- * datasets show the generic title; their actual content still
- * renders fine because the client-side `useDataset` hook carries
- * cookies via apiFetch.
+ * Errors thrown in `generateMetadata` bypass the `error.tsx`
+ * boundary and surface as the global Next 500 page — so the
+ * blast radius was "every dataset detail URL is broken."
  *
- * Tabs as nested routes (still wired here):
+ * Per-dataset titles are now set at the LEAF page level
+ * (`overview/page.tsx` etc.) which is the safer composition. A2
+ * audit follow-up #67 stays open as "implement per-dataset titles
+ * on each leaf page" — see `overview/page.tsx` for the working
+ * shape.
+ *
+ * Tabs as nested routes:
  *   `tables/page.tsx`         → server redirect to ./subject
  *   `tables/[className]/page.tsx`
  *   `pivot/[grain]/page.tsx`
  *   `documents/page.tsx`              → DocumentExplorer (under chrome)
  *   `documents/[docId]/page.tsx`      → standalone (chrome hidden)
  */
-import type { Metadata } from 'next';
-
 import { DatasetDetailChromeGate } from '@/components/app/DatasetDetailChromeGate';
-import { fetchDatasetServer } from '@/lib/api/datasets';
-import { env } from '@/lib/env';
 
 interface LayoutProps {
   children: React.ReactNode;
   params: Promise<{ id: string }>;
-}
-
-// Bare title — root layout's `template: '%s · NDI Cloud'` adds the
-// suffix automatically. Prevents the `… · NDI Cloud · NDI Cloud`
-// duplication this PR also fixes elsewhere.
-const FALLBACK_TITLE = 'Dataset';
-
-export async function generateMetadata({
-  params,
-}: {
-  params: Promise<{ id: string }>;
-}): Promise<Metadata> {
-  const { id } = await params;
-
-  // Without INTERNAL_API_URL (dev/test/preview-without-upstream), don't
-  // try to fetch — return the generic title so builds don't ping a
-  // missing endpoint and time out.
-  if (!env.INTERNAL_API_URL) {
-    return { title: FALLBACK_TITLE };
-  }
-
-  // Anonymous fetch — `/api/datasets/{id}` is public-readable for
-  // published datasets. Org-private datasets return 401 →
-  // fetchDatasetServer returns null → fallback. NO `cookies()` call:
-  // see header comment for the static-prerender conflict story.
-  const dataset = await fetchDatasetServer(env.INTERNAL_API_URL, id);
-
-  if (!dataset?.name) {
-    return { title: FALLBACK_TITLE };
-  }
-
-  // Bare name; root layout's template wraps with " · NDI Cloud".
-  return { title: dataset.name };
 }
 
 export default async function DatasetDetailLayout({
