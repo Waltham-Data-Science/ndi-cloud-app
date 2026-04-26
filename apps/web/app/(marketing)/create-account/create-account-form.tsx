@@ -11,6 +11,51 @@ import { Field, FormError } from '@/components/marketing/AuthForm';
 import { MarketingButton } from '@/components/marketing/Button';
 
 const MIN_PASSWORD = 12;
+const MAX_PASSWORD = 99;
+const MIN_NAME = 2;
+const MAX_NAME = 50;
+
+/**
+ * Password complexity requirements (M7).
+ *
+ * Source `pages/createAccount/index.tsx:25-31` enforces:
+ *   /^(?=.*\d)(?=.*[a-z])(?=.*[A-Z])(?=.*[^a-zA-Z0-9])(?!.*\s).{8,99}$/
+ *
+ * That maps to a Cognito UserPool policy of: min length, at least one
+ * uppercase, lowercase, digit, special, no whitespace. Cognito enforces
+ * these server-side; the frontend mirror prevents users submitting weak
+ * passwords and getting back a confusing 400.
+ *
+ * The target's stricter 12-char minimum (vs source's 8) is preserved.
+ *
+ * Returns a list of human-readable problems with the password — empty
+ * means it passes. We surface *what's missing* (not just "invalid") so
+ * users can correct incrementally.
+ */
+function validatePassword(pw: string): string[] {
+  const problems: string[] = [];
+  if (pw.length < MIN_PASSWORD) {
+    problems.push(`at least ${MIN_PASSWORD} characters`);
+  }
+  if (pw.length > MAX_PASSWORD) {
+    problems.push(`${MAX_PASSWORD} characters or fewer`);
+  }
+  if (!/[A-Z]/.test(pw)) problems.push('one uppercase letter');
+  if (!/[a-z]/.test(pw)) problems.push('one lowercase letter');
+  if (!/\d/.test(pw)) problems.push('one number');
+  if (!/[^A-Za-z0-9]/.test(pw)) problems.push('one special character');
+  if (/\s/.test(pw)) problems.push('no spaces');
+  return problems;
+}
+
+function passwordHint(pw: string): string {
+  if (pw.length === 0) {
+    return `At least ${MIN_PASSWORD} characters with one uppercase, lowercase, number, and special character.`;
+  }
+  const problems = validatePassword(pw);
+  if (problems.length === 0) return 'Looks good.';
+  return `Still needed: ${problems.join(', ')}.`;
+}
 
 export function CreateAccountForm() {
   const router = useRouter();
@@ -28,10 +73,23 @@ export function CreateAccountForm() {
 
     // Client-side validation. Server re-validates; this is purely UX.
     const nextFieldErrors: Record<string, string> = {};
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      nextFieldErrors.name = 'Name is required.';
+    } else if (trimmedName.length < MIN_NAME) {
+      nextFieldErrors.name = `Name must be at least ${MIN_NAME} characters.`;
+    } else if (trimmedName.length > MAX_NAME) {
+      nextFieldErrors.name = `Name must be ${MAX_NAME} characters or fewer.`;
+    }
     if (!email) nextFieldErrors.email = 'Email is required.';
-    if (!password) nextFieldErrors.password = 'Password is required.';
-    else if (password.length < MIN_PASSWORD)
-      nextFieldErrors.password = `Password must be at least ${MIN_PASSWORD} characters.`;
+    if (!password) {
+      nextFieldErrors.password = 'Password is required.';
+    } else {
+      const problems = validatePassword(password);
+      if (problems.length > 0) {
+        nextFieldErrors.password = `Password needs ${problems.join(', ')}.`;
+      }
+    }
     if (Object.keys(nextFieldErrors).length > 0) {
       setFieldErrors(nextFieldErrors);
       return;
@@ -39,7 +97,7 @@ export function CreateAccountForm() {
 
     setSubmitting(true);
     try {
-      await signup({ email, password, name: name.trim() || undefined });
+      await signup({ email, password, name: trimmedName });
       router.push(`/account-verification?email=${encodeURIComponent(email)}`);
     } catch (err) {
       if (err instanceof ApiError) {
@@ -86,9 +144,13 @@ export function CreateAccountForm() {
           type="text"
           name="name"
           autoComplete="name"
-          hint="Optional — shown next to your published datasets."
+          required
+          minLength={MIN_NAME}
+          maxLength={MAX_NAME}
+          hint="Shown next to your published datasets — required for attribution."
           value={name}
           onChange={(e) => setName(e.target.value)}
+          error={fieldErrors.name}
         />
         <Field
           label="Email"
@@ -107,7 +169,8 @@ export function CreateAccountForm() {
           autoComplete="new-password"
           required
           minLength={MIN_PASSWORD}
-          hint={`At least ${MIN_PASSWORD} characters.`}
+          maxLength={MAX_PASSWORD}
+          hint={passwordHint(password)}
           value={password}
           onChange={(e) => setPassword(e.target.value)}
           error={fieldErrors.password}
