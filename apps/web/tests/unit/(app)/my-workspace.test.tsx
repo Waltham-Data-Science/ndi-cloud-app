@@ -34,6 +34,7 @@ import type { ReactNode } from 'react';
 
 import type { AuthUser } from '@/lib/api/auth';
 import type { DatasetListResponse, DatasetRecord } from '@/lib/api/datasets';
+import { mockAuthUser } from '@/tests/fixtures/auth';
 
 // `MyDatasetsTable` from Phase 3c (audit #64 virtualized table) wraps
 // `useVirtualizer` from `@tanstack/react-virtual`, which doesn't measure
@@ -115,12 +116,7 @@ beforeEach(() => {
 describe('/my workspace — Phase 6.6 REBUILD-6', () => {
   it('renders the depth-gradient hero with eyebrow + h1 + 4 HeroStat cards', () => {
     const Wrapper = withSession(
-      {
-        id: 'u1',
-        email: 'a@b.com',
-        emailVerified: true,
-        orgs: [{ id: 'o1', name: 'Lab A', role: 'member' }],
-      },
+      mockAuthUser({ organizationIds: ['o1'] }),
       {
         datasets: [makeRecord({ totalSize: 2 * 1024 * 1024 })],
         totalNumber: 1,
@@ -145,12 +141,7 @@ describe('/my workspace — Phase 6.6 REBUILD-6', () => {
 
   it('hides the scope toggle and admin badge for non-admin sessions', () => {
     const Wrapper = withSession(
-      {
-        id: 'u1',
-        email: 'a@b.com',
-        emailVerified: true,
-        isAdmin: false,
-      },
+      mockAuthUser({ isAdmin: false }),
       {
         datasets: [makeRecord()],
         totalNumber: 1,
@@ -167,12 +158,7 @@ describe('/my workspace — Phase 6.6 REBUILD-6', () => {
 
   it('shows the scope toggle and admin badge for admin sessions', () => {
     const Wrapper = withSession(
-      {
-        id: 'u1',
-        email: 'a@b.com',
-        emailVerified: true,
-        isAdmin: true,
-      },
+      mockAuthUser({ isAdmin: true }),
       {
         datasets: [makeRecord()],
         totalNumber: 1,
@@ -197,11 +183,7 @@ describe('/my workspace — Phase 6.6 REBUILD-6', () => {
 
   it('view toggle flips between grid and table; grid renders DatasetCard, table renders virtualized rows', () => {
     const Wrapper = withSession(
-      {
-        id: 'u1',
-        email: 'a@b.com',
-        emailVerified: true,
-      },
+      mockAuthUser(),
       {
         datasets: [
           makeRecord({ id: 'd1', name: 'First dataset' }),
@@ -229,11 +211,7 @@ describe('/my workspace — Phase 6.6 REBUILD-6', () => {
 
   it('status filter narrows visible datasets (Published filter hides drafts)', () => {
     const Wrapper = withSession(
-      {
-        id: 'u1',
-        email: 'a@b.com',
-        emailVerified: true,
-      },
+      mockAuthUser(),
       {
         datasets: [
           makeRecord({

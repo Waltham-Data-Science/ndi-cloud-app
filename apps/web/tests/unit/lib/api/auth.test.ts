@@ -44,6 +44,7 @@ import {
   verifyEmail,
 } from '@/lib/api/auth';
 import { apiFetch, ApiError } from '@/lib/api/client';
+import { mockAuthUser } from '@/tests/fixtures/auth';
 
 const mockedApiFetch = vi.mocked(apiFetch);
 
@@ -58,11 +59,7 @@ describe('lib/api/auth wrappers', () => {
 
   describe('me()', () => {
     it('returns the parsed user on success', async () => {
-      const fixture = {
-        id: 'u-1',
-        email: 'a@b.com',
-        emailVerified: true,
-      };
+      const fixture = mockAuthUser();
       mockedApiFetch.mockResolvedValueOnce(fixture);
       await expect(me()).resolves.toEqual(fixture);
       expect(mockedApiFetch).toHaveBeenCalledWith('/api/auth/me');
@@ -84,7 +81,7 @@ describe('lib/api/auth wrappers', () => {
     // user-facing label and prop name stay as "Email" — only the JSON
     // wire field name differs (Cognito treats email as the username
     // field). See AUTH_CONTRACT_AUDIT.md.
-    mockedApiFetch.mockResolvedValueOnce({ id: 'u-1', email: 'a@b.com', emailVerified: true });
+    mockedApiFetch.mockResolvedValueOnce(mockAuthUser());
     await login('a@b.com', 'pw');
     expect(mockedApiFetch).toHaveBeenCalledWith('/api/auth/login', {
       method: 'POST',

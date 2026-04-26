@@ -23,6 +23,7 @@ import type { ReactNode } from 'react';
 
 import { LoginForm } from '@/app/(marketing)/login/login-form';
 import { ApiError } from '@/lib/api/client';
+import { mockAuthUser } from '@/tests/fixtures/auth';
 
 vi.mock('@/lib/api/auth', () => ({
   login: vi.fn(),
@@ -61,11 +62,7 @@ afterEach(() => {
 
 describe('LoginForm', () => {
   it('submits credentials and routes to /my on success', async () => {
-    mockedLogin.mockResolvedValue({
-      id: 'u-1',
-      email: 'audri@walthamdatascience.com',
-      emailVerified: true,
-    });
+    mockedLogin.mockResolvedValue(mockAuthUser());
     const user = userEvent.setup();
     const Wrapper = withClient();
     render(
@@ -91,11 +88,7 @@ describe('LoginForm', () => {
     searchParamsMock.get.mockImplementation((k: string) =>
       k === 'returnTo' ? '/datasets/d1/overview' : null,
     );
-    mockedLogin.mockResolvedValue({
-      id: 'u-1',
-      email: 'audri@walthamdatascience.com',
-      emailVerified: true,
-    });
+    mockedLogin.mockResolvedValue(mockAuthUser());
     const user = userEvent.setup();
     const Wrapper = withClient();
     render(
