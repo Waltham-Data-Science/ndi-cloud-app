@@ -15,9 +15,12 @@ import { MarketingButton } from '@/components/marketing/Button';
  * `reset()` to re-render the boundary and the page below it without a
  * full navigation.
  *
- * Server-side this is logged to the Vercel function output stream;
- * Phase 5 wires Sentry / Vercel Analytics for client-side error
- * surfacing.
+ * Errors are logged to the browser console in dev and to the Vercel
+ * function output stream in prod. At <10 institutional users where
+ * the maintainer is in direct contact with everyone affected, "user
+ * tells me when it breaks" + Vercel logs is a sufficient feedback
+ * loop — a formal error tracker is deferred until traffic justifies
+ * the operational complexity.
  */
 export default function MarketingError({
   error,
@@ -27,9 +30,7 @@ export default function MarketingError({
   reset: () => void;
 }) {
   useEffect(() => {
-    // Surface to the browser console in dev + Vercel function logs in prod;
-    // Phase 5 layers Sentry / Vercel Analytics on top for client-side error
-    // aggregation.
+    // Surface to the browser console in dev + Vercel function logs in prod.
     console.error('[marketing/error]', error.message, error.digest);
   }, [error]);
 
