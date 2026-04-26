@@ -18,6 +18,7 @@ import type { ReactNode } from 'react';
 
 import { useSession } from '@/lib/auth/use-session';
 import { ApiError } from '@/lib/api/client';
+import { mockAuthUser } from '@/tests/fixtures/auth';
 
 vi.mock('@/lib/api/auth', () => ({
   me: vi.fn(),
@@ -46,21 +47,14 @@ describe('useSession (Phase 2b)', () => {
   });
 
   it('returns an authenticated user when /api/auth/me succeeds', async () => {
-    mockedMe.mockResolvedValue({
-      id: 'u-1',
-      email: 'audri@walthamdatascience.com',
-      emailVerified: true,
-    });
+    const fixture = mockAuthUser();
+    mockedMe.mockResolvedValue(fixture);
     const { result } = renderHook(() => useSession(), { wrapper: withClient() });
 
     await waitFor(() => {
       expect(result.current.isLoading).toBe(false);
     });
-    expect(result.current.user).toEqual({
-      id: 'u-1',
-      email: 'audri@walthamdatascience.com',
-      emailVerified: true,
-    });
+    expect(result.current.user).toEqual(fixture);
     expect(result.current.error).toBeNull();
   });
 

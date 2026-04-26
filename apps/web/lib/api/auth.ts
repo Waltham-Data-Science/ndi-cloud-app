@@ -17,22 +17,38 @@
 
 import { apiFetch } from './client';
 
+/**
+ * Mirrors FastAPI's `MeResponse` Pydantic model
+ * (`backend/routers/auth.py:27-39`) verbatim. The wire is
+ * mixed-case — `userId`, `organizationIds`, `isAdmin`, `issuedAt`,
+ * `lastActive`, `expiresAt` are camelCase; `email_hash` is the only
+ * snake_case field. The frontend type matches the JSON shape
+ * exactly so `apiFetch<AuthUser>('/api/auth/me')` is a pure cast,
+ * no transform layer.
+ *
+ * `email` and `name` are NOT on the cookie session — FastAPI returns
+ * a 16-char SHA-256 prefix as `email_hash` and never carries the
+ * raw email or display name in the session blob (see
+ * `backend/auth/session.py::SessionData`). Consumers that previously
+ * showed `user.email` must either show the hash, the userId prefix,
+ * or omit the row entirely.
+ *
+ * AUTH_CONTRACT_AUDIT.md is the canonical record. See B4.
+ */
 export type AuthUser = {
-  id: string;
-  email: string;
-  name?: string;
-  emailVerified: boolean;
-  orgs?: Array<{ id: string; name: string; role: 'admin' | 'member' }>;
-  /**
-   * Cloud-admin flag — true for users whose `MeResponse.is_admin` is
-   * true on FastAPI (`backend/routers/auth.py:97-109`). Drives `/my`
-   * scope-toggle visibility (REBUILD-6) and any future admin-only UI
-   * affordances. Optional because older deploys' `/api/auth/me` payload
-   * may not carry the field; the upfront REBUILD-6 verification on
-   * 2026-04-25 confirmed FastAPI populates it today, so defensive
-   * optional only protects against payload-shape changes.
-   */
-  isAdmin?: boolean;
+  userId: string;
+  /** 16-char SHA-256 prefix of the user's email (deduplicates without reversibility). */
+  email_hash: string;
+  /** Org IDs the user belongs to; cached on the FastAPI session at login. */
+  organizationIds: string[];
+  /** Cloud-admin flag — drives `/my` scope-toggle visibility (REBUILD-6). */
+  isAdmin: boolean;
+  /** Session issuance timestamp (unix seconds). */
+  issuedAt: number;
+  /** Session last-touched timestamp (unix seconds). */
+  lastActive: number;
+  /** Cloud access-token expiry (unix seconds) — NOT the session cookie's expiry. */
+  expiresAt: number;
 };
 
 /**

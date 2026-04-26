@@ -23,6 +23,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 import { Header } from '@/components/marketing/Header';
+import { mockAuthUser } from '@/tests/fixtures/auth';
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: vi.fn() }),
@@ -67,15 +68,10 @@ describe('Header + useSession integration', () => {
 
   it('shows "My Account" after /api/auth/me resolves with a user', async () => {
     const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(
-      new Response(
-        JSON.stringify({
-          id: 'u-1',
-          email: 'audri@walthamdatascience.com',
-          name: 'Audri B',
-          emailVerified: true,
-        }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      ),
+      new Response(JSON.stringify(mockAuthUser()), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      }),
     );
 
     const Wrapper = withClient();

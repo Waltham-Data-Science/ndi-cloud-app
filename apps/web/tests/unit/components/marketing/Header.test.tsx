@@ -22,6 +22,7 @@ import userEvent from '@testing-library/user-event';
 
 import { Header } from '@/components/marketing/Header';
 import { useSession } from '@/lib/auth/use-session';
+import { mockAuthUser } from '@/tests/fixtures/auth';
 
 vi.mock('@/lib/auth/use-session');
 const pushMock = vi.fn();
@@ -121,12 +122,7 @@ describe('Header (anonymous user, desktop)', () => {
 describe('Header (authenticated user, desktop)', () => {
   beforeEach(() => {
     mockedUseSession.mockReturnValue({
-      user: {
-        id: 'u-audri',
-        email: 'audri@walthamdatascience.com',
-        name: 'Audri B',
-        emailVerified: true,
-      },
+      user: mockAuthUser(),
       isLoading: false,
       error: null,
     });
@@ -149,11 +145,7 @@ describe('Header (authenticated user, desktop)', () => {
 describe('Header user menu (desktop, authenticated)', () => {
   beforeEach(() => {
     mockedUseSession.mockReturnValue({
-      user: {
-        id: 'u-audri',
-        email: 'audri@walthamdatascience.com',
-        emailVerified: true,
-      },
+      user: mockAuthUser(),
       isLoading: false,
       error: null,
     });
@@ -282,11 +274,7 @@ describe('Header (mobile, anonymous)', () => {
 describe('Header (mobile, authenticated)', () => {
   beforeEach(() => {
     mockedUseSession.mockReturnValue({
-      user: {
-        id: 'u-audri',
-        email: 'audri@walthamdatascience.com',
-        emailVerified: true,
-      },
+      user: mockAuthUser(),
       isLoading: false,
       error: null,
     });

@@ -114,7 +114,7 @@ export function MyDatasetsClient() {
     );
   }
 
-  const orgCount = session.user.orgs?.length ?? 0;
+  const orgCount = session.user.organizationIds.length;
   const isAllScope = activeScope === 'all';
 
   return (

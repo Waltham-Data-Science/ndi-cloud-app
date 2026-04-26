@@ -13,14 +13,21 @@ import { MarketingButton } from '@/components/marketing/Button';
 /**
  * /my-account — authenticated user landing.
  *
- * Phase 2b minimum: shows the user's profile (email, name), wires
- * Log out (calls logout() then invalidates session cache + routes
- * to /login), and links to the data-browser surfaces (My Workspace,
- * Data Commons). The full AccountSidebar from the source repo
- * (with "Account Info" / "Change Password" sub-pages) lands in
- * Phase 3a alongside the data-browser routes — that gives a single
- * place to share the auth-aware nav rather than re-implementing it
- * here.
+ * Phase 6.7 (B4): the FastAPI cookie session never carries the
+ * user's raw email, display name, or email-verification flag —
+ * `MeResponse` exposes only `userId`, `email_hash` (16-char SHA-256
+ * prefix), `organizationIds: string[]`, `isAdmin`, and timestamp
+ * fields. Consumers that previously rendered `user.email` /
+ * `user.name` / `user.emailVerified` / org names must either show
+ * the hash + the user ID, or accept that those rows aren't
+ * available on this surface.
+ *
+ * Profile rows reflect what's actually on the session: the userId
+ * prefix as an "Account ID" support reference, an org-membership
+ * count (no names — `MeResponse` only carries IDs), an admin badge
+ * if applicable, and the session-issued time. Wires Log out (calls
+ * logout() then invalidates session cache + routes to /login), and
+ * links to the data-browser surfaces.
  *
  * Routes to /login if useSession() resolves to user=null. The
  * redirect happens client-side in a useEffect; Phase 5 wires Edge
@@ -66,23 +73,26 @@ export function MyAccountClient() {
             Your account
           </div>
           <h1 className="text-[2rem] font-bold tracking-tight text-fg-primary leading-[1.2] mb-8 m-0">
-            {user.name ?? user.email}
+            Account
           </h1>
 
           <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-sm mb-6">
             <h2 className="text-base font-bold text-fg-primary mb-4 m-0">Profile</h2>
-            <Row label="Email" value={user.email} />
-            {user.name && <Row label="Name" value={user.name} />}
+            <Row label="Account ID" value={user.userId.slice(0, 12) + '…'} />
+            <Row label="Email hash" value={user.email_hash} />
             <Row
-              label="Email verified"
-              value={user.emailVerified ? 'Yes' : 'Not yet'}
+              label="Organizations"
+              value={
+                user.organizationIds.length === 0
+                  ? 'None'
+                  : `${user.organizationIds.length} ${user.organizationIds.length === 1 ? 'organization' : 'organizations'}`
+              }
             />
-            {user.orgs && user.orgs.length > 0 && (
-              <Row
-                label="Organizations"
-                value={user.orgs.map((o) => o.name).join(', ')}
-              />
-            )}
+            {user.isAdmin && <Row label="Role" value="Admin" />}
+            <Row
+              label="Signed in"
+              value={new Date(user.issuedAt * 1000).toLocaleString()}
+            />
           </div>
 
           <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-sm mb-6">
