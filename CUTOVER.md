@@ -32,11 +32,15 @@ swap. The agent that ran Phases 1-6 stops here. **You** drive Phase 7.
 - [ ] **`INTERNAL_API_URL` env var set** (same value, used by RSC
       catalog prefetch to bypass the rewrite double-hop).
 - [ ] **Skew Protection enabled** (Vercel UI: project → Settings →
-      Functions → Skew Protection). Verify with:
+      Functions → Skew Protection). Verify with a one-line curl —
+      a bogus `?dpl=` parameter must return 404, not 200. If 200
+      comes back, Skew Protection is not actually pinning requests
+      (the toggle reports as on but isn't enforcing):
 
       ```bash
-      PLAYWRIGHT_PREVIEW_URL=https://<preview>.vercel.app \
-        pnpm -C apps/web test:e2e tests/e2e/skew-protection.spec.ts
+      curl -sS -o /dev/null -w "%{http_code}\n" \
+        https://<preview>.vercel.app/?dpl=bogusdeploymentid
+      # Expect: 404
       ```
 
 - [ ] **CSP flipped from Report-Only to enforced** (`middleware.ts`
