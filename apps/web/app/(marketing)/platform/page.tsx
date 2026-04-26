@@ -1,6 +1,6 @@
 import type { Metadata } from 'next';
-import Link from 'next/link';
 
+import { MarketingButton } from '@/components/marketing/Button';
 import { commonsSearchUrl } from '@/lib/urls';
 
 /**
@@ -90,7 +90,7 @@ export default function PlatformPage() {
             style={{ fontSize: 'clamp(2.25rem, 6vw, 4rem)' }}
           >
             A single data graph,{' '}
-            <em className="not-italic text-brand-blue-3">three views.</em>
+            <em className="not-italic text-brand-blue">three views.</em>
           </h1>
           <p className="text-[17px] leading-relaxed text-white/80 max-w-[720px] mb-8 m-0">
             The Data Commons, Data Browser, and LabChat all read from the same
@@ -98,26 +98,23 @@ export default function PlatformPage() {
             you&rsquo;re browsing it in public, working on it privately, or
             asking LabChat questions about it.
           </p>
+          {/* Hero CTA row standardised to `MarketingButton` lg. The
+              previous inline `px-6 py-3 text-base` matched source `.btnPrimaryLg`
+              shape; centralising on the primitive ensures home + platform
+              hero CTAs render at the same height as the other lg
+              About / Security / LabChat / Private Cloud CTAs. The trailing
+              arrow SVG is dropped — `lg` doesn't carry a leading/trailing
+              icon slot and the source's primary CTA on the platform hero
+              used text only too. */}
           <div className="flex gap-4 items-center flex-wrap mb-12">
-            <Link
+            <MarketingButton
+              as="a"
               href={commonsSearchUrl()}
-              className="inline-flex items-center gap-2 px-6 py-3 rounded-pill text-base font-semibold bg-ndi-teal text-white shadow-cta hover:-translate-y-px transition-transform duration-(--duration-base) ease-(--ease-out) no-underline"
+              variant="cta"
+              size="lg"
             >
               Search the commons
-              <svg
-                width="14"
-                height="14"
-                viewBox="0 0 16 16"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                aria-hidden="true"
-              >
-                <path d="M2 8h12M9 3l5 5-5 5" />
-              </svg>
-            </Link>
+            </MarketingButton>
             <a
               href="#how"
               className="text-sm font-semibold text-white/85 hover:text-white transition-colors no-underline"
@@ -155,7 +152,7 @@ export default function PlatformPage() {
             <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
               The system
             </div>
-            <h2 className="text-[2rem] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
+            <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
               Three ways of looking{' '}
               <em className="not-italic text-ndi-teal">at the same machine.</em>
             </h2>
@@ -187,12 +184,39 @@ export default function PlatformPage() {
                 <NodePill color="teal" label="Lab notebook" sub="markdown · protocols" />
               </div>
               <FlowArrow />
-              {/* NDI Cloud center */}
-              <div className="bg-gradient-to-br from-brand-navy to-ndi-primary-dark rounded-xl p-6 shadow-lg text-white">
-                <div className="text-[10px] font-bold tracking-eyebrow uppercase text-brand-blue-3 mb-1">
+              {/* NDI Cloud center — restored to source `.d1Center`: white card
+                  with 1.5px brand-navy border and a navy "NDI Cloud" pill
+                  floating at top-center. Source SCSS:
+                    .d1Center { background: white; border: 1.5px solid #002054;
+                                border-radius: 18px; padding: 30px 24px 24px;
+                                position: relative;
+                                box-shadow: 0 16px 40px -14px rgba(0,32,84,0.22); }
+                    .centerTag { position: absolute; top: -12px; left: 50%;
+                                 transform: translateX(-50%);
+                                 background: #002054; color: white;
+                                 font-family: mono; font-size: 10px;
+                                 letter-spacing: 0.14em; ... }
+                  Was previously a dark gradient card with the title text inline
+                  — lost the visual metaphor of "white card with NDI Cloud
+                  floating overhead". SvcChip has also been refactored to a
+                  light-surface default (gray-50 + brand-navy mono text) so
+                  it renders correctly on the white card. */}
+              <div
+                className="relative bg-white border-[1.5px] border-brand-navy rounded-[18px] px-6 pt-[30px] pb-6"
+                style={{ boxShadow: '0 16px 40px -14px rgba(0, 32, 84, 0.22)' }}
+              >
+                {/* Floating navy pill — absolutely positioned, sits on the
+                    top edge of the card. Mono font + uppercase + 0.14em
+                    tracking matches source `.centerTag`. */}
+                <span
+                  className="absolute -top-3 left-1/2 -translate-x-1/2 bg-brand-navy text-white font-mono font-bold uppercase whitespace-nowrap px-3.5 py-1 rounded-pill"
+                  style={{ fontSize: '10px', letterSpacing: '0.14em' }}
+                >
                   NDI Cloud
+                </span>
+                <div className="text-center text-[15px] font-extrabold text-brand-navy tracking-tight mb-3.5">
+                  One data graph
                 </div>
-                <div className="text-base font-bold mb-4">One data graph</div>
                 <div className="grid grid-cols-2 gap-2">
                   <SvcChip color="navy" label="Object storage (S3)" />
                   <SvcChip label="Metadata graph" />
@@ -432,7 +456,7 @@ export default function PlatformPage() {
           <div className="text-xs font-bold tracking-eyebrow uppercase text-brand-blue-3 mb-3">
             Get started
           </div>
-          <h2 className="text-[2rem] font-bold tracking-tight leading-[1.2] mb-3 m-0">
+          <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight leading-[1.2] mb-3 m-0">
             Move your lab&rsquo;s data to NDI.
           </h2>
           <p className="text-base leading-relaxed text-white/80 mb-8 m-0">
@@ -440,12 +464,14 @@ export default function PlatformPage() {
             dataset.
           </p>
           <div className="flex gap-4 justify-center items-center flex-wrap">
-            <Link
+            <MarketingButton
+              as="a"
               href="/create-account"
-              className="inline-flex items-center px-6 py-3 rounded-pill text-base font-semibold bg-ndi-teal text-white shadow-cta hover:-translate-y-px transition-transform duration-(--duration-base) ease-(--ease-out) no-underline"
+              variant="cta"
+              size="lg"
             >
               Create Account
-            </Link>
+            </MarketingButton>
             <a
               href="mailto:info@walthamdatascience.com"
               className="text-sm font-semibold text-white/85 hover:text-white transition-colors no-underline"
@@ -593,8 +619,16 @@ function SvcChip({
     blue: 'bg-brand-blue-3',
   };
   const dotCls = dot[color ?? 'blue'];
+  /*
+   * Light-surface chip: gray-50 bg, gray-200 border, brand-navy mono text.
+   * Source `.svc { background: $gray-50; border: 1px solid $gray-200;
+   * font-family: mono; font-size: 11px; color: $ndi-primary-blue }`.
+   * The Diagram-1 d1Center card is now a white surface (per source
+   * `.d1Center`), so the chips inside need dark-on-light styling rather
+   * than the previous white/8 + white/90 dark-card variant.
+   */
   return (
-    <div className="flex items-center gap-2 bg-white/8 border border-white/12 rounded-md px-2.5 py-1.5 text-xs text-white/90">
+    <div className="flex items-center gap-2 bg-gray-50 border border-gray-200 rounded-md px-2.5 py-1.5 font-mono text-[11px] text-brand-navy">
       <span className={`inline-block w-1.5 h-1.5 rounded-full ${dotCls}`} aria-hidden />
       {label}
     </div>
@@ -672,20 +706,36 @@ function ArchLayer({
   edgeStrong: string;
   edgeSub: string;
 }) {
-  const palette: Record<typeof variant, string> = {
-    surface: 'bg-brand-cream border-brand-blue-3/30 text-fg-primary',
-    apps: 'bg-brand-blue-3/10 border-brand-blue-3/30 text-fg-primary',
-    svc: 'bg-ndi-teal-light border-ndi-teal-border text-fg-primary',
-    core: 'bg-brand-navy border-brand-navy text-white',
+  /*
+   * Source `Home.module.scss:1169-1203` uses
+   * `background: linear-gradient(90deg, color 0%, white 70%)` per variant
+   * — soft tint that fades to white on the right, creating a subtle
+   * "light from the left" depth feel. Target previously shipped flat
+   * solid colors. Restoring the gradient via inline `style` since
+   * Tailwind doesn't have a clean utility for "this exact 0%-70% stop".
+   *
+   * Note that `core` is also a white-fading layer in the source (the
+   * tint is `rgba(0,32,84,0.05)`), not a solid navy band — the previous
+   * target solid `bg-brand-navy` + white text broke the rhythm. Now all
+   * four layers share the same "tint → white" pattern so the row
+   * stack reads as one continuous architectural diagram.
+   */
+  const gradient: Record<typeof variant, string> = {
+    surface: 'linear-gradient(90deg, #faf4e6 0%, #ffffff 70%)',
+    apps: 'linear-gradient(90deg, rgba(23, 167, 255, 0.06) 0%, #ffffff 70%)',
+    svc: 'linear-gradient(90deg, var(--color-ndi-teal-light) 0%, #ffffff 70%)',
+    core: 'linear-gradient(90deg, rgba(0, 32, 84, 0.05) 0%, #ffffff 70%)',
   };
-  const chipBg =
-    variant === 'core'
-      ? 'bg-white/10 text-white/90'
-      : 'bg-white text-fg-secondary';
-  const subTextColor = variant === 'core' ? 'text-white/65' : 'text-fg-muted';
+  const palette: Record<typeof variant, string> = {
+    surface: 'border-brand-blue-3/30 text-fg-primary',
+    apps: 'border-brand-blue-3/30 text-fg-primary',
+    svc: 'border-ndi-teal-border text-fg-primary',
+    core: 'border-brand-navy/22 text-fg-primary',
+  };
   return (
     <div
       className={`border rounded-xl p-5 grid grid-cols-[180px_1fr_180px] max-[840px]:grid-cols-1 gap-4 items-center ${palette[variant]}`}
+      style={{ background: gradient[variant] }}
     >
       <div>
         <div className="text-[10px] font-bold tracking-eyebrow uppercase opacity-70 mb-1">
@@ -697,7 +747,7 @@ function ArchLayer({
         {chips.map((c) => (
           <span
             key={c}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono ${chipBg}`}
+            className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-mono bg-white text-fg-secondary"
           >
             <span className="inline-block w-1 h-1 rounded-full bg-current opacity-50" aria-hidden />
             {c}
@@ -706,7 +756,7 @@ function ArchLayer({
       </div>
       <div className="text-right max-[840px]:text-left">
         <div className="text-xs font-bold leading-tight">{edgeStrong}</div>
-        <div className={`text-[11px] mt-0.5 ${subTextColor}`}>{edgeSub}</div>
+        <div className="text-[11px] mt-0.5 text-fg-muted">{edgeSub}</div>
       </div>
     </div>
   );

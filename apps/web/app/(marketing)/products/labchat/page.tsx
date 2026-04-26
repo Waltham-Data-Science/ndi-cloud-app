@@ -183,7 +183,7 @@ export default function LabChatPage() {
           <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
             What it does
           </div>
-          <h2 className="text-[2rem] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
+          <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
             Grounded in your&nbsp;lab&rsquo;s&nbsp;research.
           </h2>
           <p className="text-base leading-relaxed text-fg-secondary max-w-[680px] mb-10 m-0">
@@ -226,7 +226,7 @@ export default function LabChatPage() {
             <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
               In the conversation
             </div>
-            <h2 className="text-[2rem] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
+            <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
               Cited answers, every time.
             </h2>
             <p className="text-base leading-relaxed text-fg-secondary mb-5 m-0">
@@ -353,7 +353,7 @@ export default function LabChatPage() {
           <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
             How it works
           </div>
-          <h2 className="text-[2rem] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
+          <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
             Three steps to grounded answers.
           </h2>
           <p className="text-base leading-relaxed text-fg-secondary max-w-[680px] mb-12 m-0">
@@ -399,7 +399,7 @@ export default function LabChatPage() {
             <div className="text-xs font-bold tracking-eyebrow uppercase text-brand-blue-3 mb-3">
               Private by default
             </div>
-            <h2 className="text-[2rem] font-bold tracking-tight leading-[1.2] mb-3 m-0">
+            <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight leading-[1.2] mb-3 m-0">
               Your lab&rsquo;s corpus
               <br />
               stays in your lab&rsquo;s index.

@@ -78,6 +78,18 @@ describe('MarketingButton', () => {
     expect(screen.getByRole('button', { name: 'Larger' }).className).toContain('text-[14px]');
   });
 
+  it('applies the lg size for the home + platform hero CTA shape', () => {
+    // `lg` matches source `.btnPrimaryLg` — `text-base px-6 py-2.5`. Used
+    // on the home + platform primary CTAs so they render visually larger
+    // than the secondary `md` CTAs on About / Security / LabChat /
+    // Private Cloud heroes.
+    render(<MarketingButton size="lg">Hero CTA</MarketingButton>);
+    const btn = screen.getByRole('button', { name: 'Hero CTA' });
+    expect(btn.className).toContain('text-base');
+    expect(btn.className).toContain('px-6');
+    expect(btn.className).toContain('py-2.5');
+  });
+
   it('merges user-supplied className alongside variant classes', () => {
     render(
       <MarketingButton variant="cta" className="self-end my-4">

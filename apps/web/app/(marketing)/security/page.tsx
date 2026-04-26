@@ -52,18 +52,31 @@ export default function SecurityPage() {
             backgroundRepeat: 'repeat',
           }}
         />
-        <div className="relative max-w-[1100px] mx-auto">
-          <div className="inline-flex items-center gap-2 text-xs font-bold tracking-eyebrow uppercase text-white/70 mb-5">
-            <span className="inline-block w-1.5 h-1.5 rounded-full bg-brand-blue-3" />
+        {/* Hero inner: centered alignment per source `.heroInner { text-align: center }`.
+            Mirrors the home / labchat / private-cloud heroes so all marketing
+            heroes share the same symmetric center composition. Eyebrow
+            restored to the pill+halo-dot pattern from the home hero
+            (page.tsx ~131-140). Hero `<em>` accent flipped from
+            `text-brand-blue-3` to `text-brand-blue` per source `em {
+            color: var(--brand-blue) }`. */}
+        <div className="relative max-w-[1100px] mx-auto text-center">
+          <div
+            className="inline-flex items-center gap-2 text-[11px] font-bold tracking-[0.16em] uppercase text-brand-blue-3 mb-5 px-3.5 py-1.5 rounded-pill"
+            style={{ background: 'rgba(23, 167, 255, 0.12)' }}
+          >
+            <span
+              className="inline-block w-1.5 h-1.5 rounded-full bg-brand-blue-3"
+              style={{ boxShadow: '0 0 0 3px rgba(93, 193, 255, 0.25)' }}
+            />
             Security &amp; Compliance
           </div>
           <h1
             className="font-display font-extrabold leading-[1.1] tracking-tight text-white mb-5 m-0"
             style={{ fontSize: 'clamp(2rem, 5vw, 3.25rem)' }}
           >
-            HIPAA-aware by <em className="not-italic text-brand-blue-3">design.</em>
+            HIPAA-aware by <em className="not-italic text-brand-blue">design.</em>
           </h1>
-          <p className="text-[17px] leading-relaxed text-white/80 max-w-[720px] m-0">
+          <p className="text-[17px] leading-relaxed text-white/80 max-w-[720px] mx-auto m-0">
             Neuroscience data is sensitive. Session metadata, subject IDs, and
             notebook entries can carry PHI by accident. NDI Cloud is built on AWS
             with per-tenant isolation, encryption at rest and in transit, and an
@@ -96,7 +109,7 @@ export default function SecurityPage() {
           <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
             How the platform is isolated
           </div>
-          <h2 className="text-[2rem] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
+          <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
             Four pillars.
           </h2>
           <p className="text-base leading-relaxed text-fg-secondary max-w-[680px] mb-12 m-0">
@@ -140,7 +153,7 @@ export default function SecurityPage() {
           <div className="text-xs font-bold tracking-eyebrow uppercase text-brand-blue-3 mb-3">
             Encryption &amp; data protection
           </div>
-          <h2 className="text-[2rem] font-bold tracking-tight leading-[1.2] mb-10 m-0">
+          <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight leading-[1.2] mb-10 m-0">
             Encryption at three layers, on every request.
           </h2>
 
@@ -170,7 +183,7 @@ export default function SecurityPage() {
           <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
             Compliance snapshot
           </div>
-          <h2 className="text-[2rem] font-bold tracking-tight text-fg-primary leading-[1.2] mb-10 m-0">
+          <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-10 m-0">
             What we comply with, and what&apos;s on deck.
           </h2>
 

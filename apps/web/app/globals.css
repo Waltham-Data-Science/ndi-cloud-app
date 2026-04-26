@@ -166,6 +166,19 @@
     var(--color-brand-navy) 100%
   );
 
+  /*
+   * Marketing section H2 size — `clamp(2rem, 4vw, 2.5rem)` = 32px → 40px.
+   * Matches source `.sectionH { font-size: 40px; }` desktop and 30px
+   * mobile from HomeCommons / About / Security / Platform / PrivateCloud /
+   * LabChat SCSS modules. The previous target shipped `text-[2rem]` (32px)
+   * site-wide, which lost both the desktop scale-up to 40px and the
+   * responsive ramp. Tokenized so all marketing `<h2>` instances stay in
+   * lockstep — bump the token, every section H2 follows. Keep `<h1>`
+   * heroes on their own clamp (`clamp(2.25rem, 6vw, 4rem)` etc.) so the
+   * h1 → h2 hierarchy stays visually distinct.
+   */
+  --type-h2-marketing: clamp(2rem, 4vw, 2.5rem);
+
   /* Force light color-scheme app-wide. The data-browser had 168 dead
    * `dark:*` classes (audit #68 cleanup); this declaration prevents them
    * from creeping back in by making any UA-default dark-scheme handling
