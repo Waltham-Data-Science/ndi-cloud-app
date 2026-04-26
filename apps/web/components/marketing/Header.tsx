@@ -121,7 +121,7 @@ export function Header() {
         </Link>
 
         {!isMobile && (
-          <div className="flex gap-1.5 ml-3">
+          <div className="flex gap-1.5 ml-3 items-center">
             {navLinks.map((link) =>
               link.external ? (
                 <a
@@ -149,6 +149,45 @@ export function Header() {
                   {link.label}
                 </Link>
               ),
+            )}
+            {/* Phase 6.6 PR-I polish: auth-gated nav. Logged-in users
+             * get Query + My Workspace surfaced in the desktop nav so
+             * they're one click away from anywhere on the marketing
+             * site. Visually separated from the marketing nav by a
+             * thin white-alpha vertical rule so it's clear these are
+             * a different category of link (app routes, not marketing
+             * pages). */}
+            {user && (
+              <>
+                <span
+                  aria-hidden
+                  className="inline-block h-5 w-px bg-white/15 mx-1"
+                />
+                <Link
+                  href="/query"
+                  className={clsx(
+                    'text-[13.5px] font-medium px-3 py-2 rounded-md no-underline transition-all duration-(--duration-base) ease-(--ease-out)',
+                    isActive('/query')
+                      ? 'text-brand-blue-3'
+                      : 'text-white/85 hover:text-white hover:bg-white/5',
+                  )}
+                  aria-current={isActive('/query') ? 'page' : undefined}
+                >
+                  Query
+                </Link>
+                <Link
+                  href={myWorkspaceUrl()}
+                  className={clsx(
+                    'text-[13.5px] font-medium px-3 py-2 rounded-md no-underline transition-all duration-(--duration-base) ease-(--ease-out)',
+                    isActive(myWorkspaceUrl())
+                      ? 'text-brand-blue-3'
+                      : 'text-white/85 hover:text-white hover:bg-white/5',
+                  )}
+                  aria-current={isActive(myWorkspaceUrl()) ? 'page' : undefined}
+                >
+                  My Workspace
+                </Link>
+              </>
             )}
           </div>
         )}
@@ -182,6 +221,29 @@ export function Header() {
                   )}
                 </MenuItem>
               ))}
+              {/* Phase 6.6 PR-I polish: auth-gated mobile nav (Query +
+               * My Workspace) parallels the desktop addition above. */}
+              {user && (
+                <>
+                  <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '0.5rem 0' }} />
+                  <MenuItem
+                    onClick={() => {
+                      closeMobileMenu();
+                      router.push('/query');
+                    }}
+                  >
+                    Query
+                  </MenuItem>
+                  <MenuItem
+                    onClick={() => {
+                      closeMobileMenu();
+                      router.push(myWorkspaceUrl());
+                    }}
+                  >
+                    My Workspace
+                  </MenuItem>
+                </>
+              )}
               <hr style={{ border: 'none', borderTop: '1px solid #e5e7eb', margin: '0.5rem 0' }} />
               {user ? (
                 <>
