@@ -5,6 +5,7 @@ import uPlot from 'uplot';
 import 'uplot/dist/uPlot.min.css';
 
 import type { TimeseriesData } from '@/lib/api/binary';
+import { detectSweeps } from '@/lib/viewer/math';
 
 /**
  * Timeseries chart — ported from v1 (286 LOC) with v2 adaptations:
@@ -63,39 +64,9 @@ function turboColor(t: number): string {
   return `rgb(${r},${g},${b})`;
 }
 
-function detectSweeps(
-  values: Array<number | null>,
-): { sweeps: Array<Array<number | null>>; sweepCurrents: number[] } | null {
-  if (!values || values.length < 10) return null;
-  let nullCount = 0;
-  for (const v of values) if (v === null || v === undefined) nullCount++;
-  if (nullCount < 3) return null;
-
-  const sweeps: Array<Array<number | null>> = [];
-  let current: Array<number | null> = [];
-  for (const v of values) {
-    if (v === null || v === undefined) {
-      if (current.length > 5) sweeps.push(current);
-      current = [];
-    } else {
-      current.push(v);
-    }
-  }
-  if (current.length > 5) sweeps.push(current);
-  if (sweeps.length < 2) return null;
-
-  const sweepCurrents = sweeps.map((sweep) => {
-    let maxAbs = 0;
-    for (const v of sweep) {
-      if (v !== null && v !== undefined) {
-        const abs = Math.abs(v);
-        if (abs > maxAbs) maxAbs = abs;
-      }
-    }
-    return maxAbs;
-  });
-  return { sweeps, sweepCurrents };
-}
+// `detectSweeps` extracted to `apps/web/lib/viewer/math.ts` (CQ3) so
+// the sweep-detection logic can be unit-tested in isolation. The
+// chart's behavior is unchanged — this is a pure refactor.
 
 interface TimeseriesChartProps {
   data: TimeseriesData;

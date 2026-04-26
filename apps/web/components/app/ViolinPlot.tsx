@@ -5,6 +5,8 @@ import * as d3Array from 'd3-array';
 import * as d3Scale from 'd3-scale';
 import * as d3Shape from 'd3-shape';
 
+import { kernelDensity, silvermanBandwidth } from '@/lib/viewer/math';
+
 export interface ViolinGroup {
   name: string;
   values: number[];
@@ -26,38 +28,10 @@ interface ViolinPlotProps {
   height?: number;
 }
 
-/** Gaussian KDE — ported from v1 (same bandwidth math). */
-function kernelDensity(
-  values: number[],
-  bandwidth: number,
-  extent: [number, number],
-  nBins: number = 80,
-): Array<[number, number]> {
-  const [lo, hi] = extent;
-  const step = (hi - lo) / nBins;
-  const points: Array<[number, number]> = [];
-  for (let i = 0; i <= nBins; i++) {
-    const x = lo + i * step;
-    let sum = 0;
-    for (const v of values) {
-      const u = (x - v) / bandwidth;
-      sum += Math.exp(-0.5 * u * u) / (bandwidth * Math.sqrt(2 * Math.PI));
-    }
-    points.push([x, sum / values.length]);
-  }
-  return points;
-}
-
-function silvermanBandwidth(values: number[]): number {
-  const n = values.length;
-  if (n < 2) return 1;
-  const sorted = [...values].sort((a, b) => a - b);
-  const q1 = sorted[Math.floor(n * 0.25)]!;
-  const q3 = sorted[Math.floor(n * 0.75)]!;
-  const iqr = q3 - q1;
-  const std = Math.sqrt(d3Array.variance(values) ?? 1);
-  return 0.9 * Math.min(std, iqr / 1.34) * Math.pow(n, -0.2);
-}
+// `kernelDensity` and `silvermanBandwidth` extracted to
+// `apps/web/lib/viewer/math.ts` (CQ3) so the math primitives can be
+// unit-tested in isolation. The chart's behavior is unchanged — this
+// is a pure refactor.
 
 const COLORS = [
   '#0284c7',
