@@ -20,6 +20,7 @@
  * AppearsElsewhere) with placeholders for the deferred viz.
  */
 import { ChevronLeft } from 'lucide-react';
+import dynamic from 'next/dynamic';
 import Link from 'next/link';
 
 import { AppearsElsewhere } from '@/components/app/AppearsElsewhere';
@@ -28,6 +29,27 @@ import { DocumentDetailView } from '@/components/app/DocumentDetailView';
 import { ErrorState } from '@/components/errors/ErrorState';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useDocument } from '@/lib/api/documents';
+
+/**
+ * `<DataPanel>` is dynamically imported with `ssr: false` so its
+ * dependency closure (uPlot ~12 KB gz, plus the four binary-viewer
+ * subtrees) ships in a separate chunk that doesn't hit the
+ * document-detail initial-paint bundle. The viewer dispatcher branches
+ * on `useBinaryKind`'s response — for `kind: 'unknown'` it renders
+ * nothing, so the chunk only loads when there's binary data to show.
+ *
+ * Source data-browser used `React.lazy` for the same reason; Next.js's
+ * `dynamic` is the App Router-native equivalent and additionally lets
+ * us specify a typed loading skeleton.
+ */
+const DataPanel = dynamic(
+  () =>
+    import('@/components/app/DataPanel').then((m) => ({ default: m.DataPanel })),
+  {
+    ssr: false,
+    loading: () => <Skeleton className="h-40 w-full" />,
+  },
+);
 
 interface DocumentDetailShellProps {
   datasetId: string;
@@ -133,9 +155,7 @@ export function DocumentDetailShell({
           {doc.data && (
             <>
               <DocumentDetailView document={doc.data} datasetId={datasetId} />
-              {/* REBUILD-10 (DataPanel + 4 binary viewers) lands here
-                  next, gated via `next/dynamic({ ssr: false })` for
-                  uPlot. */}
+              <DataPanel datasetId={datasetId} documentId={docId} />
               <DependencyGraphView
                 datasetId={datasetId}
                 documentId={docId}
