@@ -13,12 +13,14 @@ import { z } from 'zod';
 export const schema = z.object({
   NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
 
-  // Phase 4: production rewrite target. Optional in Phase 1 because no
-  // /api/* rewrite is wired yet.
+  // Production rewrite target — Vercel proxies `/api/*` here (FastAPI on
+  // Railway). Optional because preview/dev builds without a configured
+  // upstream still build and run; `/api/*` simply 404s until set.
   UPSTREAM_API_URL: z.string().url().optional(),
 
-  // Phase 3a: RSC server-side fetch target (bypasses the Vercel rewrite to
-  // avoid double-hop). Optional until catalog RSC ships.
+  // RSC server-side fetch target (bypasses the Vercel rewrite to avoid a
+  // server→edge→server double-hop). Optional because RSC prefetch and
+  // dataset-detail metadata generation degrade gracefully without it.
   INTERNAL_API_URL: z.string().url().optional(),
 });
 

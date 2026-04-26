@@ -1,11 +1,11 @@
 /**
  * `/datasets/[id]/tables/[className]` — Summary tables tab content.
  *
- * Phase 3b structural shell. Real content lands when `SummaryTableView`
- * (data-browser's `components/tables/SummaryTableView.tsx`) ports —
- * that's a separate sub-phase from this PR's audit-#65 close. The
- * tab bar (in the layout above) and routing are in place; this page
- * tells users where the content will land.
+ * Renders the ported `SummaryTableView` via `<TableShell>` (Phase 6.5
+ * lifted the data-browser component into this monorepo). The tab bar
+ * lives in the parent layout; this file's job is the route-to-shell
+ * handoff. The audit-#65 a11y tab-bar shape (URL-routed `aria-current`
+ * rather than state-controlled) was the original Phase 3b deliverable.
  */
 import { TableShell } from './table-shell';
 

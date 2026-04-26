@@ -1,18 +1,15 @@
 /**
  * `/query` — cross-cloud query page.
  *
- * Phase 3e structural shell. The full content port (FacetPanel +
- * QueryBuilder + OutputShapePreview, ~750 LOC of data-browser
- * components) lands as a follow-up — this PR closes Phase 3 by giving
- * /query a routed home with the proper hero + chrome so it surfaces in
- * the sitemap and the (app) layout wraps it. Phase 3a-3d closed the
- * three migration-absorbed audits (#65, #64, #66) which is the
- * critical unblock for Phase 4.
+ * Renders the ported `<QueryShell>` (FacetPanel + QueryBuilder +
+ * OutputShapePreview) inside the standard hero + content section
+ * scaffold. Phase 6.5e brought the full data-browser content over;
+ * this page is a Server Component for the hero band, the QueryShell
+ * is the client island that mounts the interactive surface.
  *
- * The page is a Server Component for the hero band; the interactive
- * query builder will be wrapped in `next/dynamic({ ssr: false })` when
- * the content port lands (the AST visualizer is heavy + below-the-fold,
- * matches the audit #52 component-level split rationale).
+ * Heavy below-the-fold widgets (AST visualizer in particular) are
+ * wrapped in `next/dynamic({ ssr: false })` inside QueryShell — see
+ * audit #52 for the component-level split rationale.
  */
 import type { Metadata } from 'next';
 

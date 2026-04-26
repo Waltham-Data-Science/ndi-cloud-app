@@ -7,12 +7,13 @@ import { MarketingButton } from '@/components/marketing/Button';
 /**
  * App route group error boundary.
  *
- * Phase 3a-5 wires this against the typed `ApiError` codes from
- * lib/api/errors.ts so per-error UI can render (login required, contact
- * support, retry, etc.). For Phase 2a it's a generic fallback identical
- * to the marketing error boundary in shape — same friendly card, same
- * Try again / Home affordances. The data-browser feature components
- * land on this when their RSC fetch fails.
+ * Intentionally a generic fallback — same friendly card / Try-again /
+ * catalog-link affordances as the marketing error boundary. Per-code
+ * branching (e.g. ApiError → "log in to access this dataset" vs
+ * "contact support" vs "try again") is a possible future enhancement;
+ * keeping this generic covers the common case (transient RSC fetch
+ * failure → user retries) without trying to translate every ApiError
+ * code into copy that may or may not be useful.
  */
 export default function AppError({
   error,

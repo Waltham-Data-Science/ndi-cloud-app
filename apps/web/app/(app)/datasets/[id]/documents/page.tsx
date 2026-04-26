@@ -1,12 +1,12 @@
 /**
  * `/datasets/[id]/documents` — Document explorer tab content.
  *
- * Phase 3b structural shell. The DocumentExplorerPage port (raw doc
- * list filterable by NDI class + virtualization + ontology popovers)
- * lands in a follow-up. The tab bar in the layout marks this tab
- * `aria-selected` when the path matches `/datasets/[id]/documents`
- * exactly (NOT `/documents/[docId]` — that's the drill-down, which
- * opts out of this layout via its own nested layout).
+ * Renders the ported `DocumentExplorer` (raw doc list filterable by
+ * NDI class + virtualization + ontology popovers) via `<DocumentsShell>`.
+ * The tab bar in the layout marks this tab `aria-current` when the path
+ * matches `/datasets/[id]/documents` exactly — NOT `/documents/[docId]`,
+ * which is the drill-down route that opts out of this layout's chrome
+ * via the REBUILD-8 chrome-gate (`DatasetDetailChromeGate`).
  */
 import { DocumentsShell } from './documents-shell';
 

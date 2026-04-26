@@ -1,18 +1,14 @@
 /**
- * Auth API helpers — Phase 2b.
+ * Auth API helpers.
  *
  * Thin wrappers over apiFetch covering the surface area the 9 auth
  * pages need. Every call:
- *   - hits the FastAPI proxy via /api/auth/* (Phase 4 wires the
- *     Vercel rewrite to Railway; Phase 2b deploys can hit the
- *     proxy directly via UPSTREAM_API_URL env)
- *   - relies on cookie-based session (credentials: 'include' is set
- *     in apiFetch)
- *   - returns the parsed JSON or throws ApiError
- *
- * Phase 3a brings the full data-browser surface (datasets, documents,
- * query, etc.) — auth is the slice that Phase 2b needs to wire login
- * + signup flows.
+ *   - hits the FastAPI proxy via `/api/auth/*` (Vercel rewrite proxies
+ *     to Railway; preview deploys without a configured `UPSTREAM_API_URL`
+ *     fall back to "no rewrite, 404" — apiFetch surfaces that cleanly).
+ *   - relies on cookie-based session (`credentials: 'include'` is set
+ *     in apiFetch).
+ *   - returns the parsed JSON or throws ApiError.
  */
 
 import type { z } from 'zod';

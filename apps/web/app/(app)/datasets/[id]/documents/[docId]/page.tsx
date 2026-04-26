@@ -1,10 +1,10 @@
 /**
  * `/datasets/[id]/documents/[docId]` — single-document detail.
  *
- * Phase 3b structural shell. The DocumentDetailPage port (per-class
- * field rendering + binary blob viewer + dependency graph + appears-
- * elsewhere panel) lands in a follow-up. The dataset hero + tab bar
- * render above (per the parent layout) — but the inline `<style>`
+ * Renders the ported `DocumentDetailPage` (per-class field rendering +
+ * binary blob viewer + dependency graph + appears-elsewhere panel) via
+ * `<DocumentDetailShell>` (Phase 6.6 REBUILD-8). The dataset hero + tab
+ * bar render above (per the parent layout) — but the inline `<style>`
  * below hides them on initial paint to prevent the chrome-gate
  * hydration flash flagged by the audit (synthesis §R2).
  *

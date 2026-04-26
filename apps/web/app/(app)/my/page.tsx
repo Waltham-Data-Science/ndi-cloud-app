@@ -5,10 +5,14 @@
  * (Header + Footer wrapped). The client island handles auth-gate, data
  * fetch, filter state, and the virtualized table.
  *
- * Phase 5 wires Edge Middleware to 302 unauthenticated visitors to
- * /login?returnTo=/my before HTML ships. Until then the client redirects
- * after `useSession()` resolves to user=null (matches the my-account
- * pattern shipped in Phase 2b).
+ * Auth gate is client-side: when `useSession()` resolves to `user=null`
+ * the client routes to `/login?returnTo=/my` (matches the my-account
+ * pattern shipped in Phase 2b). A server-side Edge-Middleware 302
+ * (`Vary: Cookie` + auth-cookie inspection) is a possible future
+ * optimization to remove the brief auth flash, but the current
+ * middleware (`apps/web/middleware.ts`) is intentionally scoped to
+ * Origin enforcement + CSP — adding cookie-driven 302s would expand
+ * the matcher's blast radius and warrants its own PR + e2e coverage.
  */
 import type { Metadata } from 'next';
 
