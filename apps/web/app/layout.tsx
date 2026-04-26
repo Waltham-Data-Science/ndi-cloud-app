@@ -33,6 +33,14 @@ export const viewport: Viewport = {
   initialScale: 1,
   maximumScale: 5,
   colorScheme: 'light',
+  /*
+   * Match the navy nav bar so the OS chrome (mobile Chrome + Safari status
+   * bar) tints with the brand instead of the UA-default white/grey.
+   * Source `_document.tsx` carried `<meta name="theme-color" content="#002054">`;
+   * the Next.js Viewport API is the canonical way to emit it from the App
+   * Router.
+   */
+  themeColor: '#002054',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {

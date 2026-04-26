@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 
+import { MarketingButton } from '@/components/marketing/Button';
 import { commonsSearchUrl } from '@/lib/urls';
 import { HomeSearchForm } from './home-search-form';
 
@@ -107,8 +108,14 @@ export default function HomePage() {
       />
       <main>
         {/* HERO */}
+        {/* `pb-9` (36px) per source `HomeCommons.module.scss` hero
+            `padding: 80px 28px 36px`. The previous `pb-16` (64px) opened
+            the "giant empty dark gap" the source SCSS comment explicitly
+            warned against — bottom padding tight on purpose so the
+            institution marquee reads as a continuation of the hero, not a
+            disconnected band. */}
         <section
-          className="relative overflow-hidden text-white px-7 pt-24 pb-16"
+          className="relative overflow-hidden text-white px-7 pt-24 pb-9"
           style={{ background: 'var(--grad-depth)' }}
         >
           <div
@@ -143,9 +150,13 @@ export default function HomePage() {
               style={{ fontSize: 'clamp(2.25rem, 6vw, 4rem)' }}
             >
               Neuroscience datasets,{' '}
-              <em className="not-italic text-brand-blue-3">discoverable.</em>
+              <em className="not-italic text-brand-blue">discoverable.</em>
             </h1>
-            <p className="text-[17px] leading-relaxed text-white/80 max-w-[760px] mx-auto mb-8 m-0">
+            {/* Hero lede — 19px / 1.55 per source `HomeCommons.module.scss .lede`.
+                Was 17px in the previous port; bumped 2px to match source.
+                The `leading-relaxed` (~1.625) is close enough to source 1.55
+                to be visually identical inside this clamp range. */}
+            <p className="text-[19px] leading-relaxed text-white/80 max-w-[760px] mx-auto mb-8 m-0">
               A public, FAIR-compliant search across every dataset published on
               NDI Cloud. Filter by species, region, probe, year. Every entry
               carries a Crossref-registered DOI and openMINDS metadata.
@@ -153,13 +164,23 @@ export default function HomePage() {
 
             <HomeSearchForm />
 
+            {/* Secondary CTA — restored to a bordered button per source
+                `.btnSecondaryLg` (transparent, white/25 border, padding
+                12px 26px, font-size 15px). Was previously reduced to a
+                plain text link, which lost the button affordance below
+                the inline search form. `ghost` variant carries the
+                transparent + white/20 border combination; `md` size keeps
+                the secondary CTA visually subordinate to the larger
+                primary CTAs in the band below. */}
             <div className="mt-6">
-              <Link
+              <MarketingButton
+                as="a"
                 href={commonsSearchUrl()}
-                className="inline-flex items-center gap-1 text-sm font-semibold text-white/85 hover:text-white transition-colors no-underline"
+                variant="ghost"
+                size="md"
               >
                 Browse by topic →
-              </Link>
+              </MarketingButton>
             </div>
           </div>
         </section>
@@ -176,8 +197,11 @@ export default function HomePage() {
             {/* `home-marquee-track` is the hook for the global
                 `prefers-reduced-motion` opt-out in `globals.css` — under
                 that media query the animation is killed and the row
-                becomes a wrapped static band of logos (WCAG 2.3.3). */}
-            <div className="home-marquee-track flex gap-12 whitespace-nowrap animate-[marquee_40s_linear_infinite] hover:[animation-play-state:paused] items-center">
+                becomes a wrapped static band of logos (WCAG 2.3.3).
+                Duration 30s matches the source `HomeCommons.module.scss`
+                marquee (target had drifted to 40s — M12). */}
+            <div className="home-marquee-track flex gap-12 whitespace-nowrap animate-[marquee_30s_linear_infinite] hover:[animation-play-state:paused] items-center">
+
               {[...institutionLogos, ...institutionLogos].map((logo, i) => (
                 <Image
                   key={i}
@@ -209,7 +233,7 @@ export default function HomePage() {
             <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
               FAIR by default
             </div>
-            <h2 className="text-[2rem] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
+            <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
               Findable, Accessible, Interoperable, Reusable.
             </h2>
             <p className="text-base leading-relaxed text-fg-secondary max-w-[680px] mb-12 m-0">
@@ -253,7 +277,7 @@ export default function HomePage() {
               <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
                 Every dataset cites cleanly
               </div>
-              <h2 className="text-[2rem] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
+              <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
                 A DOI, a landing page, and a citation — always.
               </h2>
               <p className="text-base leading-relaxed text-fg-secondary mb-5 m-0">
@@ -303,7 +327,7 @@ export default function HomePage() {
             <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
               Who uses it
             </div>
-            <h2 className="text-[2rem] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
+            <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
               Open to anyone. No login required.
             </h2>
             <p className="text-base leading-relaxed text-fg-secondary max-w-[680px] mb-10 m-0">
@@ -346,7 +370,7 @@ export default function HomePage() {
             <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
               One data model
             </div>
-            <h2 className="text-[2rem] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
+            <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
               Three tools. One graph.
             </h2>
             <p className="text-base leading-relaxed text-fg-secondary max-w-[680px] mb-10 m-0">
@@ -402,26 +426,35 @@ export default function HomePage() {
             }}
           />
           <div className="relative max-w-[800px] mx-auto text-center">
-            <h2 className="text-[2rem] font-bold tracking-tight leading-[1.2] mb-3 m-0">
+            <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight leading-[1.2] mb-3 m-0">
               Publish once. Get cited.
             </h2>
             <p className="text-base leading-relaxed text-white/80 mb-8 m-0">
               Labs on NDI Cloud can publish a dataset, get a DOI, and start
               collecting citations — all from one workspace.
             </p>
+            {/* CTA buttons standardised to `MarketingButton` `lg`. Was
+                hand-rolled `text-base px-6 py-2.5` inline classes —
+                extracted to the shared primitive so home + platform
+                render at the same size as About / Security / LabChat /
+                Private Cloud (those use `md`; primary heroes use `lg`). */}
             <div className="flex gap-3 justify-center flex-wrap">
-              <Link
+              <MarketingButton
+                as="a"
                 href="/create-account"
-                className="inline-flex items-center justify-center font-semibold whitespace-nowrap rounded-pill text-base px-6 py-2.5 bg-ndi-teal text-white shadow-cta hover:-translate-y-px transition-transform duration-(--duration-base) ease-(--ease-out) no-underline"
+                variant="cta"
+                size="lg"
               >
                 Create Free Account
-              </Link>
-              <Link
+              </MarketingButton>
+              <MarketingButton
+                as="a"
                 href={commonsSearchUrl()}
-                className="inline-flex items-center justify-center font-semibold whitespace-nowrap rounded-pill text-base px-6 py-2.5 bg-transparent text-white border border-white/30 hover:bg-white/10 transition-colors duration-(--duration-base) ease-(--ease-out) no-underline"
+                variant="ghost"
+                size="lg"
               >
                 Browse the Commons
-              </Link>
+              </MarketingButton>
             </div>
           </div>
         </section>

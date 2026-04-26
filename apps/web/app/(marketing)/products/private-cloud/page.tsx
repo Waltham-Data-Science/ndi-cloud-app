@@ -172,7 +172,7 @@ export default function PrivateCloudPage() {
           <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
             What it does
           </div>
-          <h2 className="text-[2rem] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
+          <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
             Browse, organize, and publish your lab&rsquo;s data.
           </h2>
           <p className="text-base leading-relaxed text-fg-secondary max-w-[680px] mb-10 m-0">
@@ -237,7 +237,7 @@ export default function PrivateCloudPage() {
           <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
             Workflow
           </div>
-          <h2 className="text-[2rem] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
+          <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
             From upload to published dataset.
           </h2>
           <p className="text-base leading-relaxed text-fg-secondary max-w-[680px] mb-12 m-0">
@@ -274,7 +274,7 @@ export default function PrivateCloudPage() {
             <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
               Session detail
             </div>
-            <h2 className="text-[2rem] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
+            <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
               Rich metadata, not just files.
             </h2>
             <p className="text-base leading-relaxed text-fg-secondary mb-5 m-0">
@@ -354,7 +354,7 @@ export default function PrivateCloudPage() {
           <div className="text-xs font-bold tracking-eyebrow uppercase text-brand-blue-3 mb-3">
             Part of NDI Cloud
           </div>
-          <h2 className="text-[2rem] font-bold tracking-tight leading-[1.2] mb-3 m-0">
+          <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight leading-[1.2] mb-3 m-0">
             Works with the rest of the NDI ecosystem.
           </h2>
           <p className="text-base leading-relaxed text-white/75 max-w-[680px] mb-10 m-0">
