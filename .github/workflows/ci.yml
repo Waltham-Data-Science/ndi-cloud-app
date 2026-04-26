@@ -189,6 +189,12 @@ jobs:
     # log base..head`) so a multi-commit PR with a secret added then
     # removed in different commits is still caught — the secret is in
     # history even if not in the final tree.
+    #
+    # We use the official Docker image directly rather than the
+    # `gitleaks/gitleaks-action@v2` action because that action's v2
+    # release introduced a paid `GITLEAKS_LICENSE` requirement for
+    # organization-owned repos (no license = the action errors before
+    # running the scan). The CLI itself is open source and license-free.
     name: gitleaks (secret scan)
     runs-on: ubuntu-latest
     steps:
@@ -196,9 +202,10 @@ jobs:
         with:
           fetch-depth: 0  # gitleaks needs full history to scan PR ranges
       - name: Run gitleaks
-        uses: gitleaks/gitleaks-action@v2
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # `GITLEAKS_LICENSE` is only required for the org-level
-          # GitHub-app integration; the standalone scan path used here
-          # works without it. We don't set it.
+        run: |
+          # Pin a recent stable version so a future gitleaks release
+          # with a different default ruleset doesn't silently change
+          # the CI behavior.
+          docker run --rm -v "$PWD:/repo" \
+            zricethezav/gitleaks:v8.21.2 \
+            detect --source /repo --redact -v --no-banner
