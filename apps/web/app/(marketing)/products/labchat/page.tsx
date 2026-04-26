@@ -192,20 +192,27 @@ export default function LabChatPage() {
             plain English and cites the specific passage each claim came from.
           </p>
 
-          <div className="grid grid-cols-2 max-[720px]:grid-cols-1 gap-5">
-            <CapCard
+          {/* Editorial-style stacked rows. Source `.caps`/`.cap`
+              (LabChat.module.scss:281-321): vertical column with
+              `border-top` on the container + `border-bottom` on each
+              row, `grid-template-columns: 240px 1fr; gap: 40px;
+              padding: 28px 0`. Mobile (≤768px) collapses to a single
+              column with gap: 8px. h3 = 20px brand-navy display, body
+              = 15px secondary at 1.6 leading, max 560px wide. */}
+          <div className="flex flex-col border-t border-border-subtle">
+            <CapRow
               title="Grounded in your papers"
               body="Every answer includes numbered citations to the specific paper, protocol PDF, or NDI dataset they came from. Answers only pull from your lab's index."
             />
-            <CapCard
+            <CapRow
               title="Connected to your datasets"
               body="LabChat reads OpenMINDS metadata from your NDI Cloud workspace. Ask about sessions, species, stimulus parameters, QC results — and get answers from your actual data."
             />
-            <CapCard
+            <CapRow
               title="Lab onboarding"
               body="New lab members ask questions about protocols, methods, and past experiments — and get answers drawn from the lab's own work. Tribal knowledge becomes queryable."
             />
-            <CapCard
+            <CapRow
               title="Shows multiple sources"
               body="LabChat surfaces every retrieved passage behind an answer, not just one. When a protocol was updated mid-cohort or a finding was revised, both versions show up so you can read them side-by-side."
             />
@@ -487,13 +494,24 @@ export default function LabChatPage() {
   );
 }
 
-function CapCard({ title, body }: { title: string; body: string }) {
+/**
+ * Capability row in the editorial-style stacked list. Source
+ * `.cap` (LabChat.module.scss:288-321) — `display: grid;
+ * grid-template-columns: 240px 1fr; gap: 40px; padding: 28px 0;
+ * border-bottom: 1px solid var(--border-subtle)`. Mobile (≤768px)
+ * collapses to a single column with gap: 8px. Title h3 is the source's
+ * 20px brand-navy display weight; body is 15px fg-secondary at 1.6
+ * leading, capped at 560px wide.
+ */
+function CapRow({ title, body }: { title: string; body: string }) {
   return (
-    <div className="bg-bg-surface border border-border-subtle rounded-xl p-7 shadow-sm">
-      <h3 className="text-[1.25rem] font-bold text-fg-primary leading-tight mb-3 m-0">
+    <div className="grid grid-cols-[240px_1fr] max-[768px]:grid-cols-1 gap-10 max-[768px]:gap-2 py-7 border-b border-border-subtle">
+      <h3 className="font-display font-bold text-[20px] tracking-tight text-brand-navy m-0 leading-tight">
         {title}
       </h3>
-      <p className="text-sm leading-relaxed text-fg-secondary m-0">{body}</p>
+      <p className="text-[15px] leading-[1.6] text-fg-secondary m-0 max-w-[560px]">
+        {body}
+      </p>
     </div>
   );
 }
