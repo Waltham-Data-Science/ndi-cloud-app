@@ -197,10 +197,8 @@ export default function HomePage() {
             {/* `home-marquee-track` is the hook for the global
                 `prefers-reduced-motion` opt-out in `globals.css` — under
                 that media query the animation is killed and the row
-                becomes a wrapped static band of logos (WCAG 2.3.3).
-                Duration is 30s per source `HomeCommons.module.scss`
-                (was 40s in the previous port). */}
-            <div className="home-marquee-track flex gap-12 whitespace-nowrap animate-[marquee_30s_linear_infinite] hover:[animation-play-state:paused] items-center">
+                becomes a wrapped static band of logos (WCAG 2.3.3). */}
+            <div className="home-marquee-track flex gap-12 whitespace-nowrap animate-[marquee_40s_linear_infinite] hover:[animation-play-state:paused] items-center">
               {[...institutionLogos, ...institutionLogos].map((logo, i) => (
                 <Image
                   key={i}
