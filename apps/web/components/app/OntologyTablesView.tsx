@@ -135,7 +135,7 @@ function OntologyGroupPicker({
               {label}
             </span>
             <span className="ml-1.5 text-[10px] text-fg-muted">
-              {g.rowCount.toLocaleString()}
+              {g.rowCount.toLocaleString('en-US')}
             </span>
           </button>
         );

@@ -92,7 +92,7 @@ export function MyAccountClient() {
             {user.isAdmin && <Row label="Role" value="Admin" />}
             <Row
               label="Signed in"
-              value={new Date(user.issuedAt * 1000).toLocaleString()}
+              value={new Date(user.issuedAt * 1000).toLocaleString('en-US')}
             />
           </div>
 

@@ -243,14 +243,14 @@ export function TimeseriesChart({ data, height = 300 }: TimeseriesChartProps) {
           <>
             <span className="font-mono">{sweepInfo.aiSweeps.sweeps.length} sweeps</span>
             <span className="font-mono">
-              {sweepInfo.aiSweeps.sweeps[0]?.length.toLocaleString()} samples/sweep
+              {sweepInfo.aiSweeps.sweeps[0]?.length.toLocaleString('en-US')} samples/sweep
             </span>
             <span className="font-mono uppercase">{data.format}</span>
             <span className="text-[10px] opacity-60">Color: current injection step</span>
           </>
         ) : (
           <>
-            <span className="font-mono">{data.sample_count.toLocaleString()} samples</span>
+            <span className="font-mono">{data.sample_count.toLocaleString('en-US')} samples</span>
             <span className="font-mono">
               {channelNames.length} channel{channelNames.length > 1 ? 's' : ''}
             </span>

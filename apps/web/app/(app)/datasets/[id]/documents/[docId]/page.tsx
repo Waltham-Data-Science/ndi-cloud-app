@@ -27,11 +27,18 @@
  * is heavier and out of scope for the audit — the inline-style fix is
  * the minimum-effort path the audit explicitly recommended.
  */
+import type { Metadata } from 'next';
+
 import { DocumentDetailShell } from './document-detail-shell';
 
 interface PageProps {
   params: Promise<{ id: string; docId: string }>;
 }
+
+// Per-page title; root layout's template wraps to "Document · NDI Cloud".
+export const metadata: Metadata = {
+  title: 'Document',
+};
 
 export default async function DocumentDetailPage({ params }: PageProps) {
   const { id, docId } = await params;
