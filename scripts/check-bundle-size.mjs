@@ -14,13 +14,24 @@
  *      Defense-in-depth — if the baseline file goes missing, the ceiling
  *      still protects. Catches catastrophic regressions immediately.
  *   2. **Ratchet baseline**: most-recent-passing build's byte count, persisted
- *      in `apps/web/.bundle-size-baseline.json`. Cannot grow without an
- *      explicit `--update` commit. Catches *any* size growth, not just the
- *      ones that punch through the hard ceiling.
+ *      in `apps/web/.bundle-size-baseline.json`. Cannot grow beyond the
+ *      noise-floor slack without an explicit `--update` commit. Catches
+ *      every meaningful (≥1 KB) size growth, not just the ones that punch
+ *      through the hard ceiling.
  *
  * Phase 6.7 A2 (2026-04-26) introduced the ratchet. Before this, the hard
  * 200 KB ceiling was the only check, which gave ~30 KB silent headroom for
  * accidental growth. Ratchet replaces that headroom with explicit intent.
+ *
+ * ## Noise-floor slack
+ *
+ * `gzipSync` is deterministic for a given input — but the input bytes
+ * themselves (Next/Turbopack chunk-name hashes, build-id strings inlined
+ * in the bundle) shift slightly between runs and across platforms. A
+ * macOS dev measuring locally and a Linux CI runner can disagree by a
+ * few hundred bytes for the same source tree, even with identical
+ * dependencies. The 1 KB slack absorbs this noise floor without giving
+ * accidental top-level imports (typically 5-50 KB additions) a free pass.
  *
  * ## Usage
  *
@@ -51,6 +62,14 @@ const BASELINE_FILE = join(process.cwd(), 'apps/web/.bundle-size-baseline.json')
 // Hard ceiling — never raise. Catches catastrophic regressions even if the
 // baseline file is corrupted, missing, or accidentally inflated.
 const HARD_CEILING_GZ_BYTES = 200 * 1024;
+
+// Noise-floor slack: cross-platform gzip variance (build-id strings,
+// turbopack chunk-name hashes) typically shifts a few hundred bytes
+// between macOS dev and Linux CI for the same source tree. 1 KB is the
+// smallest power-of-2 that reliably absorbs this without giving
+// 5-50 KB accidental imports a free pass. Documented in the "Noise-floor
+// slack" section above.
+const RATCHET_SLACK_BYTES = 1024;
 
 // Parse args: --update flag rewrites the baseline.
 const updateMode = process.argv.includes('--update');
@@ -172,10 +191,10 @@ if (totalGz > HARD_CEILING_GZ_BYTES) {
   );
 }
 
-// 2. Ratchet baseline. Allow shrink (deltaVsBaseline ≤ 0); reject growth.
-if (deltaVsBaseline > 0) {
+// 2. Ratchet baseline. Allow shrink AND noise-floor slack; reject real growth.
+if (deltaVsBaseline > RATCHET_SLACK_BYTES) {
   fail(
-    `Ratchet baseline exceeded by ${deltaKb} KB (current ${totalKb} KB > baseline ${baselineKb} KB).
+    `Ratchet baseline exceeded by ${deltaKb} KB (current ${totalKb} KB > baseline ${baselineKb} KB + ${(RATCHET_SLACK_BYTES / 1024).toFixed(2)} KB slack).
    If this growth is intentional, run \`pnpm bundle-size --update\` and commit the new baseline.
    If unintentional, investigate (look for accidental top-level imports of heavy libs).`,
   );
