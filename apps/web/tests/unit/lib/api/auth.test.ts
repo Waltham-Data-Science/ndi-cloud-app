@@ -79,12 +79,16 @@ describe('lib/api/auth wrappers', () => {
     });
   });
 
-  it('login posts credentials to /api/auth/login', async () => {
+  it('login posts credentials to /api/auth/login with the wire field `username`', async () => {
+    // FastAPI's LoginBody requires `username`, not `email`. The form's
+    // user-facing label and prop name stay as "Email" — only the JSON
+    // wire field name differs (Cognito treats email as the username
+    // field). See AUTH_CONTRACT_AUDIT.md.
     mockedApiFetch.mockResolvedValueOnce({ id: 'u-1', email: 'a@b.com', emailVerified: true });
     await login('a@b.com', 'pw');
     expect(mockedApiFetch).toHaveBeenCalledWith('/api/auth/login', {
       method: 'POST',
-      body: { email: 'a@b.com', password: 'pw' },
+      body: { username: 'a@b.com', password: 'pw' },
     });
   });
 

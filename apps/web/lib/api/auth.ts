@@ -58,11 +58,18 @@ export async function me(): Promise<AuthUser | null> {
  * cookie. The server sets the HttpOnly `session` + non-HttpOnly
  * `XSRF-TOKEN` cookies. On 200 the caller routes to the post-login
  * destination (typically `?returnTo=` or `/my`).
+ *
+ * Wire-field note: FastAPI's `LoginBody` (backend/routers/auth.py:22-25)
+ * requires the field `username`, not `email`. Cognito treats email as
+ * the username; FastAPI passes the value through as-is. The function
+ * keeps `email` as its public parameter name (matches the form's
+ * user-facing "Email" label) and renames only on the wire. See
+ * AUTH_CONTRACT_AUDIT.md.
  */
 export async function login(email: string, password: string): Promise<AuthUser> {
   return apiFetch<AuthUser>('/api/auth/login', {
     method: 'POST',
-    body: { email, password },
+    body: { username: email, password },
   });
 }
 
