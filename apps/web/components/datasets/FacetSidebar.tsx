@@ -133,9 +133,17 @@ function FacetGroup({
 }: FacetGroupProps) {
   return (
     <div className="bg-white rounded-xl border border-border-subtle p-4">
-      <h5 className="text-[11px] font-bold tracking-[0.1em] uppercase text-fg-muted mb-3">
+      {/* Phase 6.6 PR-G a11y polish: was `<h5>` (heading-order
+       * violation on `/datasets` — the page has h1 + h2 from the
+       * hero/results-info chrome; jumping to h5 here skips h3+h4).
+       * Facet group titles are visual labels for the checkbox lists,
+       * not navigation milestones, so `<p>` preserves the styling
+       * without the false heading semantic. The checkbox `<ul>` below
+       * carries the actual interactive structure.
+       */}
+      <p className="text-[11px] font-bold tracking-[0.1em] uppercase text-fg-muted mb-3">
         {title}
-      </h5>
+      </p>
       {loading ? (
         <div className="space-y-2">
           {Array.from({ length: 4 }).map((_, i) => (

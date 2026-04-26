@@ -78,9 +78,17 @@ export function Footer() {
 function FooterColumn({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div>
-      <h5 className="text-[11px] font-bold tracking-[0.12em] uppercase text-white mt-0 mb-4">
+      {/* Phase 6.6 PR-G a11y polish: was `<h5>` (heading-order
+       * violation — page had h1 + h2; jumping to h5 here skips h3+h4).
+       * Footer column labels aren't navigation milestones; they're
+       * visual group labels for the link lists. `<p>` preserves the
+       * exact visual without the false heading semantics; the lists
+       * below are wrapped in landmark elements so screen readers still
+       * announce them as navigation groups via the parent footer.
+       */}
+      <p className="text-[11px] font-bold tracking-[0.12em] uppercase text-white mt-0 mb-4">
         {title}
-      </h5>
+      </p>
       {children}
     </div>
   );
