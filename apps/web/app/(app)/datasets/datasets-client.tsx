@@ -1,162 +1,334 @@
 'use client';
 
 /**
- * Client island for the catalog. The RSC at `./page.tsx` server-prefetches
- * `['datasets', 'published', 1, 20]` and wraps this component in a
- * `<HydrationBoundary>`, so the first `useQuery` call resolves
- * synchronously to the prefetched data — no client-side fetch on first
- * paint. TanStack Query revalidates in the background according to the
- * provider's `staleTime` (60s).
+ * Catalog client island — Phase 6.6 REBUILD-5.
  *
- * Phase 6.5d (cross-repo unification): adds the `<FacetPanel>` sidebar.
- * The facets endpoint aggregates across published datasets only — same
- * anonymous-public guarantee as the dataset list, no per-user state.
+ * Owns the URL ↔ filter-state translation and renders the canonical
+ * `<FacetSidebar>` checkbox filter (replaces the Phase 6.5d-shipped
+ * research-vocabulary chip cloud, which was misplaced — that surface
+ * lives on `/query` per source). Reads:
  *
- * Anonymous-public guarantee: this component renders identically for all
- * viewers. No `useSession` reads, no per-user state. Filter / sort /
- * pagination still land as a follow-up; this PR adds the chip cloud and
- * routes chip clicks to `/query?...` so users can discover the research
- * vocabulary even before the QueryBuilder ships in 6.5e.
+ *   - `?q=` text search (set by `<DatasetsHero>` from REBUILD-4)
+ *   - `?species=` / `?regions=` / `?license=` comma-separated multi-select
+ *   - `?sort=` sort mode (relevance | newest | oldest | name)
+ *   - `?page=` pagination
+ *
+ * Visible datasets = `data.datasets` filtered by `matchesFilters` then
+ * sorted by `compareBy(sort)`. Filtering is client-side against the
+ * current page of the published-datasets envelope — same model as the
+ * source. A future iteration can lift filters into the
+ * `/api/datasets/published` query string for cross-page filtering, but
+ * the current envelope still ships the full count via `totalNumber`.
+ *
+ * Phase 3a's anonymous-public guarantee is preserved: this island reads
+ * URL params (which any visitor can set on a deep link) but no
+ * per-user state. Two visitors hitting the same URL see the same DOM.
+ *
+ * Hydration: the RSC at `./page.tsx` server-prefetches the
+ * `['datasets', 'published', 1, 20]` query and wraps both this island
+ * and `<DatasetsHero>` in a `<HydrationBoundary>`. The first
+ * `useQuery` call resolves synchronously to the prefetched data —
+ * no client-side fetch on first paint. Filtering is pure JS over that
+ * cached page.
  */
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useMemo } from 'react';
 
-import { usePublishedDatasets } from '@/lib/api/datasets';
 import { DatasetCard } from '@/components/app/DatasetCard';
-import { FacetPanel } from '@/components/app/FacetPanel';
+import { ErrorState } from '@/components/errors/ErrorState';
+import { FacetSidebar } from '@/components/datasets/FacetSidebar';
+import { FilterChip } from '@/components/datasets/FilterChip';
+import { Button } from '@/components/ui/Button';
 import { CardSkeleton } from '@/components/ui/Skeleton';
+import { useFacets, usePublishedDatasets } from '@/lib/api/datasets';
+import {
+  compareBy,
+  licenseOptionsFor,
+  matchesFilters,
+  parseCsv,
+  type SortMode,
+} from '@/lib/dataset-filters';
 import { formatNumber } from '@/lib/format';
-import type { OntologyTerm } from '@/lib/types/facets';
 
-/** All four ontology facet kinds funnel into the same backend field —
- * `data.ontology_name` is the canonical ontology-ID field emitted by
- * the enrichment pipeline (matches both full IDs like `NCBITaxon:10116`
- * and human-readable labels in the same cell). The data-browser's
- * `QueryPage` `handleSelectOntologyFacet` does the same unified
- * dispatch; the `kind` argument is reserved for future per-kind field
- * paths if the enrichment pipeline ever splits species / brainRegions
- * into distinct paths.
- *
- * Phase 6.5e fixed this: the previous 6.5d shipped `openminds.fields.preferredOntologyIdentifier`
- * which doesn't exist in the cloud's document index — chip clicks would
- * land on /query with a query that always returns 0 rows. This restores
- * parity with the data-browser. */
-const ONTOLOGY_FACET_FIELD = 'data.ontology_name';
-
-export function DatasetsListClient({
-  page = 1,
-  pageSize = 20,
-}: {
+interface DatasetsListClientProps {
   page?: number;
   pageSize?: number;
-}) {
-  const router = useRouter();
-
-  const handleOntologyChip = (
-    _kind: 'species' | 'brainRegions' | 'strains' | 'sexes',
-    term: OntologyTerm,
-  ) => {
-    // Prefer the ontology id (e.g. NCBITaxon:6239) when present — that's
-    // what the backend ontologyTableRow indexes on. Fall back to the
-    // human-readable label if no ontology id was extracted. `_kind` is
-    // unused today; see ONTOLOGY_FACET_FIELD's docstring.
-    const value = term.ontologyId ?? term.label;
-    if (!value) return;
-    const qs = new URLSearchParams({
-      op: 'contains_string',
-      field: ONTOLOGY_FACET_FIELD,
-      param1: value,
-    });
-    router.push(`/query?${qs.toString()}`);
-  };
-
-  const handleProbeTypeChip = (probeType: string) => {
-    // `element.type` is the canonical probe-type field in NDI-matlab and
-    // v2's element-class shape — matches the data-browser's
-    // `QueryPage.handleSelectProbeType`.
-    const qs = new URLSearchParams({
-      op: 'contains_string',
-      field: 'element.type',
-      param1: probeType,
-    });
-    router.push(`/query?${qs.toString()}`);
-  };
-
-  return (
-    <div className="grid gap-6 lg:grid-cols-[280px_1fr]">
-      <aside className="min-w-0">
-        <FacetPanel
-          onSelectOntologyFacet={handleOntologyChip}
-          onSelectProbeType={handleProbeTypeChip}
-        />
-      </aside>
-      <section className="min-w-0">
-        <DatasetsList page={page} pageSize={pageSize} />
-      </section>
-    </div>
-  );
 }
 
-function DatasetsList({
-  page,
-  pageSize,
-}: {
-  page: number;
-  pageSize: number;
-}) {
+export function DatasetsListClient({
+  page: pageProp = 1,
+  pageSize = 20,
+}: DatasetsListClientProps) {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+
+  // URL-derived state. The `page` prop on the RSC wrapper is the
+  // initial value; once the user paginates, `?page=` carries the
+  // current value forward.
+  const page = Math.max(
+    1,
+    parseInt(searchParams.get('page') ?? String(pageProp), 10) || pageProp,
+  );
+  const q = searchParams.get('q') ?? '';
+  const sort = (searchParams.get('sort') as SortMode) || 'relevance';
+  const speciesFilters = parseCsv(searchParams.get('species'));
+  const regionFilters = parseCsv(searchParams.get('regions'));
+  const licenseFilters = parseCsv(searchParams.get('license'));
+
   const { data, isLoading, isError, error, refetch } = usePublishedDatasets(
     page,
     pageSize,
   );
+  const facets = useFacets();
 
-  if (isLoading) {
-    return (
-      <div className="grid gap-5">
-        {Array.from({ length: 6 }).map((_, i) => (
-          <CardSkeleton key={i} />
-        ))}
-      </div>
-    );
-  }
-
-  if (isError) {
-    return (
-      <div className="rounded-lg border border-dashed border-border-subtle bg-bg-surface p-10 text-center">
-        <p className="text-sm text-fg-secondary mb-3">
-          Couldn&rsquo;t load datasets
-          {error instanceof Error ? `: ${error.message}` : '.'}
-        </p>
-        <button
-          type="button"
-          onClick={() => void refetch()}
-          className="text-sm font-semibold text-ndi-teal hover:underline"
-        >
-          Try again
-        </button>
-      </div>
-    );
-  }
-
-  const datasets = data?.datasets ?? [];
+  const datasets = useMemo(() => data?.datasets ?? [], [data]);
   const total = data?.totalNumber ?? 0;
+  const pageCount = total > 0 ? Math.ceil(total / pageSize) : 1;
 
-  if (datasets.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-border-subtle bg-bg-surface p-10 text-center">
-        <p className="text-sm text-fg-secondary">No published datasets yet.</p>
-      </div>
+  const licenseOptions = useMemo(
+    () => licenseOptionsFor(datasets),
+    [datasets],
+  );
+
+  const visible = useMemo(() => {
+    const matched = datasets.filter((d) =>
+      matchesFilters(d, {
+        q,
+        species: speciesFilters,
+        regions: regionFilters,
+        license: licenseFilters,
+      }),
     );
-  }
+    return [...matched].sort(compareBy(sort));
+  }, [datasets, q, speciesFilters, regionFilters, licenseFilters, sort]);
+
+  const anyFilterActive =
+    !!q ||
+    speciesFilters.length > 0 ||
+    regionFilters.length > 0 ||
+    licenseFilters.length > 0;
+
+  /** Push the next URLSearchParams to `/datasets`. Drops `?page=` on any
+   * non-page change so a new filter resets pagination (matches source's
+   * `setParam(...) { ... if (key !== 'page') next.delete('page'); }`). */
+  const pushParams = (
+    mutate: (next: URLSearchParams) => void,
+    options: { resetPage?: boolean } = { resetPage: true },
+  ) => {
+    const next = new URLSearchParams(searchParams.toString());
+    mutate(next);
+    if (options.resetPage) next.delete('page');
+    const qs = next.toString();
+    router.push(qs ? `/datasets?${qs}` : '/datasets');
+  };
+
+  const setParam = (key: string, value: string | null) => {
+    pushParams((next) => {
+      if (value === null || value === '') next.delete(key);
+      else next.set(key, value);
+    });
+  };
+
+  const toggleFilter = (
+    key: 'species' | 'regions' | 'license',
+    value: string,
+  ) => {
+    const current = parseCsv(searchParams.get(key));
+    const next = current.includes(value)
+      ? current.filter((v) => v !== value)
+      : [...current, value];
+    setParam(key, next.length ? next.join(',') : null);
+  };
+
+  const clearAllFilters = () => {
+    pushParams((next) => {
+      ['species', 'regions', 'license', 'q'].forEach((k) => next.delete(k));
+    });
+  };
+
+  const setPage = (n: number) => {
+    pushParams(
+      (next) => {
+        next.set('page', String(n));
+      },
+      { resetPage: false },
+    );
+  };
 
   return (
-    <>
-      <p className="text-xs text-fg-muted mb-4 font-mono">
-        {formatNumber(total)} dataset{total === 1 ? '' : 's'}
-      </p>
-      <div className="grid gap-5">
-        {datasets.map((d) => (
-          <DatasetCard key={d.id} dataset={d} />
-        ))}
+    <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-6">
+      <FacetSidebar
+        species={(facets.data?.species ?? []).map((t) => t.label)}
+        regions={(facets.data?.brainRegions ?? []).map((t) => t.label)}
+        licenses={licenseOptions}
+        activeSpecies={speciesFilters}
+        activeRegions={regionFilters}
+        activeLicenses={licenseFilters}
+        onToggleSpecies={(v) => toggleFilter('species', v)}
+        onToggleRegion={(v) => toggleFilter('regions', v)}
+        onToggleLicense={(v) => toggleFilter('license', v)}
+        loading={facets.isLoading}
+      />
+
+      <div className="min-w-0">
+        {/* Results info bar + sort */}
+        <div
+          className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-white border border-border-subtle px-4 py-2.5 mb-3"
+          style={{ boxShadow: 'var(--shadow-xs)' }}
+        >
+          <span className="text-[13.5px] text-fg-secondary">
+            {isLoading ? (
+              'Loading…'
+            ) : anyFilterActive ? (
+              <>
+                <strong className="text-brand-navy font-semibold">
+                  {visible.length}
+                </strong>{' '}
+                of {formatNumber(total)} dataset{total === 1 ? '' : 's'}
+                {q && (
+                  <>
+                    {' '}matching{' '}
+                    <em className="text-brand-navy not-italic font-medium">
+                      &ldquo;{q}&rdquo;
+                    </em>
+                  </>
+                )}
+              </>
+            ) : (
+              <>
+                <strong className="text-brand-navy font-semibold">
+                  {formatNumber(total)}
+                </strong>{' '}
+                datasets &middot; page {page} of {pageCount}
+              </>
+            )}
+          </span>
+          <label className="flex items-center gap-2 text-[12.5px] text-fg-muted">
+            <span className="uppercase tracking-wide text-[10.5px] font-semibold">
+              Sort
+            </span>
+            <select
+              value={sort}
+              onChange={(e) => setParam('sort', e.target.value)}
+              className="bg-white border border-border-subtle rounded-md px-2 py-1 text-[12.5px] text-fg-primary hover:border-border-strong focus:outline-none focus:ring-2 focus:ring-ndi-teal/40"
+              aria-label="Sort"
+            >
+              <option value="relevance">Most relevant</option>
+              <option value="newest">Newest</option>
+              <option value="oldest">Oldest</option>
+              <option value="name">Title (A–Z)</option>
+            </select>
+          </label>
+        </div>
+
+        {/* Applied filter chips */}
+        {anyFilterActive && (
+          <div className="flex flex-wrap gap-1.5 mb-4">
+            {q && (
+              <FilterChip
+                label={`“${q}”`}
+                onRemove={() => setParam('q', null)}
+              />
+            )}
+            {speciesFilters.map((v) => (
+              <FilterChip
+                key={`s-${v}`}
+                label={v}
+                onRemove={() => toggleFilter('species', v)}
+              />
+            ))}
+            {regionFilters.map((v) => (
+              <FilterChip
+                key={`r-${v}`}
+                label={v}
+                onRemove={() => toggleFilter('regions', v)}
+              />
+            ))}
+            {licenseFilters.map((v) => (
+              <FilterChip
+                key={`l-${v}`}
+                label={v}
+                onRemove={() => toggleFilter('license', v)}
+              />
+            ))}
+            <button
+              type="button"
+              className="text-[12px] text-fg-muted hover:text-fg-secondary underline underline-offset-2 ml-1"
+              onClick={clearAllFilters}
+            >
+              Clear all
+            </button>
+          </div>
+        )}
+
+        {/* Loading */}
+        {isLoading && (
+          <div className="grid gap-5">
+            {Array.from({ length: 6 }).map((_, i) => (
+              <CardSkeleton key={i} />
+            ))}
+          </div>
+        )}
+
+        {isError && (
+          <ErrorState error={error} onRetry={() => void refetch()} />
+        )}
+
+        {!isLoading && !isError && visible.length === 0 && (
+          <div className="rounded-lg border border-dashed border-border-subtle bg-white p-10 text-center">
+            <p className="text-[14px] text-fg-secondary">
+              {anyFilterActive
+                ? 'No datasets match the current filters.'
+                : 'No published datasets yet.'}
+            </p>
+            {anyFilterActive && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="mt-3"
+                onClick={clearAllFilters}
+              >
+                Clear filters
+              </Button>
+            )}
+          </div>
+        )}
+
+        {!isLoading && visible.length > 0 && (
+          <div className="grid gap-5">
+            {visible.map((d) => (
+              <DatasetCard key={d.id} dataset={d} />
+            ))}
+          </div>
+        )}
+
+        {!isLoading && pageCount > 1 && (
+          <nav
+            className="flex items-center justify-center gap-3 pt-8"
+            aria-label="Pagination"
+          >
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={page === 1}
+              onClick={() => setPage(page - 1)}
+            >
+              Previous
+            </Button>
+            <span className="text-[13px] text-fg-muted font-mono">
+              Page {page} of {pageCount}
+            </span>
+            <Button
+              variant="secondary"
+              size="sm"
+              disabled={!data || page >= pageCount}
+              onClick={() => setPage(page + 1)}
+            >
+              Next
+            </Button>
+          </nav>
+        )}
       </div>
-    </>
+    </div>
   );
 }
