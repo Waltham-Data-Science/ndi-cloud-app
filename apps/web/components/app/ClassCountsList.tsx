@@ -59,7 +59,14 @@ export function ClassCountsList({ datasetId, data }: ClassCountsListProps) {
                 href={href}
                 className="flex items-center gap-2 hover:text-ndi-teal transition-colors"
               >
-                <span className="font-mono truncate flex-1">{cls}</span>
+                {/* Phase 6.6 PR-H polish: dropped `truncate` — class names
+                 * (`subject`, `element_epoch`, `openminds_subject`,
+                 * `probe_location`, etc.) need to be fully visible since
+                 * they're the entry point to the documents tab and the
+                 * tables grid. The list is in a fixed-width column;
+                 * `break-words` lets a long class name wrap if needed
+                 * rather than getting cut off mid-name. */}
+                <span className="font-mono break-words flex-1">{cls}</span>
                 <span className="text-fg-muted">{formatNumber(n)}</span>
                 {isSummary && <FileText className="h-3 w-3 text-fg-muted" aria-hidden />}
                 {!isSummary && <Globe className="h-3 w-3 text-fg-muted" aria-hidden />}
