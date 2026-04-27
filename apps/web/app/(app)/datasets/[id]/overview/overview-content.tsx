@@ -11,9 +11,30 @@
  * `OverviewTab` (lines 238-308 in source). Phase 6.6 REBUILD-3c lifts
  * this from a Phase 3b placeholder into a source-faithful Overview.
  *
- * Provenance errors degrade silently — a flaky aggregator should never
- * block the detail view.
+ * **Degraded-summary fallback (post-PR #102 smoke-test)**: when the
+ * backend synthesizer's stage-1 counts/metadata calls time out on
+ * large datasets, the response carries all-zero counts + null per-
+ * class facts + extractionWarnings. Without intervention, the Summary
+ * card directly contradicts the hero band ("78,687 docs · 1,656
+ * subjects" up top vs "0 / 0 / Not applicable" in the sidecar).
+ * `enrichDegradedSummary()` splices the dataset record's raw fields
+ * (numberOfSubjects, documentCount, species, brainRegions, totalSize,
+ * createdAt, citation) into the degraded shape so the card renders
+ * the basics. The original extractionWarnings carry forward so the
+ * footer's warnings tooltip still surfaces the underlying timeout
+ * for operators.
+ *
+ * **Provenance card silent-load**: provenance is non-essential
+ * (branches/dependencies — most datasets don't have any). The first-
+ * paint skeleton is what the user perceives as "perpetually loading";
+ * it shows for the full 60s apiFetch timeout. Switched to render-
+ * on-success-only so during the load window the slot is empty
+ * rather than skeleton-filled. Same data still arrives (or fails
+ * silently per the original "errors degrade silently" contract); the
+ * UX no longer signals a stuck wait.
  */
+import { useMemo } from 'react';
+
 import {
   useDataset,
   useDatasetProvenance,
@@ -24,6 +45,7 @@ import { DatasetProvenanceCard } from '@/components/datasets/DatasetProvenanceCa
 import { DatasetSummaryCard } from '@/components/datasets/DatasetSummaryCard';
 import { ErrorState } from '@/components/errors/ErrorState';
 import { CardSkeleton } from '@/components/ui/Skeleton';
+import { enrichDegradedSummary, isDegraded } from '@/lib/data/summary-fallback';
 
 export function OverviewContent({ datasetId }: { datasetId: string }) {
   const ds = useDataset(datasetId);
@@ -43,7 +65,22 @@ export function OverviewContent({ datasetId }: { datasetId: string }) {
   // `isError`            = "first attempt failed; surface a retry".
   // `data`               = "render the card".
   const summaryShowSkeleton = summary.isPending && !summary.data;
-  const provenanceShowSkeleton = provenance.isPending && !provenance.data;
+
+  // Compute the display summary: when /summary returns degraded data
+  // (counts all zero + extractionWarnings, the structural fingerprint
+  // of a stage-1 backend timeout), splice in the dataset record's
+  // raw fields so the Summary card renders the basics instead of
+  // contradicting the hero with "0 documents · 0 subjects ·
+  // Not applicable" everywhere. See `summary-fallback.ts` for the
+  // field-level rules; preserving extractionWarnings means the
+  // existing "X warnings" tooltip continues to surface the
+  // underlying issue for operators.
+  const displaySummary = useMemo(() => {
+    if (!summary.data) return undefined;
+    if (!isDegraded(summary.data)) return summary.data;
+    if (!ds.data) return summary.data;
+    return enrichDegradedSummary(summary.data, ds.data);
+  }, [summary.data, ds.data]);
 
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_360px] min-w-0">
@@ -80,25 +117,29 @@ export function OverviewContent({ datasetId }: { datasetId: string }) {
             onRetry={() => summary.refetch()}
           />
         )}
-        {summary.data && <DatasetSummaryCard summary={summary.data} />}
+        {/* Render the (possibly enriched) display summary. When
+            `displaySummary` differs from `summary.data`, it's because
+            we spliced in raw record fields to compensate for backend
+            stage-1 timeouts — see overview-content.tsx header docstring
+            and `summary-fallback.ts` for the full rationale. */}
+        {displaySummary && <DatasetSummaryCard summary={displaySummary} />}
 
         {/* Plan B B5 — dataset provenance card (derivation graph,
-            cross-dataset depends_on edges, branches). Provenance now
-            renders a CardSkeleton during first-paint (matching the
-            summary card), an inline error state on failure (lets the
-            user retry without a hard refresh), and the card itself on
-            success. Pre-fix it was render-on-data-only, which was a
-            silent UX bug: users saw a blank space for slow datasets
-            with no signal whether provenance was loading, broken, or
-            simply absent. Errors no longer block the rest of the
-            view — DatasetSummaryCard above renders independently. */}
-        {provenanceShowSkeleton && <CardSkeleton />}
-        {provenance.isError && (
-          <ErrorState
-            error={provenance.error}
-            onRetry={() => provenance.refetch()}
-          />
-        )}
+            cross-dataset depends_on edges, branches).
+            **Silent-load**: render only on success. Provenance is
+            non-essential (most datasets have no branches/dependencies);
+            the previous render-skeleton-then-card pattern showed a
+            CardSkeleton for the full 60s apiFetch timeout window on
+            slow upstream queries — perceived by users as "perpetually
+            loading." With render-on-success-only, the slot is empty
+            during the load (no UI signal of a stuck wait), and the
+            card pops in once data arrives or stays absent if the
+            backend can't compute provenance (the typed error case is
+            non-actionable for the user — they just don't get a
+            provenance card, which is fine because most datasets
+            don't have one anyway). Errors degrade silently per the
+            original "errors on provenance never block the detail
+            view" contract from the source data-browser. */}
         {provenance.data && (
           <DatasetProvenanceCard provenance={provenance.data} />
         )}
