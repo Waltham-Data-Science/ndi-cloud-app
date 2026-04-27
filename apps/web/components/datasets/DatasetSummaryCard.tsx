@@ -15,6 +15,17 @@
  * preserve the distinction.
  *
  * Full strings are preserved, never truncated (amendment §4.B1).
+ *
+ * # Degraded-data UX (audit 2026-04-27 #2/#3/#4)
+ *
+ * When the backend's stage-1 / stage-2 cloud calls fail, the response
+ * still ships a structurally-valid summary — but with values that
+ * LOOK trustworthy and aren't (e.g. `counts.sessions = 0` doesn't
+ * mean "zero sessions", it means "we tried to count and couldn't").
+ * We cross-reference `extractionWarnings` with values to render an
+ * inline degraded marker on affected fields, and humanize the raw
+ * warning copy in the footer tooltip. See
+ * :module:`lib/data/summary-degradation` for the warning vocabulary.
  */
 import { Info } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState } from 'react';
@@ -29,6 +40,11 @@ import {
 } from '@/components/ui/Card';
 import { FloatingPanel } from '@/components/ui/FloatingPanel';
 import { cn } from '@/lib/cn';
+import {
+  degradedFieldsFromSummary,
+  humanizeWarning,
+  type DegradedFields,
+} from '@/lib/data/summary-degradation';
 import { formatBytes } from '@/lib/format';
 import type {
   DatasetSummary,
@@ -44,6 +60,14 @@ export function DatasetSummaryCard({
   summary,
   className,
 }: DatasetSummaryCardProps) {
+  // Compute once and pass down — keeps every section's "is my data
+  // unreliable?" check identical and lets us assert the matrix in
+  // isolation in `summary-degradation.test.ts`.
+  const degraded = useMemo(
+    () => degradedFieldsFromSummary(summary),
+    [summary],
+  );
+
   return (
     <Card className={className}>
       <CardHeader>
@@ -54,14 +78,21 @@ export function DatasetSummaryCard({
         </CardDescription>
       </CardHeader>
       <CardBody className="space-y-6 text-sm">
-        <CountsSection counts={summary.counts} />
+        <CountsSection counts={summary.counts} degraded={degraded} />
         <BiologySection
           species={summary.species}
           strains={summary.strains}
           sexes={summary.sexes}
+          degraded={degraded.biology}
         />
-        <AnatomySection brainRegions={summary.brainRegions} />
-        <ProbeTypesSection probeTypes={summary.probeTypes} />
+        <AnatomySection
+          brainRegions={summary.brainRegions}
+          degraded={degraded.brainRegions}
+        />
+        <ProbeTypesSection
+          probeTypes={summary.probeTypes}
+          degraded={degraded.probeTypes}
+        />
         <ScaleSection
           dateRange={summary.dateRange}
           totalSizeBytes={summary.totalSizeBytes}
@@ -75,6 +106,39 @@ export function DatasetSummaryCard({
         />
       </CardBody>
     </Card>
+  );
+}
+
+/**
+ * Inline "this field is degraded" marker. Renders an em-dash with a
+ * subtle amber tint and an Info icon carrying a native-tooltip
+ * explanation. The em-dash + tint pattern matches the existing
+ * "value-empty" rendering so the visual vocabulary stays consistent;
+ * the icon is what tells the user "this isn't an absence, it's a
+ * failure."
+ *
+ * Native `title` attribute (vs FloatingPanel) is intentional: the
+ * marker appears 0-N times per card, and pulling the heavyweight
+ * floating-panel-on-every-marker would balloon the DOM. The tooltip
+ * is a confirmation signal — users mostly read the em-dash + icon
+ * and infer the problem from context.
+ */
+function DegradedMarker({
+  reason,
+  testId,
+}: {
+  reason: string;
+  testId?: string;
+}) {
+  return (
+    <span
+      className="inline-flex items-center gap-1 text-[11px] text-amber-700"
+      data-testid={testId ?? 'value-degraded'}
+      title={reason}
+    >
+      <span aria-hidden>—</span>
+      <Info className="h-3 w-3" aria-label={reason} />
+    </span>
   );
 }
 
@@ -92,19 +156,35 @@ function SectionHeading({ children }: { children: React.ReactNode }) {
 
 function CountsSection({
   counts,
+  degraded,
 }: {
   counts: DatasetSummary['counts'];
+  degraded: DegradedFields;
 }) {
-  const items: Array<{ label: string; value: number; testId: string }> = [
-    { label: 'Sessions', value: counts.sessions, testId: 'counts-sessions' },
-    { label: 'Subjects', value: counts.subjects, testId: 'counts-subjects' },
-    { label: 'Probes', value: counts.probes, testId: 'counts-probes' },
-    { label: 'Elements', value: counts.elements, testId: 'counts-elements' },
-    { label: 'Epochs', value: counts.epochs, testId: 'counts-epochs' },
+  // `recordRecoverable: true` means the backend's record-fallback path
+  // can fill this from the cloud-side `DatasetRecord` even if
+  // /document-class-counts times out — so a 0 here is meaningful (it
+  // really is zero) and we should NOT render a degraded marker.
+  // The other counts (sessions/probes/elements/epochs) have no such
+  // fallback; when degraded.counts is set, their `0` is "we don't
+  // know," not "there are zero," and the marker prevents viewers
+  // from reading "0 sessions" as a fact.
+  const items: Array<{
+    label: string;
+    value: number;
+    testId: string;
+    recordRecoverable: boolean;
+  }> = [
+    { label: 'Sessions', value: counts.sessions, testId: 'counts-sessions', recordRecoverable: false },
+    { label: 'Subjects', value: counts.subjects, testId: 'counts-subjects', recordRecoverable: true },
+    { label: 'Probes', value: counts.probes, testId: 'counts-probes', recordRecoverable: false },
+    { label: 'Elements', value: counts.elements, testId: 'counts-elements', recordRecoverable: false },
+    { label: 'Epochs', value: counts.epochs, testId: 'counts-epochs', recordRecoverable: false },
     {
       label: 'Documents',
       value: counts.totalDocuments,
       testId: 'counts-total-documents',
+      recordRecoverable: true,
     },
   ];
   return (
@@ -114,20 +194,31 @@ function CountsSection({
         className="grid grid-cols-2 gap-2 sm:grid-cols-3"
         data-testid="dataset-summary-counts"
       >
-        {items.map((i) => (
-          <div
-            key={i.label}
-            className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5"
-            data-testid={i.testId}
-          >
-            <dt className="text-[10px] uppercase tracking-wide text-gray-500">
-              {i.label}
-            </dt>
-            <dd className="font-mono text-sm text-gray-800">
-              {new Intl.NumberFormat('en-US').format(i.value)}
-            </dd>
-          </div>
-        ))}
+        {items.map((i) => {
+          const showDegraded =
+            degraded.counts && !i.recordRecoverable && i.value === 0;
+          return (
+            <div
+              key={i.label}
+              className="rounded-md border border-gray-200 bg-gray-50 px-2 py-1.5"
+              data-testid={i.testId}
+            >
+              <dt className="text-[10px] uppercase tracking-wide text-gray-500">
+                {i.label}
+              </dt>
+              <dd className="font-mono text-sm text-gray-800">
+                {showDegraded ? (
+                  <DegradedMarker
+                    reason="Cloud query for class counts timed out — count not recoverable from dataset record."
+                    testId="counts-degraded"
+                  />
+                ) : (
+                  new Intl.NumberFormat('en-US').format(i.value)
+                )}
+              </dd>
+            </div>
+          );
+        })}
       </dl>
     </section>
   );
@@ -137,18 +228,24 @@ function BiologySection({
   species,
   strains,
   sexes,
+  degraded,
 }: {
   species: OntologyTerm[] | null;
   strains: OntologyTerm[] | null;
   sexes: OntologyTerm[] | null;
+  /** When true, biology values are unreliable — the
+   * openminds_subject ndiquery failed. Each label renders the
+   * degraded marker regardless of whether the value is `[]` or
+   * `null`. */
+  degraded: boolean;
 }) {
   return (
     <section aria-label="Biology" className="space-y-2" data-testid="biology">
       <SectionHeading>Biology</SectionHeading>
       <dl className="space-y-1.5">
-        <LabeledOntologyList label="Species" terms={species} />
-        <LabeledOntologyList label="Strains" terms={strains} />
-        <LabeledOntologyList label="Sex" terms={sexes} />
+        <LabeledOntologyList label="Species" terms={species} degraded={degraded} />
+        <LabeledOntologyList label="Strains" terms={strains} degraded={degraded} />
+        <LabeledOntologyList label="Sex" terms={sexes} degraded={degraded} />
       </dl>
     </section>
   );
@@ -156,14 +253,20 @@ function BiologySection({
 
 function AnatomySection({
   brainRegions,
+  degraded,
 }: {
   brainRegions: OntologyTerm[] | null;
+  degraded: boolean;
 }) {
   return (
     <section aria-label="Anatomy" className="space-y-2" data-testid="anatomy">
       <SectionHeading>Anatomy</SectionHeading>
       <dl className="space-y-1.5">
-        <LabeledOntologyList label="Brain regions" terms={brainRegions} />
+        <LabeledOntologyList
+          label="Brain regions"
+          terms={brainRegions}
+          degraded={degraded}
+        />
       </dl>
     </section>
   );
@@ -171,8 +274,10 @@ function AnatomySection({
 
 function ProbeTypesSection({
   probeTypes,
+  degraded,
 }: {
   probeTypes: string[] | null;
+  degraded: boolean;
 }) {
   return (
     <section
@@ -187,7 +292,7 @@ function ProbeTypesSection({
             Types
           </dt>
           <dd className="flex flex-wrap gap-1.5">
-            {renderStringListOrStatus(probeTypes)}
+            {renderStringListOrStatus(probeTypes, degraded)}
           </dd>
         </div>
       </dl>
@@ -241,9 +346,14 @@ function ScaleSection({
 function LabeledOntologyList({
   label,
   terms,
+  degraded = false,
 }: {
   label: string;
   terms: OntologyTerm[] | null;
+  /** When true, suppress the `[]` / `null` rendering and show the
+   * degraded marker instead — the upstream ndiquery failed and
+   * neither "Not applicable" nor "no entries" is the truth. */
+  degraded?: boolean;
 }) {
   return (
     <div
@@ -254,13 +364,36 @@ function LabeledOntologyList({
         {label}
       </dt>
       <dd className="flex flex-wrap gap-1.5">
-        {renderOntologyList(terms)}
+        {renderOntologyList(terms, degraded)}
       </dd>
     </div>
   );
 }
 
-function renderOntologyList(terms: OntologyTerm[] | null): React.ReactNode {
+function renderOntologyList(
+  terms: OntologyTerm[] | null,
+  degraded = false,
+): React.ReactNode {
+  // Degraded path: prefer the marker over BOTH "Not applicable" and
+  // "—". Audit #4: a C. elegans dataset rendering "Strains: Not
+  // applicable" reads like a fact about the dataset, when it actually
+  // reflects the openminds_subject ndiquery failing. The `terms`
+  // value here is unreliable on the degraded branch — could be `[]`
+  // (the backend's exception fallback) or `null` (stage-2 didn't run);
+  // either way we want the same marker.
+  if (degraded) {
+    // Some valid data may still have made it through (rare but
+    // possible — partial responses). Render real terms when present;
+    // only fall through to the marker when nothing useful is here.
+    if (terms && terms.length > 0) {
+      return terms.map((t) => (
+        <OntologyTermPill key={`${t.label}-${t.ontologyId ?? ''}`} term={t} />
+      ));
+    }
+    return (
+      <DegradedMarker reason="Cloud query timed out — partial data; this section may be incomplete." />
+    );
+  }
   if (terms === null) {
     return (
       <span
@@ -286,7 +419,22 @@ function renderOntologyList(terms: OntologyTerm[] | null): React.ReactNode {
   ));
 }
 
-function renderStringListOrStatus(values: string[] | null): React.ReactNode {
+function renderStringListOrStatus(
+  values: string[] | null,
+  degraded = false,
+): React.ReactNode {
+  if (degraded) {
+    if (values && values.length > 0) {
+      return values.map((v) => (
+        <Badge key={v} variant="secondary" className="font-mono">
+          {v}
+        </Badge>
+      ));
+    }
+    return (
+      <DegradedMarker reason="Cloud query timed out — partial data; this section may be incomplete." />
+    );
+  }
   if (values === null) {
     return (
       <span
@@ -518,12 +666,18 @@ function SummaryFooter({
       >
         <ul className="space-y-1">
           {extractionWarnings.map((w, i) => (
+            // Audit #3 — raw operator-grade strings ("counts fetch
+            // exceeded 20s") were both alarming and uninformative for
+            // end users. `humanizeWarning` rewrites the canonical
+            // backend prefixes into friendly copy; unknown warnings
+            // pass through unchanged so a new failure mode stays
+            // visible (we never silently hide).
             <li
               key={i}
               className="text-gray-700"
               data-testid="summary-warning"
             >
-              {w}
+              {humanizeWarning(w)}
             </li>
           ))}
         </ul>
