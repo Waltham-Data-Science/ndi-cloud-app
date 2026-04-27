@@ -249,7 +249,7 @@ describe('DatasetSummaryCard — warnings footer', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('reveals the warnings tooltip when the user toggles it', () => {
+  it('reveals the warnings tooltip when the user toggles it, with humanized copy', () => {
     render(
       <DatasetSummaryCard
         summary={baseSummary({
@@ -267,7 +267,136 @@ describe('DatasetSummaryCard — warnings footer', () => {
     const tooltip = screen.getByTestId('summary-warnings-tooltip');
     const items = within(tooltip).getAllByTestId('summary-warning');
     expect(items).toHaveLength(2);
-    expect(items[0]).toHaveTextContent('species extraction');
+    // Audit 2026-04-27 #3 — operator-grade warning copy is now
+    // humanized at render time. The raw "species extraction: ..."
+    // string maps to a friendlier "label-only" note via
+    // `humanizeWarning`. Detailed mapping verified in
+    // `summary-degradation.test.ts`.
+    expect(items[0]).toHaveTextContent(/label-only/i);
+    expect(items[0]).not.toHaveTextContent('species extraction');
+  });
+});
+
+describe('DatasetSummaryCard — degraded-data UX (audit #2, #3, #4)', () => {
+  // Audit #2 — when stage-1 /document-class-counts times out, the
+  // counts envelope ships zeros for sessions/probes/elements/epochs.
+  // The renderer should show a degraded marker for those, not "0".
+  it('renders the counts-degraded marker for sessions/probes/elements/epochs when class-counts timed out', () => {
+    render(
+      <DatasetSummaryCard
+        summary={baseSummary({
+          counts: {
+            sessions: 0,
+            subjects: 1656,
+            probes: 0,
+            elements: 0,
+            epochs: 0,
+            totalDocuments: 78687,
+          },
+          extractionWarnings: [
+            'class counts query failed: counts fetch exceeded 20s',
+          ],
+        })}
+      />,
+    );
+    // Sessions / Probes / Elements / Epochs — all four should
+    // surface the degraded marker.
+    const degradedMarkers = screen.getAllByTestId('counts-degraded');
+    expect(degradedMarkers).toHaveLength(4);
+    // Subjects + Documents come from the dataset record fallback —
+    // those values are real and should NOT have the marker.
+    const subjects = screen.getByTestId('counts-subjects');
+    expect(subjects).toHaveTextContent('1,656');
+    const documents = screen.getByTestId('counts-total-documents');
+    expect(documents).toHaveTextContent('78,687');
+  });
+
+  it('does NOT mark counts as degraded when the dataset legitimately has zeros and no warnings', () => {
+    // Empty-but-valid dataset: zero counts are real, no warnings.
+    // Renderer should print "0" with no degraded marker.
+    render(
+      <DatasetSummaryCard
+        summary={baseSummary({
+          counts: {
+            sessions: 0,
+            subjects: 0,
+            probes: 0,
+            elements: 0,
+            epochs: 0,
+            totalDocuments: 0,
+          },
+          extractionWarnings: [],
+        })}
+      />,
+    );
+    expect(screen.queryAllByTestId('counts-degraded')).toHaveLength(0);
+    expect(screen.getByTestId('counts-sessions')).toHaveTextContent('0');
+  });
+
+  // Audit #4 — "Strains: Not applicable" on a C. elegans dataset
+  // reads as a fact about the dataset when it's actually a stage-2
+  // openminds_subject query failure. The degraded marker should
+  // replace BOTH "Not applicable" and "—" when the upstream failed.
+  it('replaces "Not applicable" with the degraded marker when openminds_subject query failed', () => {
+    render(
+      <DatasetSummaryCard
+        summary={baseSummary({
+          species: null,
+          strains: null,
+          sexes: null,
+          extractionWarnings: [
+            'openminds_subject query failed: TimeoutError',
+          ],
+        })}
+      />,
+    );
+    const biology = screen.getByTestId('biology');
+    // Three biology fields, all degraded.
+    const markers = within(biology).getAllByTestId('value-degraded');
+    expect(markers).toHaveLength(3);
+    // "Not applicable" must NOT be present in this case.
+    expect(
+      within(biology).queryByTestId('value-not-applicable'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('replaces empty-list "—" with the degraded marker when probe_location query failed', () => {
+    render(
+      <DatasetSummaryCard
+        summary={baseSummary({
+          brainRegions: [],
+          extractionWarnings: [
+            'probe_location query failed: TimeoutError',
+          ],
+        })}
+      />,
+    );
+    const anatomy = screen.getByTestId('anatomy');
+    expect(within(anatomy).getByTestId('value-degraded')).toBeInTheDocument();
+    // The plain `—` rendering for queried-empty must NOT appear here.
+    expect(within(anatomy).queryByTestId('value-empty')).not.toBeInTheDocument();
+  });
+
+  it('keeps real ontology pills visible even when degradation is flagged', () => {
+    // Defensive: a partial response can ship some terms AND a warning.
+    // Render the real terms; only the empty/null branches fall back
+    // to the marker.
+    render(
+      <DatasetSummaryCard
+        summary={baseSummary({
+          species: [{ label: 'Mus musculus', ontologyId: 'NCBITaxon:10090' }],
+          strains: null,
+          sexes: null,
+          extractionWarnings: [
+            'openminds_subject query failed: TimeoutError',
+          ],
+        })}
+      />,
+    );
+    expect(screen.getByText('Mus musculus')).toBeInTheDocument();
+    // Only Strains + Sex (the null fields) get the marker.
+    const biology = screen.getByTestId('biology');
+    expect(within(biology).getAllByTestId('value-degraded')).toHaveLength(2);
   });
 });
 
