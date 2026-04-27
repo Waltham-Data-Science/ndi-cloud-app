@@ -54,11 +54,25 @@ export function DatasetCard({ dataset }: DatasetCardProps) {
   return (
     <Link
       href={`/datasets/${dataset.id}/overview`}
-      className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue-3 rounded-lg"
+      // `cursor-pointer` is redundant on `<a>` per the spec, but Safari
+      // and Firefox briefly drop it during the navigation pending state
+      // (between click and the route's loading.tsx painting), so the
+      // user — already waiting on a slow-cloud detail fetch — sees the
+      // cursor revert to the default arrow mid-click. Forcing it via
+      // Tailwind keeps the cursor consistent for the whole click→paint
+      // window. Pairs with the route-level loading.tsx (audit #1) so
+      // the click registers immediately AND looks clickable.
+      className="block group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue-3 rounded-lg"
       aria-label={`Open dataset ${displayName}`}
     >
       <Card
-        className="transition-all group-hover:-translate-y-[1px] group-hover:shadow-md group-hover:ring-border-strong"
+        // Audit #16: hover affordance was previously a 1 px Y-translate
+        // + soft shadow. On dense catalogs at 1280 px+ the lift was
+        // imperceptible and the card looked unclickable. Bumping the
+        // lift to 2 px + adding a ring-2 + brand-tinted shadow under
+        // hover makes the affordance visceral without the card jumping
+        // around. `transition-all` covers ring + shadow + transform.
+        className="transition-all group-hover:-translate-y-[2px] group-hover:shadow-lg group-hover:ring-2 group-hover:ring-brand-blue-3/30 group-hover:border-brand-blue-3/40"
         style={HOVER_STYLE}
       >
         <CardBody className="p-6 md:p-7">

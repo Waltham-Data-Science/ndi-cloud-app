@@ -174,4 +174,42 @@ describe('DatasetCard — wide-format card', () => {
     });
     expect(link).toHaveAttribute('href', '/datasets/DS1/overview');
   });
+
+  // Audit 2026-04-27 #16 — the card looked unclickable on dense
+  // catalog layouts because the hover affordance was a 1 px Y-translate
+  // + soft shadow, which was visually imperceptible. The fix is two-
+  // fold: force `cursor-pointer` on the outer link (Safari/Firefox
+  // briefly drop the default hand cursor during the navigation pending
+  // state, especially on slow-cloud routes where the click→paint gap
+  // is multi-second), and bolt a brand-tinted ring + larger shadow
+  // onto the hover state. Tested at the class level so a future
+  // refactor can't silently regress the affordance.
+  it('forces cursor-pointer on the outer link to keep the hand cursor steady mid-click', () => {
+    render(<DatasetCard dataset={baseDataset({ summary: compactSummary() })} />);
+    const link = screen.getByRole('link', {
+      name: /open dataset A Testing Dataset/i,
+    });
+    expect(link.className).toMatch(/cursor-pointer/);
+  });
+
+  it('lifts the card with a brand-tinted ring + shadow on hover', () => {
+    const { container } = render(
+      <DatasetCard dataset={baseDataset({ summary: compactSummary() })} />,
+    );
+    // The Card primitive renders the inner div; its class list carries
+    // the hover variants. Walk down from the link to the first card-
+    // root child and assert the ring + shadow utilities are present.
+    const link = screen.getByRole('link', {
+      name: /open dataset A Testing Dataset/i,
+    });
+    const card = link.querySelector('[data-slot="card"], div');
+    expect(card).not.toBeNull();
+    // Use the link as a fallback if the slot attribute differs — the
+    // hover utilities live on a child of the link, but `container.html`
+    // gives us the fully rendered tree to scan in one pass.
+    const html = container.innerHTML;
+    expect(html).toMatch(/group-hover:ring-2/);
+    expect(html).toMatch(/group-hover:shadow-lg/);
+    expect(html).toMatch(/group-hover:-translate-y-\[2px\]/);
+  });
 });
