@@ -73,7 +73,7 @@ describe('CreateAccountForm — name required (M6)', () => {
 
     await user.type(screen.getByLabelText(/email/i), 'audri@example.com');
     await user.type(screen.getByLabelText(/^password$/i), STRONG_PW);
-    await user.click(screen.getByRole('button', { name: /create account/i }));
+    await user.click(screen.getByRole('button', { name: /send verification code/i }));
 
     expect(
       await screen.findByText(/name is required/i),
@@ -93,7 +93,7 @@ describe('CreateAccountForm — name required (M6)', () => {
     await user.type(screen.getByLabelText(/^name$/i), 'A');
     await user.type(screen.getByLabelText(/email/i), 'audri@example.com');
     await user.type(screen.getByLabelText(/^password$/i), STRONG_PW);
-    await user.click(screen.getByRole('button', { name: /create account/i }));
+    await user.click(screen.getByRole('button', { name: /send verification code/i }));
 
     expect(
       await screen.findByText(/name must be at least 2 characters/i),
@@ -120,7 +120,7 @@ describe('CreateAccountForm — name required (M6)', () => {
     fireEvent.change(nameInput, { target: { value: 'a'.repeat(51) } });
     await user.type(screen.getByLabelText(/email/i), 'audri@example.com');
     await user.type(screen.getByLabelText(/^password$/i), STRONG_PW);
-    await user.click(screen.getByRole('button', { name: /create account/i }));
+    await user.click(screen.getByRole('button', { name: /send verification code/i }));
 
     expect(
       await screen.findByText(/name must be 50 characters or fewer/i),
@@ -141,7 +141,7 @@ describe('CreateAccountForm — name required (M6)', () => {
     await user.type(screen.getByLabelText(/^name$/i), 'Audri Bhowmick');
     await user.type(screen.getByLabelText(/email/i), 'audri@example.com');
     await user.type(screen.getByLabelText(/^password$/i), STRONG_PW);
-    await user.click(screen.getByRole('button', { name: /create account/i }));
+    await user.click(screen.getByRole('button', { name: /send verification code/i }));
 
     await waitFor(() => {
       expect(mockedSignup).toHaveBeenCalledWith({
@@ -159,7 +159,7 @@ describe('CreateAccountForm — password complexity (M7)', () => {
     await user.type(screen.getByLabelText(/^name$/i), 'Audri Bhowmick');
     await user.type(screen.getByLabelText(/email/i), 'audri@example.com');
     await user.type(screen.getByLabelText(/^password$/i), pw);
-    await user.click(screen.getByRole('button', { name: /create account/i }));
+    await user.click(screen.getByRole('button', { name: /send verification code/i }));
   }
 
   it('rejects passwords under 12 characters even if complexity is met', async () => {

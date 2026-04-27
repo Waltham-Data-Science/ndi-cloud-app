@@ -22,6 +22,7 @@ import {
 import { DatasetOverviewCard } from '@/components/datasets/DatasetOverviewCard';
 import { DatasetProvenanceCard } from '@/components/datasets/DatasetProvenanceCard';
 import { DatasetSummaryCard } from '@/components/datasets/DatasetSummaryCard';
+import { ErrorState } from '@/components/errors/ErrorState';
 import { CardSkeleton } from '@/components/ui/Skeleton';
 
 export function OverviewContent({ datasetId }: { datasetId: string }) {
@@ -35,11 +36,13 @@ export function OverviewContent({ datasetId }: { datasetId: string }) {
       <div className="space-y-4 min-w-0 order-2 lg:order-1">
         {ds.isLoading && <CardSkeleton />}
         {ds.isError && (
-          <div className="rounded-lg border border-dashed border-border-subtle bg-bg-surface p-6 text-center">
-            <p className="text-sm text-fg-secondary">
-              Couldn&rsquo;t load dataset {datasetId}.
-            </p>
-          </div>
+          // Source data-browser used `<ErrorState onRetry={…} />` for a
+          // typed-error UI with a retry button (visual-comparison audit
+          // #6 — port had degraded this to a static "Couldn't load
+          // dataset {id}" line with no actionable affordance). Restored
+          // so a Railway flap mid-session is recoverable in-place
+          // rather than requiring a hard refresh.
+          <ErrorState error={ds.error} onRetry={() => ds.refetch()} />
         )}
         {ds.data && (
           <DatasetOverviewCard
@@ -53,6 +56,15 @@ export function OverviewContent({ datasetId }: { datasetId: string }) {
       {/* ── Sidecar: summary pills + provenance ─────────────────────── */}
       <aside className="space-y-4 min-w-0 order-1 lg:order-2">
         {summary.isLoading && <CardSkeleton />}
+        {summary.isError && !summary.isLoading && (
+          // Audit #6 — summary errors were swallowed silently so a
+          // synthesizer outage left users staring at an empty sidebar
+          // with no signal what happened.
+          <ErrorState
+            error={summary.error}
+            onRetry={() => summary.refetch()}
+          />
+        )}
         {summary.data && <DatasetSummaryCard summary={summary.data} />}
 
         {/* Plan B B5 — dataset provenance card (derivation graph,
