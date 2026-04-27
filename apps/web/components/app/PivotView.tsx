@@ -131,25 +131,19 @@ export function PivotView({ datasetId, grain }: PivotViewProps) {
   );
 }
 
-/**
- * Renders only the pivot selector, for composing inside a sidebar
- * navigation or tab bar. Hides itself when the feature flag is off
- * (probe: issues a single /pivot/subject fetch on mount; on 503,
- * render nothing). Same behavior as the data-browser v2 source.
- */
-export function DatasetPivotNavGuard({
-  datasetId,
-  children,
-}: {
-  datasetId: string | undefined;
-  children: React.ReactNode;
-}) {
-  const probe = useDatasetPivot(datasetId, 'subject');
-  if (probe.isError && isFeatureDisabled(probe.error)) {
-    return null;
-  }
-  return <>{children}</>;
-}
+// `DatasetPivotNavGuard` was previously exported here as a probe-
+// based feature-flag wrapper for the pivot tab. Architectural-audit
+// review (Tier 1 #4) flagged it as a potential double-fetch source
+// because the probe fires `useDatasetPivot(id, 'subject')` on every
+// mount in addition to whatever the leaf route fetches. Verified
+// the export is referenced ONLY by `tests/unit/(app)/pivot-view.test.tsx`
+// and never imported from production app code — the pivot tab nav
+// is currently always-visible (the feature-disabled state is
+// rendered as a banner in PivotView itself when the user lands on
+// `/pivot/<grain>`). The guard was therefore dead in production.
+// Removing the export + the test block that exercised it. If a
+// future caller needs feature-gated nav-link visibility, prefer a
+// cheap dedicated `/api/health/features` endpoint over a probe.
 
 function PivotBody({
   pivot,
