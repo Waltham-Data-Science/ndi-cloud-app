@@ -66,9 +66,10 @@ import {
   QueryClient,
   dehydrate,
 } from '@tanstack/react-query';
+import { notFound } from 'next/navigation';
 
 import { DatasetDetailChromeGate } from '@/components/app/DatasetDetailChromeGate';
-import { fetchDatasetServer } from '@/lib/api/datasets';
+import { fetchDatasetServerWithStatus } from '@/lib/api/datasets';
 import { env } from '@/lib/env';
 
 interface LayoutProps {
@@ -155,13 +156,40 @@ export default async function DatasetDetailLayout({
 
   if (env.INTERNAL_API_URL) {
     const baseUrl = env.INTERNAL_API_URL;
-    // Fire all prefetches in parallel. Each prefetchQuery internally
-    // catches errors so a single failure (e.g. /summary 504 on a
-    // large dataset) doesn't propagate. The group is then RACED
-    // against PREFETCH_GROUP_DEADLINE_MS so the layout never blocks
-    // page render past that ceiling — whatever's in the queryClient
-    // when the race resolves gets dehydrated; client-side hooks fill
-    // in the rest with their own (60s-timeout, zero-retry) fetches.
+
+    // Audit 2026-04-27 #10 — explicit 404 routing. Pre-fix, a bad
+    // `[id]` (legacy deeplink, typo, deleted dataset) rendered the
+    // hero band with the bare id as h1, the full tab bar, AND an
+    // inline error in the body — visually suggesting the dataset
+    // exists but failed to load. Cleanest fix is a server-side
+    // status check at the layer that owns the chrome: when the
+    // dataset endpoint returns a clean 404, throw via
+    // `notFound()` so Next.js renders the closest `not-found.tsx`
+    // (sibling to this file) WITHOUT mounting the chrome.
+    //
+    // Status `0` (network blip / timeout / unparseable) is treated
+    // as transient — we DON'T 404-route on it, because a bad
+    // network shouldn't masquerade as a missing dataset. The client
+    // hook downstream surfaces a Retry button for those cases.
+    //
+    // Folding this check into the prefetch (vs a separate HEAD)
+    // keeps it free: the dataset record is the FIRST thing we
+    // need anyway, and the queryClient gets pre-populated from the
+    // same response so the client island doesn't double-fetch.
+    const datasetResult = await fetchDatasetServerWithStatus(baseUrl, id);
+    if (datasetResult.status === 404) {
+      notFound();
+    }
+    queryClient.setQueryData(['dataset', id], datasetResult.data);
+
+    // Fire the secondary prefetches in parallel. Each prefetchQuery
+    // internally catches errors so a single failure (e.g. /summary
+    // 504 on a large dataset) doesn't propagate. The group is then
+    // RACED against PREFETCH_GROUP_DEADLINE_MS so the layout never
+    // blocks page render past that ceiling — whatever's in the
+    // queryClient when the race resolves gets dehydrated;
+    // client-side hooks fill in the rest with their own (60s-
+    // timeout, zero-retry) fetches.
     //
     // We don't `await` individual prefetches outside the race —
     // `prefetchQuery` writes to the queryClient as soon as the
@@ -170,18 +198,14 @@ export default async function DatasetDetailLayout({
     // that happen on the same QueryClient instance (none here, since
     // the QueryClient is request-scoped and dehydrated immediately
     // after the race; this is just a defensive note).
-    const prefetchAll = Promise.all([
-      queryClient.prefetchQuery({
-        queryKey: ['dataset', id],
-        queryFn: () => fetchDatasetServer(baseUrl, id),
-      }),
-      ...DETAIL_PREFETCHES.map(({ suffix, queryKey }) =>
+    const prefetchAll = Promise.all(
+      DETAIL_PREFETCHES.map(({ suffix, queryKey }) =>
         queryClient.prefetchQuery({
           queryKey: ['dataset', id, queryKey],
           queryFn: () => prefetchDetailEndpoint(baseUrl, id, suffix),
         }),
       ),
-    ]);
+    );
     const deadline = new Promise<void>((resolve) =>
       setTimeout(resolve, PREFETCH_GROUP_DEADLINE_MS),
     );
