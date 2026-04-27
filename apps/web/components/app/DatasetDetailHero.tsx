@@ -28,7 +28,12 @@ import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useDataset } from '@/lib/api/datasets';
-import { formatBytes, formatDate, formatNumber } from '@/lib/format';
+import {
+  cleanDatasetName,
+  formatBytes,
+  formatDate,
+  formatNumber,
+} from '@/lib/format';
 
 export function DatasetDetailHero({ datasetId }: { datasetId: string }) {
   const { data, isLoading, isError } = useDataset(datasetId);
@@ -63,7 +68,20 @@ export function DatasetDetailHero({ datasetId }: { datasetId: string }) {
         ) : (
           <>
             <div className="flex items-center gap-2 mb-3 flex-wrap">
-              <Badge variant="pub">● Published</Badge>
+              {/* Status pill — distinguish PUBLISHED (green) from DRAFT
+                  (amber). Previously always showed "● Published" which
+                  is a publishing-workflow safety regression: a draft
+                  dataset opened in a logged-in session could visually
+                  misrepresent itself as live. Source data-browser used
+                  a "PUBLIC DATASET" / "DRAFT" uppercase eyebrow toggle
+                  (visual-comparison audit #15). */}
+              {data.isPublished === false ? (
+                <Badge variant="secondary" title="Draft — not yet published">
+                  ● Draft
+                </Badge>
+              ) : (
+                <Badge variant="pub">● Published</Badge>
+              )}
               {data.license && (
                 <Badge variant="outline" className="font-mono normal-case bg-white/10 ring-white/20 text-white/85">
                   {data.license}
@@ -80,7 +98,7 @@ export function DatasetDetailHero({ datasetId }: { datasetId: string }) {
               id="dataset-hero-h1"
               className="text-[1.75rem] md:text-[2rem] font-display font-bold tracking-tight leading-tight mb-3 max-w-3xl"
             >
-              {data.name}
+              {cleanDatasetName(data.name)}
             </h1>
 
             {(data.contributors?.length || data.uploadedAt || data.createdAt) && (

@@ -53,3 +53,57 @@ export function formatBytes(bytes: number | null | undefined): string {
   }
   return `${value >= 10 ? value.toFixed(0) : value.toFixed(1)} ${units[unitIdx]}`;
 }
+
+/**
+ * Strip a leading "Dataset:" / "Dataset -" / "Dataset –" prefix from
+ * a dataset name. The cloud admin UI lets uploaders save names with
+ * a literal `Dataset:` prefix; some legacy entries have it, newer
+ * entries don't. Surface them uniformly on read so cards / hero /
+ * page titles don't show "Dataset: Dataset: …" or read like a
+ * placeholder.
+ *
+ * Conservative: only strips the very first prefix; the rest of the
+ * string (including the substring "dataset" mid-sentence) is left
+ * untouched. Returns the input unchanged if no prefix matches.
+ */
+export function cleanDatasetName(
+  name: string | null | undefined,
+): string {
+  if (!name) return '';
+  // Trim, then strip a leading "Dataset" + optional separator (`:`,
+  // `-`, en-dash, em-dash) + whitespace. Case-insensitive for
+  // robustness against "DATASET:" / "dataset:" / "Dataset -" variants.
+  return name
+    .trim()
+    .replace(/^dataset\s*[:\-–—]\s*/i, '')
+    .trim();
+}
+
+/**
+ * Strip cloud-side processing markers from an abstract.
+ *
+ * The synthesizer pipeline injects `DATASET BEING PROCESSED.` at
+ * the head of abstracts whose enrichment is in-flight. That marker
+ * is meant for ops, not readers — it leaks into catalog cards + the
+ * detail Overview tab and reads like a system-error message inside
+ * the abstract paragraph. Strip it on render; the optional
+ * `processing` return tells the caller it was present so a
+ * "Processing" badge can render alongside the abstract if desired.
+ *
+ * Returns `{ text, processing }` so callers can choose to render a
+ * separate badge instead of inlining the marker in body copy.
+ */
+export function cleanAbstract(
+  abstract: string | null | undefined,
+): { text: string; processing: boolean } {
+  if (!abstract) return { text: '', processing: false };
+  const trimmed = abstract.trim();
+  // Anchor on the literal placeholder (case-insensitive). The
+  // trailing period + optional whitespace is consumed so the next
+  // sentence doesn't read with leading punctuation.
+  const match = trimmed.match(/^DATASET BEING PROCESSED\.?\s*/i);
+  if (match) {
+    return { text: trimmed.slice(match[0].length), processing: true };
+  }
+  return { text: trimmed, processing: false };
+}

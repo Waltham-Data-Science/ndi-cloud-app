@@ -74,8 +74,60 @@ function getAllowedOrigins(): Set<string> {
 
 const RAILWAY_API = 'https://ndb-v2-production.up.railway.app';
 
+/**
+ * Route slug aliases. Two motivations:
+ *
+ * 1. **Common-word aliases**: users type `/signin` (Google pattern),
+ *    `/sign-in`, `/log-in`, `/signup`, `/register`. Neither this repo
+ *    nor the legacy site shipped those — make them resolve.
+ *
+ * 2. **Legacy camelCase migration**: the data-browser SPA shipped
+ *    camelCase routes (`/createAccount`, `/forgotPassword`,
+ *    `/myAccount`, `/resetPassword`, etc.) that this repo renamed
+ *    to kebab-case during the unification. Without these redirects,
+ *    every external bookmark, search-engine result, and email link
+ *    pointing at a camelCase URL would 404. Audit (visual-comparison
+ *    finding #21) called this out as a high-impact gap.
+ *
+ * 308 (permanent, preserves method + body) so search engines
+ * consolidate ranking signal on the kebab-case canonicals and any
+ * in-flight POST to a legacy endpoint isn't silently downgraded.
+ */
+const ROUTE_ALIASES: Record<string, string> = {
+  // Common-word aliases.
+  '/signin': '/login',
+  '/sign-in': '/login',
+  '/log-in': '/login',
+  '/signup': '/create-account',
+  '/sign-up': '/create-account',
+  '/register': '/create-account',
+
+  // Legacy camelCase routes (data-browser-v2 SPA).
+  '/createAccount': '/create-account',
+  '/forgotPassword': '/forgot-password',
+  '/myAccount': '/my-account',
+  '/resetPassword': '/reset-password',
+  '/resetForgottenPassword': '/reset-forgotten-password',
+  '/accountVerification': '/account-verification',
+  '/resendVerification': '/resend-verification',
+  '/accountNotConfirmed': '/account-not-confirmed',
+  '/accountExists': '/account-exists',
+};
+
 export function middleware(req: NextRequest): NextResponse {
   const path = req.nextUrl.pathname;
+
+  // 0. Route slug aliases. Done before everything else so the rest of
+  //    middleware operates on the canonical path. Search-friendly 308
+  //    preserves method + body across the redirect.
+  const aliasTarget = ROUTE_ALIASES[path];
+  if (aliasTarget) {
+    const url = req.nextUrl.clone();
+    url.pathname = aliasTarget;
+    // Preserve `?returnTo=` and any other query string — the auth
+    // flow hands them through after a successful login.
+    return NextResponse.redirect(url, 308);
+  }
 
   // 1. Origin enforcement on /api/* mutations.
   if (path.startsWith('/api/') && MUTATING_METHODS.has(req.method)) {

@@ -22,7 +22,7 @@ import { ExternalAnchor } from '@/components/ui/ExternalAnchor';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardBody, CardHeader } from '@/components/ui/Card';
-import { formatDate } from '@/lib/format';
+import { cleanAbstract, formatDate } from '@/lib/format';
 import { normalizeOrcid } from '@/lib/orcid';
 import type {
   AssociatedPublication,
@@ -40,7 +40,13 @@ export function DatasetOverviewCard({
   datasetId: string;
   summary?: DatasetSummary;
 }) {
-  const abstract = ds.description ?? ds.abstract;
+  // `cleanAbstract` strips a leading "DATASET BEING PROCESSED."
+  // synthesizer-pipeline placeholder and reports it via `processing`
+  // so we render a discrete badge alongside the prose instead of
+  // letting the marker leak into body copy.
+  const { text: abstract, processing } = cleanAbstract(
+    ds.description ?? ds.abstract,
+  );
   const [citeOpen, setCiteOpen] = useState(false);
   const [useDataOpen, setUseDataOpen] = useState(false);
   return (
@@ -56,6 +62,14 @@ export function DatasetOverviewCard({
             <Badge variant="secondary">{ds.branchName}</Badge>
           )}
           {ds.isPublished === false && <Badge variant="secondary">draft</Badge>}
+          {/* See `cleanAbstract` — `Processing` surfaces the synthesizer
+              in-flight marker as a discrete pill instead of leaking
+              into the abstract paragraph as ALL-CAPS body copy. */}
+          {processing && (
+            <Badge variant="secondary" title="Synthesizer enrichment in progress">
+              Processing
+            </Badge>
+          )}
         </div>
       </CardHeader>
 

@@ -26,7 +26,17 @@ set -e
 # noreply for audriB. `awk` extended regex; matches the full %ae value.
 # Using a regex (not a literal list) so any `<id>+audriB@users.noreply.github.com`
 # from a future GitHub user-id rotation still matches.
-EMAIL_ALLOWLIST_RE='^(audri@walthamdatascience\.com|[0-9]+\+audriB@users\.noreply\.github\.com)$'
+#
+# **Portability note**: BSD awk (macOS default) silently strips `\+`
+# and `\.` regex escapes — `\+` becomes the regex repetition operator
+# (matching one-or-more of the previous atom, not a literal `+`) and
+# `\.` becomes `.` (any char). The literal-class form (`[+]` / `[.]`)
+# parses identically in BSD awk, gawk, and POSIX awk, so use that.
+# Without this, the noreply pattern matched on Linux CI (gawk) but
+# failed locally on macOS (BSD awk), causing pre-push to incorrectly
+# reject post-rebase branches that included a remote squash commit in
+# their push range.
+EMAIL_ALLOWLIST_RE='^(audri@walthamdatascience[.]com|[0-9]+[+]audriB@users[.]noreply[.]github[.]com)$'
 
 # Read pushed refs from stdin per Git pre-push contract.
 # Format per line: <local ref> <local sha> <remote ref> <remote sha>

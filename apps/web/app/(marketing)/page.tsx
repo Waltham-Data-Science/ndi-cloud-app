@@ -185,43 +185,39 @@ export default function HomePage() {
           </div>
         </section>
 
-        {/* INSTITUTION MARQUEE */}
+        {/* INSTITUTION ROW
+             Static centered row — replaces the previous infinite-scroll
+             marquee. With only 6 unique logos, the doubled marquee track
+             was always shorter than the viewport, so at any given scroll
+             position the same logo appeared twice on screen (most
+             visible: the duplicated UC San Diego at both ends of the
+             doubled set). Static row sidesteps that, costs zero JS, zero
+             animation repaints, and removes a moving distractor competing
+             with the headline + CTA. Industry-standard pattern (Stripe,
+             Vercel, Linear, Anthropic) for "trusted by" rows.
+             Responsive collapse: 6-across desktop → 3×2 tablet → 2×3
+             mobile. */}
         <section
           aria-label="Trusted institutions"
-          className="px-7 py-10 bg-bg-surface overflow-hidden"
+          className="px-7 py-10 bg-bg-surface"
         >
           <p className="text-xs font-bold tracking-eyebrow uppercase text-fg-muted text-center mb-6 m-0">
             Trusted by leading research institutions
           </p>
-          <div className="relative w-full overflow-hidden">
-            {/* `home-marquee-track` is the hook for the global
-                `prefers-reduced-motion` opt-out in `globals.css` — under
-                that media query the animation is killed and the row
-                becomes a wrapped static band of logos (WCAG 2.3.3).
-                Duration 30s matches the source `HomeCommons.module.scss`
-                marquee (target had drifted to 40s — M12). */}
-            <div className="home-marquee-track flex gap-12 whitespace-nowrap animate-[marquee_30s_linear_infinite] hover:[animation-play-state:paused] items-center">
-
-              {[...institutionLogos, ...institutionLogos].map((logo, i) => (
+          <ul className="mx-auto max-w-[1100px] grid grid-cols-6 max-[840px]:grid-cols-3 max-[480px]:grid-cols-2 items-center justify-items-center gap-x-8 gap-y-6 list-none p-0 m-0">
+            {institutionLogos.map((logo) => (
+              <li key={logo.src} className="flex items-center justify-center">
                 <Image
-                  key={i}
                   src={logo.src}
-                  alt={i < institutionLogos.length ? logo.alt : ''}
-                  aria-hidden={i >= institutionLogos.length || undefined}
+                  alt={logo.alt}
                   width={140}
                   height={40}
                   style={{ objectFit: 'contain', height: 40, width: 'auto' }}
                   className="grayscale opacity-60 hover:grayscale-0 hover:opacity-100 transition-all duration-(--duration-base)"
                 />
-              ))}
-            </div>
-          </div>
-          <style>{`
-            @keyframes marquee {
-              0%   { transform: translateX(0); }
-              100% { transform: translateX(-50%); }
-            }
-          `}</style>
+              </li>
+            ))}
+          </ul>
         </section>
 
         {/* FAIR — white section per source `.commonsMain { background: var(--white) }`.

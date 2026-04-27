@@ -36,7 +36,10 @@ jobs:
           # for the rationale on why GitHub's squash-merge noreply is
           # allowed alongside the canonical email — keeps rebases onto
           # main green after PR squash-merges land noreply commits.
-          allowlist_re='^(audri@walthamdatascience\.com|[0-9]+\+audriB@users\.noreply\.github\.com)$'
+          # NB: literal-class form (`[+]` / `[.]`) instead of `\+` / `\.`
+          # so the regex parses identically in BSD awk (macOS local) and
+          # gawk (Linux CI). See the hook for the parity rationale.
+          allowlist_re='^(audri@walthamdatascience[.]com|[0-9]+[+]audriB@users[.]noreply[.]github[.]com)$'
           base_sha="${{ github.event.pull_request.base.sha }}"
           head_sha="${{ github.event.pull_request.head.sha }}"
           bad=$(git log "$base_sha..$head_sha" --pretty=format:'%H %ae' \

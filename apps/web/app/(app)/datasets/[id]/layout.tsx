@@ -43,11 +43,16 @@
  * NB: data prefetch (below) is NOT generateMetadata — it's a regular
  * server-side render pathway. Doesn't trigger the InvariantError.
  *
- * Per-dataset titles are now set at the LEAF page level
- * (`overview/page.tsx` etc.) which is the safer composition. A2
- * audit follow-up #67 stays open as "implement per-dataset titles
- * on each leaf page" — see `overview/page.tsx` for the working
- * shape.
+ * Per-dataset titles are now set at the LEAF overview page
+ * (`overview/page.tsx`) — the safer composition. The fetch is inlined
+ * (no shared helper) to dodge the turbopack runtime error that
+ * crashed the previous attempt to extract a
+ * `lib/api/datasets-server.ts` module. Sibling tabs (tables/
+ * documents/pivot) keep generic "Tables · NDI Cloud" titles; the
+ * dataset name appears only on the canonical Overview URL since
+ * that's the link people share.
+ *
+ * A2 audit follow-up #67 — CLOSED.
  *
  * Tabs as nested routes:
  *   `tables/page.tsx`         → server redirect to ./subject

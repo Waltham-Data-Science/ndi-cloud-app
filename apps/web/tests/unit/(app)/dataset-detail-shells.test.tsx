@@ -240,6 +240,12 @@ describe('OverviewContent', () => {
     // (dataset, summary, provenance). The error branch is gated on
     // `ds.isError`, so we only need to fail the first call; summary +
     // provenance can stay pending.
+    // Visual-comparison audit #6: the fallback panel is now the
+    // ported `<ErrorState>` (typed error UI) instead of the static
+    // "Couldn't load dataset {id}" line. ErrorState renders a
+    // `role=alert` region in any recovery branch — assert against
+    // that contract so the test stays robust regardless of the bucket
+    // a particular Error fixture lands in.
     mockedApiFetch.mockRejectedValueOnce(new Error('boom'));
     mockedApiFetch.mockReturnValue(new Promise(() => {}));
     const Wrapper = withClient();
@@ -249,7 +255,7 @@ describe('OverviewContent', () => {
       </Wrapper>,
     );
     await waitFor(() => {
-      expect(screen.getByText(/Couldn.t load dataset d1/i)).toBeInTheDocument();
+      expect(screen.getAllByRole('alert').length).toBeGreaterThan(0);
     });
   });
 
