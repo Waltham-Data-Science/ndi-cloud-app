@@ -230,12 +230,15 @@ describe('lib/api/datasets — hook URL contracts', () => {
       );
       expect(fetchSpy).toHaveBeenCalledWith(
         'https://api.example.com/api/datasets/d1',
+        // Batch B: fetchDatasetServer now uses Next's request memo
+        // (`force-cache` + `revalidate: 60`) instead of `no-store` so
+        // concurrent layout-RSC renders dedupe to one upstream call.
         expect.objectContaining({
           headers: expect.objectContaining({
             Cookie: 'session=abc; XSRF-TOKEN=xyz',
             Accept: 'application/json',
           }),
-          cache: 'no-store',
+          cache: 'force-cache',
         }),
       );
       fetchSpy.mockRestore();
