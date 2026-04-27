@@ -25,6 +25,8 @@
  * docIds) is a follow-up.
  */
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
+import { useCallback } from 'react';
 
 import { cn } from '@/lib/cn';
 import { useSummaryTable } from '@/lib/api/tables';
@@ -111,6 +113,32 @@ function TableContent({
 }
 
 /**
+ * Per-class accessor for the row's primary document identifier. The
+ * cloud's table rows expose multiple `*DocumentIdentifier` fields (one
+ * per related class), so a generic "find any DocumentIdentifier" lookup
+ * would pick the wrong column. This map encodes the **primary**
+ * document the row represents — clicking a subject row should open the
+ * subject's document, not the session it links to.
+ *
+ * `element` maps to `probeDocumentIdentifier` because the backend
+ * renamed the URL slug to "element" but kept the column key as
+ * `probe*` (data-browser convention preserved through the rename).
+ *
+ * `combined` is intentionally absent — it's a multi-class join with
+ * no single "primary" row, so we fall back to non-clickable rows.
+ * `ontology` is handled by `<OntologyTablesView>` and never reaches
+ * this branch.
+ */
+const PRIMARY_DOC_ID_FIELD: Record<string, string | undefined> = {
+  subject: 'subjectDocumentIdentifier',
+  element: 'probeDocumentIdentifier',
+  element_epoch: 'epochDocumentIdentifier',
+  treatment: 'treatmentDocumentIdentifier',
+  probe_location: 'probe_locationDocumentIdentifier',
+  openminds_subject: 'subjectDocumentIdentifier',
+};
+
+/**
  * Standard fetch + view for every class except `ontology`. Calls
  * `useSummaryTable(datasetId, className)` for the per-class table —
  * `combined` lands here too (same envelope, different URL).
@@ -123,6 +151,30 @@ function StandardTableContent({
   className: string;
 }) {
   const query = useSummaryTable(datasetId, className);
+  const router = useRouter();
+
+  // Wire row-click navigation to `/datasets/[id]/documents/[ndiId]`.
+  // The `*DocumentIdentifier` cell value IS the ndiId — the cloud's
+  // detail endpoint resolves either Mongo `_id` or ndiId, so we don't
+  // need a separate ID lookup. Smoke-test feedback explicitly called
+  // out non-clickable rows as a regression vs the data-browser SPA;
+  // this restores parity for every grain whose primary key is
+  // unambiguous (see PRIMARY_DOC_ID_FIELD).
+  const onRowClick = useCallback(
+    (row: Record<string, unknown>) => {
+      const accessor = PRIMARY_DOC_ID_FIELD[className];
+      if (!accessor) return;
+      const id = row[accessor];
+      if (typeof id !== 'string' || id.length === 0) return;
+      // Honor in-progress text selection — users frequently highlight
+      // an ID to copy. Same defensive pattern as DocumentExplorer's
+      // row click handler.
+      const sel = typeof window !== 'undefined' ? window.getSelection?.() : null;
+      if (sel && sel.toString().length > 0) return;
+      router.push(`/datasets/${datasetId}/documents/${encodeURIComponent(id)}`);
+    },
+    [router, datasetId, className],
+  );
 
   if (query.isPending) {
     return (
@@ -177,6 +229,7 @@ function StandardTableContent({
       tableType={className}
       title={`${datasetId}-${className}`}
       datasetId={datasetId}
+      onRowClick={PRIMARY_DOC_ID_FIELD[className] ? onRowClick : undefined}
     />
   );
 }

@@ -76,6 +76,63 @@ interface LayoutProps {
   params: Promise<{ id: string }>;
 }
 
+/**
+ * Server-side timeout for per-leaf prefetches. Generous (45s) because
+ * RSC runs server-to-server with no Vercel edge in the loop — the
+ * only ceiling is the Vercel function's 90s budget. Dataset detail
+ * endpoints that 504 on Railway will still 504 here, but in that
+ * case the client-side hook re-attempts (with its own 60s budget) and
+ * surfaces a typed error if it times out too.
+ *
+ * Each prefetch is fire-and-forget: a single endpoint going slow
+ * doesn't block the others. The HydrationBoundary delivers whatever
+ * succeeded, and the client-side hook fills in the rest.
+ */
+const PREFETCH_TIMEOUT_MS = 45_000;
+
+/**
+ * Anonymous-public detail endpoints we prefetch on the server. Each
+ * goes through `INTERNAL_API_URL` (bypassing the Vercel edge → Railway
+ * double-hop) and writes into the shared QueryClient under the same
+ * key the client-side hook uses, so the client island reads from the
+ * hydrated cache instead of firing its own fetch on mount.
+ *
+ * Cookies are NOT forwarded — anonymous-public projection only. Per-
+ * user authed details fall through to the client-side fetch path
+ * which carries cookies via `apiFetch`'s `credentials: include`.
+ */
+const DETAIL_PREFETCHES = [
+  { suffix: '/summary', queryKey: 'summary' as const },
+  { suffix: '/provenance', queryKey: 'provenance' as const },
+  { suffix: '/class-counts', queryKey: 'class-counts' as const },
+] as const;
+
+async function prefetchDetailEndpoint(
+  baseUrl: string,
+  id: string,
+  suffix: string,
+): Promise<unknown | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PREFETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${baseUrl}/api/datasets/${id}${suffix}`, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+      // Co-locate with the leaf page's `revalidate: 60` so the same
+      // dataset visited within the revalidate window dedupes to one
+      // upstream call per Vercel function invocation.
+      cache: 'force-cache',
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as unknown;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export default async function DatasetDetailLayout({
   children,
   params,
@@ -84,22 +141,28 @@ export default async function DatasetDetailLayout({
   const queryClient = new QueryClient();
 
   if (env.INTERNAL_API_URL) {
-    try {
-      // Pre-warm the dataset record cache. Same query key as the
-      // client-side `useDataset(id)` hook in `DatasetDetailHero` and
-      // `DatasetOverviewCard`, so when the client mounts it reads from
-      // the dehydrated cache instead of firing its own fetch on mount.
-      // Cookies NOT forwarded — anonymous-public projection only;
-      // authed details fall through to the existing client-side fetch
-      // path (cookie hydration via `apiFetch`'s credentials: include).
-      await queryClient.prefetchQuery({
+    const baseUrl = env.INTERNAL_API_URL;
+    // Fire all prefetches in parallel. Each is independently caught
+    // via prefetchQuery's internal try/catch — a failure on one (a
+    // 504 from /summary on a large dataset, say) doesn't block the
+    // others. The HydrationBoundary delivers whatever resolved.
+    //
+    // The client-side hooks then read from the hydrated cache for
+    // queries that succeeded, and fire their own (60s-timeout, zero-
+    // retry) fetch for ones that didn't — surfacing a typed error
+    // state instead of a stuck skeleton.
+    await Promise.all([
+      queryClient.prefetchQuery({
         queryKey: ['dataset', id],
-        queryFn: () => fetchDatasetServer(env.INTERNAL_API_URL!, id),
-      });
-    } catch {
-      // Prefetch failures fall through to client-side fetch on mount.
-      // Marketing chrome stays UP, hero shows skeleton, then resolves.
-    }
+        queryFn: () => fetchDatasetServer(baseUrl, id),
+      }),
+      ...DETAIL_PREFETCHES.map(({ suffix, queryKey }) =>
+        queryClient.prefetchQuery({
+          queryKey: ['dataset', id, queryKey],
+          queryFn: () => prefetchDetailEndpoint(baseUrl, id, suffix),
+        }),
+      ),
+    ]);
   }
 
   return (

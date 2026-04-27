@@ -140,6 +140,43 @@ export function useMyDatasets(enabled: boolean, scope: MyScope = 'mine') {
   });
 }
 
+/**
+ * Per-dataset detail endpoints can take 6-60s cold on Railway (the
+ * synthesizer fans out across per-class enrichments). The default
+ * 15s apiFetch timeout aborts the first attempt for medium+ datasets
+ * — and TanStack Query's default 3 retries then turn that into 4×15s
+ * = 60s of repeated cold-cache misses, all surfaced to the user as
+ * a stuck loading state.
+ *
+ * Strategy: bump the per-request timeout to 60s and disable retries.
+ * Each dataset gets ONE attempt with enough headroom for the cold
+ * Railway response, then either succeeds (and the edge cache is now
+ * warm for everyone for the next 6 minutes) or surfaces a typed
+ * error the user can manually retry. No more silent retry storm.
+ *
+ * The matching server-side prefetch in `layout.tsx` runs server-to-
+ * server (no client-side timeout), so the Suspense-streamed RSC path
+ * is never bound by these client-side numbers.
+ */
+const DETAIL_TIMEOUT_MS = 60_000;
+const NO_RETRY = 0 as const;
+
+/**
+ * Long staleTime on per-dataset detail hooks. Two reasons:
+ *
+ *   1. Match the edge-cache window in `lib/api/proxy/cached-proxy.ts`
+ *      (`CACHE_ITEM` = 60s fresh + 5 min SWR). With staleTime: 60s,
+ *      a client mount within the SWR window sees the hydrated/cached
+ *      data as fresh and doesn't fire a redundant client-side fetch.
+ *
+ *   2. The RSC layout prefetches summary/provenance/class-counts and
+ *      ships them via HydrationBoundary. With staleTime: 0 (default),
+ *      the client mount immediately marks them stale and refetches —
+ *      defeating the prefetch and re-paying the Railway round-trip
+ *      on every navigation. 60s aligns the client with the edge.
+ */
+const DETAIL_STALE_MS = 60_000;
+
 export function useDataset(datasetId: string | undefined) {
   return useQuery({
     queryKey: ['dataset', datasetId],
@@ -151,8 +188,11 @@ export function useDataset(datasetId: string | undefined) {
       apiFetch<DatasetRecord>(`/api/datasets/${datasetId}`, {
         schema: DatasetRecordSchema,
         signal,
+        timeoutMs: DETAIL_TIMEOUT_MS,
       }),
     enabled: !!datasetId,
+    retry: NO_RETRY,
+    staleTime: DETAIL_STALE_MS,
   });
 }
 
@@ -162,9 +202,11 @@ export function useClassCounts(datasetId: string | undefined) {
     queryFn: ({ signal }) =>
       apiFetch<ClassCountsResponse>(
         `/api/datasets/${datasetId}/class-counts`,
-        { signal },
+        { signal, timeoutMs: DETAIL_TIMEOUT_MS },
       ),
     enabled: !!datasetId,
+    retry: NO_RETRY,
+    staleTime: DETAIL_STALE_MS,
   });
 }
 
@@ -177,8 +219,11 @@ export function useDatasetSummary(datasetId: string | undefined) {
     queryFn: ({ signal }) =>
       apiFetch<DatasetSummary>(`/api/datasets/${datasetId}/summary`, {
         signal,
+        timeoutMs: DETAIL_TIMEOUT_MS,
       }),
     enabled: !!datasetId,
+    retry: NO_RETRY,
+    staleTime: DETAIL_STALE_MS,
   });
 }
 
@@ -191,8 +236,11 @@ export function useDatasetProvenance(datasetId: string | undefined) {
     queryFn: ({ signal }) =>
       apiFetch<DatasetProvenance>(`/api/datasets/${datasetId}/provenance`, {
         signal,
+        timeoutMs: DETAIL_TIMEOUT_MS,
       }),
     enabled: !!datasetId,
+    retry: NO_RETRY,
+    staleTime: DETAIL_STALE_MS,
   });
 }
 

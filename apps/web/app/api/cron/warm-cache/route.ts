@@ -44,21 +44,92 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 /**
- * Endpoints to warm. Anonymous-public reads only; per-dataset
- * endpoints are deliberately excluded — there are too many to
- * meaningfully pre-warm and they're individually low-traffic. The
- * catalog + facets are the high-leverage targets: every catalog
- * visitor hits both.
+ * Always-on global warm targets (anonymous-public, viewer-agnostic).
+ * Every catalog visitor hits both, so warming them every 5 min keeps
+ * the catalog sub-50ms during business hours.
  */
-const WARM_TARGETS = [
+const GLOBAL_WARM_TARGETS = [
   '/api/datasets/published?page=1&pageSize=20',
   '/api/facets',
+] as const;
+
+/**
+ * Per-dataset endpoints we warm for the **top-N** trafficked datasets.
+ * The smoke-test pass after Phase 6.7 surfaced the per-dataset detail
+ * endpoints (`/summary`, `/provenance`, `/class-counts`) as the
+ * largest user-perceived hang: cold Railway responses can take 30-90s,
+ * exceeding the client's apiFetch timeout and looking like a stuck
+ * skeleton even after the request eventually returns.
+ *
+ * Strategy: every cron tick, fetch the catalog's first page, take its
+ * top-N dataset ids, and ping each per-dataset endpoint. The catalog
+ * already orders by traffic + recency, so the top-N approximation is
+ * the correct attention budget. N=10 keeps total cron fan-out at
+ * 2 + (10×3) = 32 requests per tick, well within the 5-minute budget
+ * even if each takes ~5s warm.
+ *
+ * Each per-dataset endpoint goes through the corresponding edge-
+ * cached route handler in `apps/web/app/api/datasets/[id]/...`. The
+ * round-trip populates Vercel's edge cache for the next viewer.
+ */
+const TOP_N_DETAIL_WARMS = 10;
+const PER_DATASET_SUFFIXES = [
+  '/summary',
+  '/provenance',
+  '/class-counts',
 ] as const;
 
 interface WarmResult {
   url: string;
   status: number;
   durationMs: number;
+}
+
+interface CatalogShape {
+  datasets?: Array<{ id?: unknown }>;
+}
+
+async function fetchTopDatasetIds(origin: string): Promise<string[]> {
+  try {
+    const res = await fetch(`${origin}/api/datasets/published?page=1&pageSize=${TOP_N_DETAIL_WARMS}`, {
+      headers: { Accept: 'application/json' },
+    });
+    if (!res.ok) return [];
+    const body = (await res.json()) as CatalogShape;
+    if (!body.datasets) return [];
+    const ids: string[] = [];
+    for (const d of body.datasets) {
+      if (typeof d.id === 'string' && /^[a-zA-Z0-9_-]+$/.test(d.id)) {
+        ids.push(d.id);
+      }
+    }
+    return ids.slice(0, TOP_N_DETAIL_WARMS);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown';
+    console.warn(`[warm-cache] top-N catalog probe failed: ${message}`);
+    return [];
+  }
+}
+
+async function warmEndpoint(origin: string, path: string): Promise<WarmResult> {
+  const url = `${origin}${path}`;
+  const t0 = Date.now();
+  try {
+    const res = await fetch(url, {
+      method: 'GET',
+      // Critical: hit the EDGE-CACHED route, not bypass it.
+      // Default cache 'no-store' would skip Vercel's edge cache;
+      // we want the request to populate the cache.
+      headers: { Accept: 'application/json' },
+    });
+    return { url: path, status: res.status, durationMs: Date.now() - t0 };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown';
+    // Log + record; don't throw (other warm targets shouldn't be
+    // blocked by one failure).
+    console.warn(`[warm-cache] ${path} failed: ${message}`);
+    return { url: path, status: 0, durationMs: Date.now() - t0 };
+  }
 }
 
 export async function GET(req: Request) {
@@ -90,35 +161,37 @@ export async function GET(req: Request) {
     );
   }
 
-  // Fire all warm requests in parallel — they hit different upstream
-  // endpoints so no contention.
-  const results: WarmResult[] = await Promise.all(
-    WARM_TARGETS.map(async (path): Promise<WarmResult> => {
-      const url = `${origin}${path}`;
-      const t0 = Date.now();
-      try {
-        const res = await fetch(url, {
-          method: 'GET',
-          // Critical: hit the EDGE-CACHED route, not bypass it.
-          // Default cache 'no-store' would skip Vercel's edge cache;
-          // we want the request to populate the cache.
-          headers: { Accept: 'application/json' },
-        });
-        return { url: path, status: res.status, durationMs: Date.now() - t0 };
-      } catch (err) {
-        const message = err instanceof Error ? err.message : 'unknown';
-        // Log + record; don't throw (other warm targets shouldn't be
-        // blocked by one failure).
-        console.warn(`[warm-cache] ${path} failed: ${message}`);
-        return { url: path, status: 0, durationMs: Date.now() - t0 };
-      }
-    }),
+  // Phase 1: warm the global catalog + facets in parallel. These are
+  // the always-on targets — every visitor hits them, regardless of
+  // which dataset they're viewing.
+  const globalResults = await Promise.all(
+    GLOBAL_WARM_TARGETS.map((p) => warmEndpoint(origin, p)),
   );
+
+  // Phase 2: take the top-N datasets from the warmed catalog and fan
+  // out per-dataset endpoint warms. The catalog ordering is already
+  // "most relevant first" so the top-N approximates traffic share.
+  // We probe the catalog AFTER phase 1 so it lands on a freshly-warm
+  // cache (sub-50ms instead of cold) — keeps the cron's own latency
+  // bounded.
+  const topIds = await fetchTopDatasetIds(origin);
+  const detailPaths: string[] = [];
+  for (const id of topIds) {
+    for (const suffix of PER_DATASET_SUFFIXES) {
+      detailPaths.push(`/api/datasets/${id}${suffix}`);
+    }
+  }
+  const detailResults = await Promise.all(
+    detailPaths.map((p) => warmEndpoint(origin, p)),
+  );
+
+  const results = [...globalResults, ...detailResults];
 
   return NextResponse.json(
     {
       ok: results.every((r) => r.status >= 200 && r.status < 400),
       timestamp: new Date().toISOString(),
+      topIds,
       results,
     },
     { headers: { 'Cache-Control': 'no-store' } },
