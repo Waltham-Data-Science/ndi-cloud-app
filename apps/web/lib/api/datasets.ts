@@ -104,10 +104,14 @@ export interface ClassCountsResponse {
 export function usePublishedDatasets(page: number, pageSize: number) {
   return useQuery({
     queryKey: ['datasets', 'published', page, pageSize],
-    queryFn: () =>
+    // `signal` is TanStack Query's per-query AbortSignal; threaded
+    // into apiFetch so a navigation-away cancels the in-flight
+    // request instead of waiting for the timeout. apiFetch composes
+    // it with its default 15s read timeout via `AbortSignal.any`.
+    queryFn: ({ signal }) =>
       apiFetch<DatasetListResponse>(
         `/api/datasets/published?page=${page}&pageSize=${pageSize}`,
-        { schema: DatasetListResponseSchema },
+        { schema: DatasetListResponseSchema, signal },
       ),
   });
 }
@@ -127,9 +131,10 @@ export type MyScope = 'mine' | 'all';
 export function useMyDatasets(enabled: boolean, scope: MyScope = 'mine') {
   return useQuery({
     queryKey: ['datasets', 'my', scope],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<DatasetListResponse>(
         scope === 'all' ? '/api/datasets/my?scope=all' : '/api/datasets/my',
+        { signal },
       ),
     enabled,
   });
@@ -138,13 +143,14 @@ export function useMyDatasets(enabled: boolean, scope: MyScope = 'mine') {
 export function useDataset(datasetId: string | undefined) {
   return useQuery({
     queryKey: ['dataset', datasetId],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       // CQ1: zod-validates the dataset detail. Loose-shape via
       // `.passthrough()` — the cloud ships rich records with optional
       // fields that may be added between releases. The schema is a
       // structural gate, not a type-replacer.
       apiFetch<DatasetRecord>(`/api/datasets/${datasetId}`, {
         schema: DatasetRecordSchema,
+        signal,
       }),
     enabled: !!datasetId,
   });
@@ -153,8 +159,11 @@ export function useDataset(datasetId: string | undefined) {
 export function useClassCounts(datasetId: string | undefined) {
   return useQuery({
     queryKey: ['dataset', datasetId, 'class-counts'],
-    queryFn: () =>
-      apiFetch<ClassCountsResponse>(`/api/datasets/${datasetId}/class-counts`),
+    queryFn: ({ signal }) =>
+      apiFetch<ClassCountsResponse>(
+        `/api/datasets/${datasetId}/class-counts`,
+        { signal },
+      ),
     enabled: !!datasetId,
   });
 }
@@ -165,8 +174,10 @@ export function useClassCounts(datasetId: string | undefined) {
 export function useDatasetSummary(datasetId: string | undefined) {
   return useQuery({
     queryKey: ['dataset', datasetId, 'summary'],
-    queryFn: () =>
-      apiFetch<DatasetSummary>(`/api/datasets/${datasetId}/summary`),
+    queryFn: ({ signal }) =>
+      apiFetch<DatasetSummary>(`/api/datasets/${datasetId}/summary`, {
+        signal,
+      }),
     enabled: !!datasetId,
   });
 }
@@ -177,8 +188,10 @@ export function useDatasetSummary(datasetId: string | undefined) {
 export function useDatasetProvenance(datasetId: string | undefined) {
   return useQuery({
     queryKey: ['dataset', datasetId, 'provenance'],
-    queryFn: () =>
-      apiFetch<DatasetProvenance>(`/api/datasets/${datasetId}/provenance`),
+    queryFn: ({ signal }) =>
+      apiFetch<DatasetProvenance>(`/api/datasets/${datasetId}/provenance`, {
+        signal,
+      }),
     enabled: !!datasetId,
   });
 }
@@ -214,10 +227,10 @@ export function useDatasetPivot(
 ) {
   return useQuery({
     queryKey: ['dataset', datasetId, 'pivot', grain],
-    queryFn: () =>
-      apiFetch<PivotResponse>(
-        `/api/datasets/${datasetId}/pivot/${grain}`,
-      ),
+    queryFn: ({ signal }) =>
+      apiFetch<PivotResponse>(`/api/datasets/${datasetId}/pivot/${grain}`, {
+        signal,
+      }),
     enabled: !!datasetId && !!grain,
     staleTime: 60_000,
   });
@@ -229,7 +242,8 @@ export function useDatasetPivot(
 export function useFacets() {
   return useQuery({
     queryKey: ['facets'],
-    queryFn: () => apiFetch<FacetsResponse>('/api/facets'),
+    queryFn: ({ signal }) =>
+      apiFetch<FacetsResponse>('/api/facets', { signal }),
     // Facets change on the order of dataset-publish events (minutes); a
     // short staleTime keeps chip clicks from re-fetching while a new
     // publish still propagates within the 5-minute server TTL.

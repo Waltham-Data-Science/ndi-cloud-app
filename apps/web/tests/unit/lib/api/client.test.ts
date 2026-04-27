@@ -203,13 +203,131 @@ describe('apiFetch — Phase 3a contract', () => {
   });
 
   describe('options', () => {
-    it('forwards AbortSignal so consumers can cancel in-flight requests', async () => {
+    it('forwards a composite AbortSignal so caller cancellation aborts the request', async () => {
+      // apiFetch now composes the caller's signal with its own
+      // default-timeout signal via `AbortSignal.any`, so the signal
+      // that reaches `fetch()` is a NEW signal (not reference-equal
+      // to `controller.signal`). What matters is functional: when
+      // the caller aborts, the composite aborts.
       const controller = new AbortController();
       fetchSpy.mockResolvedValueOnce(jsonResponse({ ok: true }));
       await apiFetch('/api/datasets/published', { signal: controller.signal });
 
       const init = lastCallInit(fetchSpy);
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+      expect(init.signal!.aborted).toBe(false);
+      controller.abort('caller cancellation');
+      expect(init.signal!.aborted).toBe(true);
+    });
+
+    it('passes the caller signal through unchanged when timeoutMs=0 (opt-out path)', async () => {
+      // `timeoutMs: 0` disables the default timeout — no signal
+      // composition happens, the caller's signal reaches fetch
+      // verbatim. Used by long-running exports that take ownership
+      // of the cancellation contract.
+      const controller = new AbortController();
+      fetchSpy.mockResolvedValueOnce(jsonResponse({ ok: true }));
+      await apiFetch('/api/datasets/published', {
+        signal: controller.signal,
+        timeoutMs: 0,
+      });
+
+      const init = lastCallInit(fetchSpy);
       expect(init.signal).toBe(controller.signal);
+    });
+
+    it('attaches a timeout signal when no caller signal is provided', async () => {
+      fetchSpy.mockResolvedValueOnce(jsonResponse({ ok: true }));
+      await apiFetch('/api/datasets/published');
+
+      const init = lastCallInit(fetchSpy);
+      // The default-timeout signal is the only signal; it's an
+      // AbortSignal that will fire after DEFAULT_READ_TIMEOUT_MS.
+      // Asserting presence + type — exact ms is implementation
+      // detail that doesn't belong in a unit test.
+      expect(init.signal).toBeInstanceOf(AbortSignal);
+    });
+
+    it('throws ApiError(0, CLOUD_TIMEOUT) when the upstream exceeds the timeout', async () => {
+      // Simulate fetch hanging past the timeout: mock fetch to throw
+      // an AbortError after the timeout fires.
+      fetchSpy.mockImplementationOnce(async (_url: unknown, init: unknown) => {
+        const signal = (init as RequestInit).signal as AbortSignal;
+        // Wait for the signal to abort, then throw the same shape the
+        // platform fetch would.
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => {
+            const err = new Error(
+              signal.reason
+                ? String(signal.reason)
+                : 'aborted',
+            );
+            err.name = 'AbortError';
+            reject(err);
+          });
+        });
+      });
+
+      try {
+        await apiFetch('/api/slow-endpoint', { timeoutMs: 50 });
+        throw new Error('expected to throw');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ApiError);
+        const apiErr = err as ApiError;
+        expect(apiErr.status).toBe(0);
+        expect(apiErr.code).toBe('CLOUD_TIMEOUT');
+        expect(apiErr.recovery).toBe('retry');
+      }
+    });
+
+    it('propagates AbortError when the caller cancels (not converted to CLOUD_TIMEOUT)', async () => {
+      // When the CALLER cancels (e.g., TanStack Query unmount), the
+      // failure should propagate as the original AbortError so React-
+      // Query treats it as a cancellation. Only the apiFetch-internal
+      // timeout maps to CLOUD_TIMEOUT.
+      const controller = new AbortController();
+      fetchSpy.mockImplementationOnce(async (_url: unknown, init: unknown) => {
+        const signal = (init as RequestInit).signal as AbortSignal;
+        return new Promise((_resolve, reject) => {
+          signal.addEventListener('abort', () => {
+            const err = new Error('aborted');
+            err.name = 'AbortError';
+            reject(err);
+          });
+        });
+      });
+
+      const fetchPromise = apiFetch('/api/some-endpoint', {
+        signal: controller.signal,
+        timeoutMs: 60_000, // long enough that the caller wins
+      });
+      controller.abort();
+
+      try {
+        await fetchPromise;
+        throw new Error('expected to throw');
+      } catch (err) {
+        // AbortError, not ApiError — that's the contract for caller
+        // cancellation.
+        expect(err).toBeInstanceOf(Error);
+        expect((err as Error).name).toBe('AbortError');
+        expect(err).not.toBeInstanceOf(ApiError);
+      }
+    });
+
+    it('wraps a generic network failure as ApiError(0, CLOUD_UNREACHABLE) with retry recovery', async () => {
+      fetchSpy.mockRejectedValueOnce(new TypeError('Failed to fetch'));
+
+      try {
+        await apiFetch('/api/some-endpoint');
+        throw new Error('expected to throw');
+      } catch (err) {
+        expect(err).toBeInstanceOf(ApiError);
+        const apiErr = err as ApiError;
+        expect(apiErr.status).toBe(0);
+        expect(apiErr.code).toBe('CLOUD_UNREACHABLE');
+        expect(apiErr.recovery).toBe('retry');
+      }
     });
 
     it('sets X-Idempotency-Key header when idempotencyKey option is supplied', async () => {
