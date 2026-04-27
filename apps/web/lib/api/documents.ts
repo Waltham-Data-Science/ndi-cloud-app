@@ -23,6 +23,16 @@ export interface DocumentListResponse {
   documents: DocumentSummary[];
 }
 
+/**
+ * Documents endpoint timing matches the table hooks — cold fetches on
+ * large datasets (60k+ docs) can exceed the default 15s read timeout.
+ * Same fix: 60s timeout + zero retries + 60s staleTime. See
+ * `lib/api/datasets.ts` for the full rationale; this hook is the
+ * Document-Explorer-tab equivalent.
+ */
+const DOCUMENTS_TIMEOUT_MS = 60_000;
+const DOCUMENTS_STALE_MS = 60_000;
+
 export function useDocuments(
   datasetId: string | undefined,
   className: string | null,
@@ -33,11 +43,14 @@ export function useDocuments(
   if (className) qs.set('class', className);
   return useQuery({
     queryKey: ['documents', datasetId, className, page, pageSize],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<DocumentListResponse>(
         `/api/datasets/${datasetId}/documents?${qs.toString()}`,
+        { signal, timeoutMs: DOCUMENTS_TIMEOUT_MS },
       ),
     enabled: !!datasetId,
+    retry: 0,
+    staleTime: DOCUMENTS_STALE_MS,
   });
 }
 
@@ -47,11 +60,14 @@ export function useDocument(
 ) {
   return useQuery({
     queryKey: ['document', datasetId, documentId],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<DocumentSummary>(
         `/api/datasets/${datasetId}/documents/${documentId}`,
+        { signal, timeoutMs: DOCUMENTS_TIMEOUT_MS },
       ),
     enabled: !!datasetId && !!documentId,
+    retry: 0,
+    staleTime: DOCUMENTS_STALE_MS,
   });
 }
 

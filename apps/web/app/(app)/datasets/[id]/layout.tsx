@@ -76,6 +76,76 @@ interface LayoutProps {
   params: Promise<{ id: string }>;
 }
 
+/**
+ * Per-prefetch hard ceiling. 8s is generous enough that warm Railway
+ * responses (which take ~0.1-0.5s when the upstream cache is hot, see
+ * smoke-test timings against the real backend) always make it into
+ * the dehydrated state, but tight enough that a cold endpoint can't
+ * stall the layout render past a single TCP round-trip + a couple
+ * seconds of ndiquery work. Cold endpoints fall through to the
+ * client-side hook (60s timeout, zero retries) which surfaces a
+ * proper error state with a Retry button instead of a layout that
+ * blocks the entire page render.
+ */
+const PREFETCH_TIMEOUT_MS = 8_000;
+
+/**
+ * Group-level deadline. `Promise.all` waits for the slowest prefetch
+ * — even if 3 of 4 resolve in 100ms, the layout blocks until the
+ * slow one does. Race the whole group against this deadline so the
+ * layout always renders within a tight, predictable budget. Whatever
+ * landed in the queryClient by deadline gets dehydrated; the rest
+ * fall through to client-side fetches.
+ *
+ * 3s sized against cold-but-not-pathological responses (typical
+ * Railway warm summary = 0.1s, cold summary on small/medium datasets
+ * = 1-3s — captured in the queryClient before deadline).
+ */
+const PREFETCH_GROUP_DEADLINE_MS = 3_000;
+
+/**
+ * Anonymous-public detail endpoints we prefetch on the server. Each
+ * goes through `INTERNAL_API_URL` (bypassing the Vercel edge → Railway
+ * double-hop) and writes into the shared QueryClient under the same
+ * key the client-side hook uses, so the client island reads from the
+ * hydrated cache instead of firing its own fetch on mount.
+ *
+ * Cookies are NOT forwarded — anonymous-public projection only. Per-
+ * user authed details fall through to the client-side fetch path
+ * which carries cookies via `apiFetch`'s `credentials: include`.
+ */
+const DETAIL_PREFETCHES = [
+  { suffix: '/summary', queryKey: 'summary' as const },
+  { suffix: '/provenance', queryKey: 'provenance' as const },
+  { suffix: '/class-counts', queryKey: 'class-counts' as const },
+] as const;
+
+async function prefetchDetailEndpoint(
+  baseUrl: string,
+  id: string,
+  suffix: string,
+): Promise<unknown | null> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PREFETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${baseUrl}/api/datasets/${id}${suffix}`, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+      // Co-locate with the leaf page's `revalidate: 60` so the same
+      // dataset visited within the revalidate window dedupes to one
+      // upstream call per Vercel function invocation.
+      cache: 'force-cache',
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return null;
+    return (await res.json()) as unknown;
+  } catch {
+    return null;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export default async function DatasetDetailLayout({
   children,
   params,
@@ -84,22 +154,38 @@ export default async function DatasetDetailLayout({
   const queryClient = new QueryClient();
 
   if (env.INTERNAL_API_URL) {
-    try {
-      // Pre-warm the dataset record cache. Same query key as the
-      // client-side `useDataset(id)` hook in `DatasetDetailHero` and
-      // `DatasetOverviewCard`, so when the client mounts it reads from
-      // the dehydrated cache instead of firing its own fetch on mount.
-      // Cookies NOT forwarded — anonymous-public projection only;
-      // authed details fall through to the existing client-side fetch
-      // path (cookie hydration via `apiFetch`'s credentials: include).
-      await queryClient.prefetchQuery({
+    const baseUrl = env.INTERNAL_API_URL;
+    // Fire all prefetches in parallel. Each prefetchQuery internally
+    // catches errors so a single failure (e.g. /summary 504 on a
+    // large dataset) doesn't propagate. The group is then RACED
+    // against PREFETCH_GROUP_DEADLINE_MS so the layout never blocks
+    // page render past that ceiling — whatever's in the queryClient
+    // when the race resolves gets dehydrated; client-side hooks fill
+    // in the rest with their own (60s-timeout, zero-retry) fetches.
+    //
+    // We don't `await` individual prefetches outside the race —
+    // `prefetchQuery` writes to the queryClient as soon as the
+    // queryFn resolves, so even prefetches that finish AFTER the
+    // race deadline still populate the cache for any client renders
+    // that happen on the same QueryClient instance (none here, since
+    // the QueryClient is request-scoped and dehydrated immediately
+    // after the race; this is just a defensive note).
+    const prefetchAll = Promise.all([
+      queryClient.prefetchQuery({
         queryKey: ['dataset', id],
-        queryFn: () => fetchDatasetServer(env.INTERNAL_API_URL!, id),
-      });
-    } catch {
-      // Prefetch failures fall through to client-side fetch on mount.
-      // Marketing chrome stays UP, hero shows skeleton, then resolves.
-    }
+        queryFn: () => fetchDatasetServer(baseUrl, id),
+      }),
+      ...DETAIL_PREFETCHES.map(({ suffix, queryKey }) =>
+        queryClient.prefetchQuery({
+          queryKey: ['dataset', id, queryKey],
+          queryFn: () => prefetchDetailEndpoint(baseUrl, id, suffix),
+        }),
+      ),
+    ]);
+    const deadline = new Promise<void>((resolve) =>
+      setTimeout(resolve, PREFETCH_GROUP_DEADLINE_MS),
+    );
+    await Promise.race([prefetchAll, deadline]);
   }
 
   return (

@@ -35,6 +35,23 @@ export interface OntologyTablesResponse {
   groups: OntologyTableGroup[];
 }
 
+/**
+ * Per-class table fetches can take 6-30s cold on Railway depending on
+ * dataset size + class size. Default 15s apiFetch timeout would abort
+ * on the first attempt for medium datasets and TanStack's default 3
+ * retries would compound that into a 60s+ "stuck loading" window. Bump
+ * to 60s + zero retries: ONE attempt with enough headroom, then either
+ * succeeds (and edge-cache warms for subsequent viewers) or surfaces a
+ * typed error for the user to manually retry. Same pattern as the
+ * detail hooks in `lib/api/datasets.ts`.
+ *
+ * `signal` is also threaded through so navigating away cancels the
+ * in-flight fetch instead of holding the connection open until the
+ * timeout fires.
+ */
+const TABLE_TIMEOUT_MS = 60_000;
+const TABLE_STALE_MS = 60_000;
+
 /** Table of a single NDI class. */
 export function useSummaryTable(
   datasetId: string | undefined,
@@ -42,10 +59,14 @@ export function useSummaryTable(
 ) {
   return useQuery({
     queryKey: ['table', datasetId, className],
-    queryFn: () =>
-      apiFetch<TableResponse>(`/api/datasets/${datasetId}/tables/${className}`),
+    queryFn: ({ signal }) =>
+      apiFetch<TableResponse>(
+        `/api/datasets/${datasetId}/tables/${className}`,
+        { signal, timeoutMs: TABLE_TIMEOUT_MS },
+      ),
     enabled: !!datasetId && !!className,
-    staleTime: 60_000,
+    retry: 0,
+    staleTime: TABLE_STALE_MS,
   });
 }
 
@@ -53,10 +74,14 @@ export function useSummaryTable(
 export function useCombinedTable(datasetId: string | undefined) {
   return useQuery({
     queryKey: ['table', datasetId, 'combined'],
-    queryFn: () =>
-      apiFetch<TableResponse>(`/api/datasets/${datasetId}/tables/combined`),
+    queryFn: ({ signal }) =>
+      apiFetch<TableResponse>(
+        `/api/datasets/${datasetId}/tables/combined`,
+        { signal, timeoutMs: TABLE_TIMEOUT_MS },
+      ),
     enabled: !!datasetId,
-    staleTime: 60_000,
+    retry: 0,
+    staleTime: TABLE_STALE_MS,
   });
 }
 
@@ -64,12 +89,14 @@ export function useCombinedTable(datasetId: string | undefined) {
 export function useOntologyTables(datasetId: string | undefined) {
   return useQuery({
     queryKey: ['table', datasetId, 'ontology'],
-    queryFn: () =>
+    queryFn: ({ signal }) =>
       apiFetch<OntologyTablesResponse>(
         `/api/datasets/${datasetId}/tables/ontology`,
+        { signal, timeoutMs: TABLE_TIMEOUT_MS },
       ),
     enabled: !!datasetId,
-    staleTime: 60_000,
+    retry: 0,
+    staleTime: TABLE_STALE_MS,
   });
 }
 

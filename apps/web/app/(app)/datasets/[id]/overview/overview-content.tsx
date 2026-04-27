@@ -30,11 +30,26 @@ export function OverviewContent({ datasetId }: { datasetId: string }) {
   const summary = useDatasetSummary(datasetId);
   const provenance = useDatasetProvenance(datasetId);
 
+  // Smoke-test feedback: the sidecar appeared empty when summary or
+  // provenance errored, because `isLoading` (TanStack Query 5) is
+  // `isPending && isFetching` — false the moment a query's first
+  // attempt errors out. With the new zero-retry hooks the error path
+  // is reached on the first attempt; we use `isPending` (no data, no
+  // success yet) for the "first paint" skeleton instead so a slow but
+  // not-yet-errored fetch keeps showing the skeleton until it resolves
+  // either way.
+  //
+  // `isPending && !data` = "we have no data yet, still in flight".
+  // `isError`            = "first attempt failed; surface a retry".
+  // `data`               = "render the card".
+  const summaryShowSkeleton = summary.isPending && !summary.data;
+  const provenanceShowSkeleton = provenance.isPending && !provenance.data;
+
   return (
     <div className="grid gap-5 lg:grid-cols-[1fr_360px] min-w-0">
       {/* ── Main column: details (abstract + authors + pubs + cite) ── */}
       <div className="space-y-4 min-w-0 order-2 lg:order-1">
-        {ds.isLoading && <CardSkeleton />}
+        {ds.isPending && !ds.data && <CardSkeleton />}
         {ds.isError && (
           // Source data-browser used `<ErrorState onRetry={…} />` for a
           // typed-error UI with a retry button (visual-comparison audit
@@ -55,8 +70,8 @@ export function OverviewContent({ datasetId }: { datasetId: string }) {
 
       {/* ── Sidecar: summary pills + provenance ─────────────────────── */}
       <aside className="space-y-4 min-w-0 order-1 lg:order-2">
-        {summary.isLoading && <CardSkeleton />}
-        {summary.isError && !summary.isLoading && (
+        {summaryShowSkeleton && <CardSkeleton />}
+        {summary.isError && (
           // Audit #6 — summary errors were swallowed silently so a
           // synthesizer outage left users staring at an empty sidebar
           // with no signal what happened.
@@ -68,9 +83,22 @@ export function OverviewContent({ datasetId }: { datasetId: string }) {
         {summary.data && <DatasetSummaryCard summary={summary.data} />}
 
         {/* Plan B B5 — dataset provenance card (derivation graph,
-            cross-dataset depends_on edges, branches). Errors on
-            provenance degrade silently so a flaky aggregator never
-            blocks the detail view. */}
+            cross-dataset depends_on edges, branches). Provenance now
+            renders a CardSkeleton during first-paint (matching the
+            summary card), an inline error state on failure (lets the
+            user retry without a hard refresh), and the card itself on
+            success. Pre-fix it was render-on-data-only, which was a
+            silent UX bug: users saw a blank space for slow datasets
+            with no signal whether provenance was loading, broken, or
+            simply absent. Errors no longer block the rest of the
+            view — DatasetSummaryCard above renders independently. */}
+        {provenanceShowSkeleton && <CardSkeleton />}
+        {provenance.isError && (
+          <ErrorState
+            error={provenance.error}
+            onRetry={() => provenance.refetch()}
+          />
+        )}
         {provenance.data && (
           <DatasetProvenanceCard provenance={provenance.data} />
         )}

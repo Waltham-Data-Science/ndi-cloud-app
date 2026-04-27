@@ -26,9 +26,14 @@ vi.mock('@/lib/api/client', () => ({
 // `useRouter()`; DocumentExplorer also calls `useSearchParams()` and
 // `usePathname()` for filter/page URL state. Mock all three so the
 // rendering tests stay focused on shell-level contracts.
+//
+// `routerPushMock` is hoisted to module scope so per-test assertions
+// (e.g., the onRowClick navigation test below) can read what URL the
+// shell tried to navigate to.
+const routerPushMock = vi.fn();
 vi.mock('next/navigation', () => ({
   useRouter: () => ({
-    push: vi.fn(),
+    push: routerPushMock,
     replace: vi.fn(),
     refresh: vi.fn(),
     back: vi.fn(),
@@ -37,6 +42,29 @@ vi.mock('next/navigation', () => ({
   }),
   useSearchParams: () => new URLSearchParams(),
   usePathname: () => '/datasets/d1/documents',
+}));
+
+// VirtualizedTable wraps `@tanstack/react-virtual.useVirtualizer`,
+// which under jsdom returns zero items because the scroll container
+// has 0 height — so onRowClick never fires from a click test. Mock to
+// materialize every row, matching the same pattern used by the
+// PivotView test.
+vi.mock('@tanstack/react-virtual', () => ({
+  useVirtualizer: ({ count, estimateSize }: { count: number; estimateSize: () => number }) => {
+    const size = estimateSize();
+    const items = Array.from({ length: count }, (_, i) => ({
+      index: i,
+      key: i,
+      start: i * size,
+      end: (i + 1) * size,
+      size,
+      lane: 0,
+    }));
+    return {
+      getVirtualItems: () => items,
+      getTotalSize: () => count * size,
+    };
+  },
 }));
 
 import { apiFetch } from '@/lib/api/client';
@@ -60,6 +88,7 @@ function withClient() {
 
 beforeEach(() => {
   mockedApiFetch.mockReset();
+  routerPushMock.mockReset();
 });
 
 afterEach(() => {
@@ -104,6 +133,50 @@ describe('TableShell', () => {
       // exact-text equality against the bare class id.
       expect(screen.getByText('treatment', { selector: 'span' })).toBeInTheDocument();
     });
+  });
+
+  it('clicking a subject row navigates to the document detail page', async () => {
+    // Smoke-test feedback (post-Phase-6.7): summary-tables rows were
+    // not clickable in the cloud-app port even though the data-browser
+    // SPA navigated to /datasets/[id]/documents/[ndiId] on row click.
+    // This pin guards the per-grain primary-id mapping in
+    // `PRIMARY_DOC_ID_FIELD` (subject grain → subjectDocumentIdentifier).
+    mockedApiFetch.mockResolvedValueOnce({
+      columns: [
+        { key: 'subjectDocumentIdentifier', label: 'Subject Doc ID' },
+        { key: 'subjectLocalIdentifier', label: 'Local Identifier' },
+      ],
+      rows: [
+        {
+          subjectDocumentIdentifier: 'ndi-sub-A',
+          subjectLocalIdentifier: 'A@lab.edu',
+        },
+      ],
+    });
+    const Wrapper = withClient();
+    const { container } = render(
+      <Wrapper>
+        <TableShell datasetId="d1" className="subject" />
+      </Wrapper>,
+    );
+    // Wait for the table body to populate.
+    await waitFor(() => {
+      expect(screen.getByText('A@lab.edu')).toBeInTheDocument();
+    });
+    // The row carries the click handler — find the <tr> that contains
+    // our cell text and click it. (We click the cell, which bubbles to
+    // the row's onClick.)
+    const cell = screen.getByText('A@lab.edu');
+    const row = cell.closest('tr');
+    expect(row).not.toBeNull();
+    expect(row?.className).toMatch(/cursor-pointer/);
+    row?.click();
+    expect(routerPushMock).toHaveBeenCalledWith(
+      '/datasets/d1/documents/ndi-sub-A',
+    );
+    // Reference `container` so eslint doesn't flag the destructure as
+    // unused — also serves as a smoke-check the render mounted.
+    expect(container.querySelector('table')).not.toBeNull();
   });
 });
 
