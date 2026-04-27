@@ -1,13 +1,13 @@
 'use client';
 
-import { useQueryClient } from '@tanstack/react-query';
+import { ChevronRight } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
-import { useEffect, useState } from 'react';
+import { useEffect } from 'react';
 
-import { logout } from '@/lib/api/auth';
 import { useSession } from '@/lib/auth/use-session';
 import { commonsSearchUrl, myWorkspaceUrl } from '@/lib/urls';
+import { AccountSidebar } from '@/components/app/AccountSidebar';
 import { MarketingButton } from '@/components/marketing/Button';
 
 /**
@@ -37,27 +37,13 @@ import { MarketingButton } from '@/components/marketing/Button';
  */
 export function MyAccountClient() {
   const router = useRouter();
-  const queryClient = useQueryClient();
   const { user, isLoading } = useSession();
-  const [logoutPending, setLogoutPending] = useState(false);
 
   useEffect(() => {
     if (!isLoading && !user) {
       router.replace('/login?returnTo=/my-account');
     }
   }, [isLoading, user, router]);
-
-  async function handleLogout() {
-    setLogoutPending(true);
-    try {
-      await logout();
-    } finally {
-      // Clear cache regardless of API outcome — even if the network
-      // call failed, locally we treat the session as gone.
-      await queryClient.invalidateQueries({ queryKey: ['session'] });
-      router.push('/login');
-    }
-  }
 
   if (isLoading || !user) {
     return (
@@ -68,70 +54,93 @@ export function MyAccountClient() {
   }
 
   return (
-    <div className="px-7 py-12 bg-bg-canvas">
-      <div className="max-w-[800px] mx-auto">
-          <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
-            Your account
-          </div>
-          <h1 className="text-[2rem] font-bold tracking-tight text-fg-primary leading-[1.2] mb-8 m-0">
-            Account
-          </h1>
+    <div className="px-7 py-10 bg-bg-canvas">
+      <div className="max-w-[1100px] mx-auto">
+        {/* Breadcrumb — restored after visual-comparison audit #8
+            flagged it as dropped during the App Router port. Source
+            used MUI <Breadcrumbs> with a "›" separator; ported here
+            as a plain <nav> + lucide ChevronRight icon to keep
+            components/app/** MUI-free. */}
+        <nav
+          aria-label="Breadcrumb"
+          className="flex items-center gap-1.5 text-sm text-fg-muted mb-6"
+        >
+          <Link
+            href="/my-account"
+            className="hover:text-fg-primary transition-colors duration-(--duration-fast)"
+          >
+            My Account
+          </Link>
+          <ChevronRight className="h-3.5 w-3.5" aria-hidden />
+          <span className="text-fg-primary font-medium">Account Info</span>
+        </nav>
 
-          <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-sm mb-6">
-            <h2 className="text-base font-bold text-fg-primary mb-4 m-0">Profile</h2>
-            <Row label="Account ID" value={user.userId.slice(0, 12) + '…'} />
-            <Row label="Email hash" value={user.email_hash} />
-            <Row
-              label="Organizations"
-              value={
-                user.organizationIds.length === 0
-                  ? 'None'
-                  : `${user.organizationIds.length} ${user.organizationIds.length === 1 ? 'organization' : 'organizations'}`
-              }
-            />
-            {user.isAdmin && <Row label="Role" value="Admin" />}
-            <Row
-              label="Signed in"
-              value={new Date(user.issuedAt * 1000).toLocaleString('en-US')}
-            />
-          </div>
+        {/* Sidebar + content layout — restored from source's
+            AccountSidebar shape (audit #9). Sidebar is sticky on
+            desktop so the nav stays in view when the content card
+            grows; collapses to a top-row on mobile so it doesn't
+            consume vertical space. */}
+        <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-8">
+          <aside className="md:sticky md:top-6 md:self-start">
+            <AccountSidebar />
+          </aside>
 
-          <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-sm mb-6">
-            <h2 className="text-base font-bold text-fg-primary mb-4 m-0">Workspaces</h2>
-            <p className="text-sm text-fg-secondary mb-4 m-0">
-              Your data-browser views — datasets, bookmarks, and the public
-              Data Commons.
-            </p>
-            <div className="flex gap-3 flex-wrap">
-              <MarketingButton as="a" href={myWorkspaceUrl()} variant="cta" size="md">
-                Open my workspace →
-              </MarketingButton>
-              <MarketingButton as="a" href={commonsSearchUrl()} variant="outline" size="md">
-                Data Commons →
-              </MarketingButton>
+          <div className="min-w-0 space-y-6">
+            <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-sm">
+              <h1 className="text-[1.5rem] font-bold text-fg-primary mb-1 m-0">
+                Account Info
+              </h1>
+              <p className="text-sm text-fg-muted mb-5 m-0">
+                Profile data on your active session. Some fields are
+                derived from the cookie session payload (Phase 6.7 B4)
+                rather than the user record.
+              </p>
+              <Row label="Account ID" value={user.userId.slice(0, 12) + '…'} />
+              <Row label="Email hash" value={user.email_hash} />
+              <Row
+                label="Organizations"
+                value={
+                  user.organizationIds.length === 0
+                    ? 'None'
+                    : `${user.organizationIds.length} ${user.organizationIds.length === 1 ? 'organization' : 'organizations'}`
+                }
+              />
+              {user.isAdmin && <Row label="Role" value="Admin" />}
+              <Row
+                label="Signed in"
+                value={new Date(user.issuedAt * 1000).toLocaleString('en-US')}
+              />
+            </div>
+
+            <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-sm">
+              <h2 className="text-base font-bold text-fg-primary mb-4 m-0">
+                Workspaces
+              </h2>
+              <p className="text-sm text-fg-secondary mb-4 m-0">
+                Your data-browser views — datasets, bookmarks, and the
+                public Data Commons.
+              </p>
+              <div className="flex gap-3 flex-wrap">
+                <MarketingButton
+                  as="a"
+                  href={myWorkspaceUrl()}
+                  variant="cta"
+                  size="md"
+                >
+                  Open my workspace →
+                </MarketingButton>
+                <MarketingButton
+                  as="a"
+                  href={commonsSearchUrl()}
+                  variant="outline"
+                  size="md"
+                >
+                  Data Commons →
+                </MarketingButton>
+              </div>
             </div>
           </div>
-
-          <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-sm">
-            <h2 className="text-base font-bold text-fg-primary mb-4 m-0">Security</h2>
-            <div className="flex gap-3 flex-wrap">
-              <Link
-                href="/reset-password"
-                className="text-sm font-semibold text-ndi-teal hover:underline"
-              >
-                Change password
-              </Link>
-              <span className="text-border-strong">·</span>
-              <button
-                type="button"
-                onClick={handleLogout}
-                disabled={logoutPending}
-                className="text-sm font-semibold text-red-700 hover:underline disabled:opacity-60"
-              >
-                {logoutPending ? 'Signing out…' : 'Log out'}
-              </button>
-            </div>
-          </div>
+        </div>
       </div>
     </div>
   );

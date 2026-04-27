@@ -14,7 +14,7 @@
  *   - Table renders rows when pivot data arrives
  *   - Empty state when pivot returns zero rows
  *   - Feature-flag-off (503) renders `PivotDisabledCard`
- *   - `DatasetPivotNavGuard` hides children on 503, shows on success
+ *   - `DatasetPivotNavGuard` was removed (dead code; see PivotView.tsx)
  */
 import { describe, expect, it, vi } from 'vitest';
 import { render, screen, within } from '@testing-library/react';
@@ -62,7 +62,7 @@ import { ApiError } from '@/lib/api/errors';
 import * as datasetsApi from '@/lib/api/datasets';
 import type { PivotResponse } from '@/lib/api/datasets';
 import type { DatasetSummary } from '@/lib/types/dataset-summary';
-import { DatasetPivotNavGuard, PivotView } from '@/components/app/PivotView';
+import { PivotView } from '@/components/app/PivotView';
 
 function withProviders(ui: ReactNode) {
   const qc = new QueryClient({
@@ -280,42 +280,7 @@ describe('PivotView — feature-flag-off behavior', () => {
   });
 });
 
-describe('DatasetPivotNavGuard', () => {
-  it('hides wrapped nav when the pivot endpoint returns 503', () => {
-    vi.spyOn(datasetsApi, 'useDatasetPivot').mockReturnValue(
-      stubPivot({
-        isError: true,
-        error: new ApiError(503, {
-          code: 'INTERNAL',
-          message: 'disabled',
-          recovery: 'contact_support',
-          requestId: null,
-        }),
-      }),
-    );
-
-    render(
-      withProviders(
-        <DatasetPivotNavGuard datasetId="DSX">
-          <span data-testid="pivot-nav-link">Pivot nav</span>
-        </DatasetPivotNavGuard>,
-      ),
-    );
-    expect(screen.queryByTestId('pivot-nav-link')).toBeNull();
-  });
-
-  it('shows wrapped nav when the pivot endpoint succeeds', () => {
-    vi.spyOn(datasetsApi, 'useDatasetPivot').mockReturnValue(
-      stubPivot({ data: pivotResponse([]) }),
-    );
-
-    render(
-      withProviders(
-        <DatasetPivotNavGuard datasetId="DSX">
-          <span data-testid="pivot-nav-link">Pivot nav</span>
-        </DatasetPivotNavGuard>,
-      ),
-    );
-    expect(screen.getByTestId('pivot-nav-link')).toBeInTheDocument();
-  });
-});
+// `DatasetPivotNavGuard` removed in the perf-foundational rollup.
+// Production code never imported it; the export + its `useDatasetPivot
+// (id, 'subject')` probe were dead in real users' page loads. See the
+// comment in `components/app/PivotView.tsx` for the full rationale.
