@@ -235,11 +235,21 @@ describe('OverviewContent', () => {
     expect(container.querySelectorAll('.skeleton').length).toBeGreaterThan(0);
   });
 
-  it('shows a fallback panel on error', async () => {
+  it('renders an ErrorState alert on dataset fetch failure', async () => {
     // Phase 6.6 REBUILD-3c: OverviewContent makes three query calls
     // (dataset, summary, provenance). The error branch is gated on
     // `ds.isError`, so we only need to fail the first call; summary +
     // provenance can stay pending.
+    //
+    // Visual-audit follow-up (audit #6): the fallback panel is now the
+    // ported `<ErrorState>` (typed error UI from `lib/api/errors`)
+    // instead of the previous static "Couldn't load dataset {id}"
+    // line. For an `ApiError` with `recovery: 'retry'` the component
+    // renders an inline Retry button — for a plain `Error` (the test
+    // fixture here) it falls through to the contact-support panel.
+    // Both surface a `role=alert` region; that's the contract pinned
+    // here, so the assertion stays robust regardless of the recovery
+    // bucket the error happens to land in.
     mockedApiFetch.mockRejectedValueOnce(new Error('boom'));
     mockedApiFetch.mockReturnValue(new Promise(() => {}));
     const Wrapper = withClient();
@@ -249,7 +259,7 @@ describe('OverviewContent', () => {
       </Wrapper>,
     );
     await waitFor(() => {
-      expect(screen.getByText(/Couldn.t load dataset d1/i)).toBeInTheDocument();
+      expect(screen.getAllByRole('alert').length).toBeGreaterThan(0);
     });
   });
 

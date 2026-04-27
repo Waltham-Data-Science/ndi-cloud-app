@@ -7,11 +7,16 @@
  * handoff. The audit-#65 a11y tab-bar shape (URL-routed `aria-current`
  * rather than state-controlled) was the original Phase 3b deliverable.
  *
- * `generateMetadata` sets a per-tab title so the browser tab reads
+ * `metadata` sets a per-tab title so the browser tab reads
  * "Tables · NDI Cloud" instead of bare "NDI Cloud" (root layout's
- * template adds the suffix). Per-dataset name in the title is audit
- * follow-up #67 (deferred — see `[id]/layout.tsx` header comment for
- * the Next.js 16.2 InvariantError that crashes layout-level fetch).
+ * template adds the suffix).
+ *
+ * Per-dataset name appears on the OVERVIEW tab title only (audit #67)
+ * — that's the canonical link people share. Inner tabs stay generic
+ * because the user already sees the dataset name in the hero, and
+ * keeping them static avoids a per-tab API round-trip during
+ * generateMetadata. If a future audit wants per-tab dataset names,
+ * fold the same pattern from `overview/page.tsx`.
  */
 import type { Metadata } from 'next';
 

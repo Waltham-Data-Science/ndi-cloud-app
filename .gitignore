@@ -15,6 +15,16 @@ coverage/
 playwright-report/
 test-results/
 .playwright/
+.playwright-mcp/
+
+# Local Claude session state (never committed to the repo).
+.claude/
+
+# One-off visual-review screenshots saved to the repo root by the
+# Playwright MCP browser tool. Numbered PNGs / YMLs (01-home.png …)
+# are disposable artifacts of an in-session visual audit.
+/[0-9][0-9]-*.png
+/[0-9][0-9]-*.yml
 # Lighthouse CI cached run artifacts (large per-route lhr-*.json/.html files,
 # regenerated on each lhci run; never useful to commit).
 .lighthouseci/

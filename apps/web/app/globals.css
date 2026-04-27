@@ -246,19 +246,13 @@ body {
 }
 
 /*
- * Home-page institution marquee — `prefers-reduced-motion` opt-out
- * (WCAG 2.3.3 — Animation from Interactions). When the user prefers
- * reduced motion, kill the sliding loop and let the doubled logo set
- * wrap into a static band so the logos remain visible (just not
- * animated). The `.home-marquee-track` hook lives in
- * `app/(marketing)/page.tsx`. Ported from
- * ndi-web-app-wds/app/src/styles/HomeCommons.module.scss.
+ * Home-page institution marquee — REMOVED. The previous infinite-scroll
+ * marquee always showed at least one duplicated logo on screen because
+ * the doubled logo set was shorter than the viewport (only 6 unique
+ * logos). Replaced with a static centered grid in
+ * `app/(marketing)/page.tsx`. Static rendering is cheaper, accessible
+ * by default, and matches the industry-standard "trusted by" pattern.
+ *
+ * The legacy `.home-marquee-track` hook + `prefers-reduced-motion`
+ * opt-out are no longer needed.
  */
-@media (prefers-reduced-motion: reduce) {
-  .home-marquee-track {
-    animation: none !important;
-    flex-wrap: wrap;
-    justify-content: center;
-    white-space: normal;
-  }
-}

@@ -182,14 +182,32 @@ export function CreateAccountForm() {
           disabled={submitting}
           className="w-full"
         >
-          {submitting ? 'Creating account…' : 'Create account'}
+          {/* Source data-browser-v2 wording was "Send Verification Code"
+              — sets explicit user expectation that the next screen
+              awaits an emailed code. Restored after the visual-audit
+              flagged this as a regression (audit #3). */}
+          {submitting ? 'Sending verification code…' : 'Send verification code'}
         </MarketingButton>
-        <div className="mt-5 pt-5 border-t border-border-subtle text-sm text-fg-muted">
-          Already have an account?{' '}
-          <Link href="/login" className="text-ndi-teal hover:underline">
-            Log in
+        <div className="mt-5 pt-5 border-t border-border-subtle text-sm text-fg-muted flex flex-wrap gap-x-3 gap-y-1">
+          <span>
+            Already have an account?{' '}
+            <Link href="/login" className="text-ndi-teal hover:underline">
+              Log in
+            </Link>
+            .
+          </span>
+          {/* Forgot Password? was a peer link in the source's
+              additionalActions row (audit #4 — dropped during port).
+              Restored so users who arrive on /create-account intending
+              to recover an existing password don't have to bounce
+              through /login first. */}
+          <span className="text-fg-muted">·</span>
+          <Link
+            href="/forgot-password"
+            className="text-ndi-teal hover:underline"
+          >
+            Forgot password?
           </Link>
-          .
         </div>
       </form>
     </AuthSplitLayout>

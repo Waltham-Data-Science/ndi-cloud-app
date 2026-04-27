@@ -18,7 +18,13 @@ import type { CSSProperties } from 'react';
 import type { DatasetRecord } from '@/lib/api/datasets';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardBody, CardTitle } from '@/components/ui/Card';
-import { formatBytes, formatDate, truncate } from '@/lib/format';
+import {
+  cleanAbstract,
+  cleanDatasetName,
+  formatBytes,
+  formatDate,
+  truncate,
+} from '@/lib/format';
 
 interface DatasetCardProps {
   dataset: DatasetRecord;
@@ -30,7 +36,15 @@ const HOVER_STYLE: CSSProperties = {
 };
 
 export function DatasetCard({ dataset }: DatasetCardProps) {
-  const abstract = dataset.abstract ?? dataset.description;
+  // Strip cloud-side cosmetic noise before render: leading "Dataset:"
+  // prefix on names (legacy admin-UI artifact, inconsistent across
+  // entries) and the in-flight "DATASET BEING PROCESSED." marker that
+  // some abstracts ship with. See `cleanDatasetName` / `cleanAbstract`
+  // in `lib/format.ts` for the full rationale.
+  const displayName = cleanDatasetName(dataset.name);
+  const { text: abstractText, processing } = cleanAbstract(
+    dataset.abstract ?? dataset.description,
+  );
   const contributors = (dataset.contributors ?? [])
     .map((c) => [c.firstName, c.lastName].filter(Boolean).join(' '))
     .filter(Boolean);
@@ -41,7 +55,7 @@ export function DatasetCard({ dataset }: DatasetCardProps) {
     <Link
       href={`/datasets/${dataset.id}/overview`}
       className="block group focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue-3 rounded-lg"
-      aria-label={`Open dataset ${dataset.name}`}
+      aria-label={`Open dataset ${displayName}`}
     >
       <Card
         className="transition-all group-hover:-translate-y-[1px] group-hover:shadow-md group-hover:ring-border-strong"
@@ -49,7 +63,17 @@ export function DatasetCard({ dataset }: DatasetCardProps) {
       >
         <CardBody className="p-6 md:p-7">
           <div className="flex items-center gap-2 mb-3 flex-wrap">
-            <Badge variant="pub">● Published</Badge>
+            {/* Status pill: PUBLISHED (green) vs DRAFT (amber/secondary).
+                Previously we always showed "● Published" — a draft
+                dataset visible in a logged-in scope (e.g. /my) would
+                visually misrepresent itself as live. */}
+            {dataset.isPublished === false ? (
+              <Badge variant="secondary" title="Draft — not yet published">
+                ● Draft
+              </Badge>
+            ) : (
+              <Badge variant="pub">● Published</Badge>
+            )}
             {dataset.license && (
               <Badge variant="outline" className="font-mono normal-case">
                 {dataset.license}
@@ -63,13 +87,22 @@ export function DatasetCard({ dataset }: DatasetCardProps) {
             {dataset.publishStatus && dataset.publishStatus !== 'published' && (
               <Badge variant="secondary">{dataset.publishStatus}</Badge>
             )}
+            {/* Surface the cloud-side "DATASET BEING PROCESSED" marker as
+                a discrete badge instead of letting it leak into the
+                abstract paragraph as ALL-CAPS body copy that reads like
+                an error. */}
+            {processing && (
+              <Badge variant="secondary" title="Synthesizer enrichment in progress">
+                Processing
+              </Badge>
+            )}
           </div>
 
           <CardTitle
             as="h3"
             className="text-[1.2rem] leading-snug mb-2 group-hover:text-ndi-teal transition-colors"
           >
-            {dataset.name}
+            {displayName}
           </CardTitle>
 
           {(contributors.length > 0 || dataset.uploadedAt || dataset.createdAt) && (
@@ -153,9 +186,9 @@ export function DatasetCard({ dataset }: DatasetCardProps) {
             )}
           </div>
 
-          {abstract && (
+          {abstractText && (
             <p className="text-[13.5px] text-fg-secondary leading-relaxed line-clamp-2">
-              {abstract}
+              {abstractText}
             </p>
           )}
         </CardBody>
