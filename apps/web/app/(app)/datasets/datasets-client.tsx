@@ -75,11 +75,18 @@ export function DatasetsListClient({
   const regionFilters = parseCsv(searchParams.get('regions'));
   const licenseFilters = parseCsv(searchParams.get('license'));
 
-  const { data, isLoading, isError, error, refetch } = usePublishedDatasets(
-    page,
-    pageSize,
-  );
+  const { data, isPending, isFetching, isError, error, refetch } =
+    usePublishedDatasets(page, pageSize);
   const facets = useFacets();
+  // UX-leak audit (Tier 2 #7): skeleton ONLY when there's truly no
+  // data yet, not on every background revalidation. The original
+  // `isLoading` prop is `isPending && isFetching`, which fires `true`
+  // during stale-while-revalidate refetches — replacing already-
+  // rendered cards with skeletons and making the page feel broken.
+  // `isPending && !data` is the cold-cache signal; the revalidate
+  // indicator below renders a subtle "Refreshing…" badge instead.
+  const showSkeleton = isPending && !data;
+  const isRevalidating = isFetching && !!data;
 
   const datasets = useMemo(() => data?.datasets ?? [], [data]);
   const total = data?.totalNumber ?? 0;
@@ -176,8 +183,8 @@ export function DatasetsListClient({
           className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-white border border-border-subtle px-4 py-2.5 mb-3"
           style={{ boxShadow: 'var(--shadow-xs)' }}
         >
-          <span className="text-[13.5px] text-fg-secondary">
-            {isLoading ? (
+          <span className="text-[13.5px] text-fg-secondary inline-flex items-center gap-2 flex-wrap">
+            {showSkeleton ? (
               'Loading…'
             ) : anyFilterActive ? (
               <>
@@ -201,6 +208,17 @@ export function DatasetsListClient({
                 </strong>{' '}
                 datasets &middot; page {page} of {pageCount}
               </>
+            )}
+            {/* Subtle revalidating badge alongside the stat — preserves
+                the count info while signaling that data is refreshing
+                in the background. UX-leak audit Tier 2 #7. */}
+            {isRevalidating && (
+              <span
+                className="text-[11px] text-fg-muted italic"
+                aria-live="polite"
+              >
+                refreshing…
+              </span>
             )}
           </span>
           <label className="flex items-center gap-2 text-[12.5px] text-fg-muted">
@@ -261,9 +279,12 @@ export function DatasetsListClient({
           </div>
         )}
 
-        {/* Loading */}
-        {isLoading && (
-          <div className="grid gap-5">
+        {/* Cold-cache loading state — only when there's no data yet.
+            Background revalidation surfaces via the `isRevalidating`
+            badge in the results-bar above, NOT by replacing rendered
+            cards with skeletons. */}
+        {showSkeleton && (
+          <div className="grid gap-5" aria-busy="true" aria-live="polite">
             {Array.from({ length: 6 }).map((_, i) => (
               <CardSkeleton key={i} />
             ))}
@@ -274,7 +295,7 @@ export function DatasetsListClient({
           <ErrorState error={error} onRetry={() => void refetch()} />
         )}
 
-        {!isLoading && !isError && visible.length === 0 && (
+        {!showSkeleton && !isError && visible.length === 0 && (
           <div className="rounded-lg border border-dashed border-border-subtle bg-white p-10 text-center">
             <p className="text-[14px] text-fg-secondary">
               {anyFilterActive
@@ -294,15 +315,26 @@ export function DatasetsListClient({
           </div>
         )}
 
-        {!isLoading && visible.length > 0 && (
-          <div className="grid gap-5">
+        {!showSkeleton && visible.length > 0 && (
+          <div
+            className="grid gap-5"
+            // Soften revalidating opacity so the user gets a subtle
+            // "data is refreshing" hint without the cards collapsing to
+            // a skeleton flash. `aria-busy` flips for assistive tech.
+            aria-busy={isRevalidating || undefined}
+            style={
+              isRevalidating
+                ? { opacity: 0.85, transition: 'opacity 200ms ease-out' }
+                : undefined
+            }
+          >
             {visible.map((d) => (
               <DatasetCard key={d.id} dataset={d} />
             ))}
           </div>
         )}
 
-        {!isLoading && pageCount > 1 && (
+        {!showSkeleton && pageCount > 1 && (
           <nav
             className="flex items-center justify-center gap-3 pt-8"
             aria-label="Pagination"
