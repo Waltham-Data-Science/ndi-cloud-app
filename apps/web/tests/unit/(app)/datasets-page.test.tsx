@@ -175,4 +175,31 @@ describe('Catalog hydration contract', () => {
     // 6 cards × 3 lines per CardSkeleton = 18 skeleton divs.
     expect(skeletons.length).toBeGreaterThanOrEqual(6);
   });
+
+  it('exposes a "Skip to results" link targeting the results region (audit #15)', async () => {
+    // Pre-fix, keyboard tab order traversed ~30 filter checkboxes
+    // before reaching the first dataset card. The skip link mirrors
+    // the global "Skip to main content" pattern from app/layout.tsx,
+    // letting keyboard users jump from the catalog header to the
+    // results region in one Tab+Enter.
+    const ssrClient = new QueryClient();
+    await ssrClient.prefetchQuery({
+      queryKey: ['datasets', 'published', 1, 20],
+      queryFn: async () => FIXTURE,
+    });
+    const dehydrated = dehydrate(ssrClient);
+    const csrClient = new QueryClient({
+      defaultOptions: { queries: { retry: false, staleTime: 60_000 } },
+    });
+    render(
+      <HydratedTestProvider client={csrClient} state={dehydrated}>
+        <DatasetsListClient page={1} pageSize={20} />
+      </HydratedTestProvider>,
+    );
+    const skip = screen.getByRole('link', { name: /skip to results/i });
+    expect(skip.getAttribute('href')).toBe('#datasets-results');
+    // The anchor target exists. Use querySelector since the id is on
+    // a wrapper div (not a landmark element with a role).
+    expect(document.querySelector('#datasets-results')).not.toBeNull();
+  });
 });
