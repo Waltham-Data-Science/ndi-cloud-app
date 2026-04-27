@@ -2,6 +2,7 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 import { Footer } from '@/components/marketing/Footer';
+import { Header } from '@/components/marketing/Header';
 
 /**
  * Custom 404 page (Next 16 file convention).
@@ -12,11 +13,17 @@ import { Footer } from '@/components/marketing/Footer';
  * dark depth-gradient hero from the source repo, two CTAs (home + Data
  * Commons, both same-origin post-unification), and the standard Footer.
  *
- * The Header is intentionally NOT rendered here — Next 16 mounts the
- * root not-found.tsx OUTSIDE the (marketing) route group's layout, so
- * we don't get the marketing chrome by default. Adding it would mean
- * re-importing here. Keeping the page minimal (Footer only) matches the
- * source repo's UX and reads as a clear "you've gone off the path."
+ * Audit 2026-04-27 #9 — the original port omitted the Header here
+ * because Next 16 mounts root `not-found.tsx` OUTSIDE any route group
+ * layout, so the (marketing) chrome wasn't inherited automatically.
+ * The audit caught that the user landing on a typo'd URL had NO way
+ * to navigate back to the rest of the site except the in-page CTA
+ * buttons or the Footer's column links — no top-of-page nav, no logo
+ * to click, and the Header's session-aware "Log in" / "My workspace"
+ * affordance was missing. Importing `<Header />` directly (vs moving
+ * the file into the route group, which would change the URL routing
+ * semantics for `notFound()` from non-grouped paths) restores parity
+ * with every other page on the site.
  */
 export const metadata: Metadata = {
   title: 'Page not found',
@@ -26,6 +33,7 @@ export const metadata: Metadata = {
 export default function NotFound() {
   return (
     <>
+      <Header />
       <main
         className="relative overflow-hidden flex items-center justify-center text-white px-7 py-20 min-h-[calc(100vh-320px)]"
         style={{ background: 'var(--grad-depth)' }}
