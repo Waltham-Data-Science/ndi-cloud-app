@@ -77,18 +77,31 @@ interface LayoutProps {
 }
 
 /**
- * Server-side timeout for per-leaf prefetches. Generous (45s) because
- * RSC runs server-to-server with no Vercel edge in the loop — the
- * only ceiling is the Vercel function's 90s budget. Dataset detail
- * endpoints that 504 on Railway will still 504 here, but in that
- * case the client-side hook re-attempts (with its own 60s budget) and
- * surfaces a typed error if it times out too.
- *
- * Each prefetch is fire-and-forget: a single endpoint going slow
- * doesn't block the others. The HydrationBoundary delivers whatever
- * succeeded, and the client-side hook fills in the rest.
+ * Per-prefetch hard ceiling. 8s is generous enough that warm Railway
+ * responses (which take ~0.1-0.5s when the upstream cache is hot, see
+ * smoke-test timings against the real backend) always make it into
+ * the dehydrated state, but tight enough that a cold endpoint can't
+ * stall the layout render past a single TCP round-trip + a couple
+ * seconds of ndiquery work. Cold endpoints fall through to the
+ * client-side hook (60s timeout, zero retries) which surfaces a
+ * proper error state with a Retry button instead of a layout that
+ * blocks the entire page render.
  */
-const PREFETCH_TIMEOUT_MS = 45_000;
+const PREFETCH_TIMEOUT_MS = 8_000;
+
+/**
+ * Group-level deadline. `Promise.all` waits for the slowest prefetch
+ * — even if 3 of 4 resolve in 100ms, the layout blocks until the
+ * slow one does. Race the whole group against this deadline so the
+ * layout always renders within a tight, predictable budget. Whatever
+ * landed in the queryClient by deadline gets dehydrated; the rest
+ * fall through to client-side fetches.
+ *
+ * 3s sized against cold-but-not-pathological responses (typical
+ * Railway warm summary = 0.1s, cold summary on small/medium datasets
+ * = 1-3s — captured in the queryClient before deadline).
+ */
+const PREFETCH_GROUP_DEADLINE_MS = 3_000;
 
 /**
  * Anonymous-public detail endpoints we prefetch on the server. Each
@@ -142,16 +155,22 @@ export default async function DatasetDetailLayout({
 
   if (env.INTERNAL_API_URL) {
     const baseUrl = env.INTERNAL_API_URL;
-    // Fire all prefetches in parallel. Each is independently caught
-    // via prefetchQuery's internal try/catch — a failure on one (a
-    // 504 from /summary on a large dataset, say) doesn't block the
-    // others. The HydrationBoundary delivers whatever resolved.
+    // Fire all prefetches in parallel. Each prefetchQuery internally
+    // catches errors so a single failure (e.g. /summary 504 on a
+    // large dataset) doesn't propagate. The group is then RACED
+    // against PREFETCH_GROUP_DEADLINE_MS so the layout never blocks
+    // page render past that ceiling — whatever's in the queryClient
+    // when the race resolves gets dehydrated; client-side hooks fill
+    // in the rest with their own (60s-timeout, zero-retry) fetches.
     //
-    // The client-side hooks then read from the hydrated cache for
-    // queries that succeeded, and fire their own (60s-timeout, zero-
-    // retry) fetch for ones that didn't — surfacing a typed error
-    // state instead of a stuck skeleton.
-    await Promise.all([
+    // We don't `await` individual prefetches outside the race —
+    // `prefetchQuery` writes to the queryClient as soon as the
+    // queryFn resolves, so even prefetches that finish AFTER the
+    // race deadline still populate the cache for any client renders
+    // that happen on the same QueryClient instance (none here, since
+    // the QueryClient is request-scoped and dehydrated immediately
+    // after the race; this is just a defensive note).
+    const prefetchAll = Promise.all([
       queryClient.prefetchQuery({
         queryKey: ['dataset', id],
         queryFn: () => fetchDatasetServer(baseUrl, id),
@@ -163,6 +182,10 @@ export default async function DatasetDetailLayout({
         }),
       ),
     ]);
+    const deadline = new Promise<void>((resolve) =>
+      setTimeout(resolve, PREFETCH_GROUP_DEADLINE_MS),
+    );
+    await Promise.race([prefetchAll, deadline]);
   }
 
   return (
