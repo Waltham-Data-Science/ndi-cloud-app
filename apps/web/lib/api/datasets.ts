@@ -305,14 +305,27 @@ export async function fetchDatasetServer(
   try {
     const res = await fetch(`${baseUrl}/api/datasets/${id}`, {
       headers,
-      // Server-side fetch — bypass Next's fetch cache. Title staleness
-      // is bounded by route revalidate (usually short for dataset pages).
-      cache: 'no-store',
+      // Server-side fetch from the layout's RSC prefetch path. Use
+      // Next's request memo (`force-cache` + revalidate) so concurrent
+      // RSC renders of the same dataset within a single Vercel
+      // function invocation dedupe to one upstream call. The 60s
+      // revalidate matches the leaf overview page's `revalidate`
+      // export, so the dataset record stays warm across the same
+      // ISR generation.
+      cache: 'force-cache',
+      next: { revalidate: 60 },
     });
     if (!res.ok) return null;
-    return (await res.json()) as DatasetRecord;
+    const raw = await res.json();
+    // Apply the schema so the cloud's `_id`-only responses get
+    // transformed to `id`-bearing records, matching the shape the
+    // client-side `useDataset` hook receives via `apiFetch + schema`.
+    // Without this transform, a hydrated cache would carry `_id`
+    // but the client's render code reads `id`, breaking cards.
+    return DatasetRecordSchema.parse(raw) as DatasetRecord;
   } catch {
-    // Network blip / Railway flap — return null and let caller fall back.
+    // Network blip / Railway flap / schema mismatch — return null and
+    // let caller fall back to the client-side fetch path.
     return null;
   }
 }
