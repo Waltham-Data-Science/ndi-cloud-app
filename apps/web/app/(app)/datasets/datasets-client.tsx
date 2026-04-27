@@ -221,21 +221,65 @@ export function DatasetsListClient({
               </span>
             )}
           </span>
+          {/*
+            Audit 2026-04-27 #13 — pre-fix, the Sort selector used
+            default browser <select> styling (chunky dropdown arrow,
+            inconsistent font, OS-themed open menu) which stuck out
+            against the rest of the catalog's flat token-driven look.
+            Native <select> is preserved (best a11y + keyboard nav for
+            zero JS cost), but its rendering is normalized: appearance:
+            none + a layered chevron icon + matching design-token
+            border/padding/shadow so it sits flush with the FacetSidebar
+            inputs and the page's rhythm.
+          */}
           <label className="flex items-center gap-2 text-[12.5px] text-fg-muted">
             <span className="uppercase tracking-wide text-[10.5px] font-semibold">
               Sort
             </span>
-            <select
-              value={sort}
-              onChange={(e) => setParam('sort', e.target.value)}
-              className="bg-white border border-border-subtle rounded-md px-2 py-1 text-[12.5px] text-fg-primary hover:border-border-strong focus:outline-none focus:ring-2 focus:ring-ndi-teal/40"
-              aria-label="Sort"
-            >
-              <option value="relevance">Most relevant</option>
-              <option value="newest">Newest</option>
-              <option value="oldest">Oldest</option>
-              <option value="name">Title (A–Z)</option>
-            </select>
+            <span className="relative inline-flex">
+              <select
+                value={sort}
+                onChange={(e) => setParam('sort', e.target.value)}
+                className={
+                  // appearance-none drops the OS dropdown chevron;
+                  // we render our own below for visual consistency.
+                  // pr-7 reserves room for the icon; bg-bg-surface
+                  // matches the catalog's panel tokens. The shadow-xs
+                  // puts the control on the same elevation tier as
+                  // the page's Card primitives.
+                  'appearance-none bg-bg-surface border border-border-subtle rounded-md ' +
+                  'pl-3 pr-7 py-1.5 text-[12.5px] text-fg-primary font-medium ' +
+                  'shadow-xs transition-colors ' +
+                  'hover:border-border-strong hover:bg-bg-canvas ' +
+                  'focus:outline-none focus-visible:ring-2 focus-visible:ring-ndi-teal/40 focus-visible:border-ndi-teal'
+                }
+                aria-label="Sort"
+              >
+                <option value="relevance">Most relevant</option>
+                <option value="newest">Newest</option>
+                <option value="oldest">Oldest</option>
+                <option value="name">Title (A–Z)</option>
+              </select>
+              {/* Chevron — purely presentational, sits inside the
+                  control's reserved padding-right. pointer-events-none
+                  so clicks pass through to the underlying <select>. */}
+              <svg
+                aria-hidden
+                viewBox="0 0 16 16"
+                width="12"
+                height="12"
+                className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-fg-muted"
+              >
+                <path
+                  d="M4 6l4 4 4-4"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.75"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                />
+              </svg>
+            </span>
           </label>
         </div>
 
