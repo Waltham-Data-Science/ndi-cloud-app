@@ -153,15 +153,25 @@ export function Header() {
           <div className="flex gap-1.5 ml-3 items-center">
             {navLinks.map((link) =>
               link.external ? (
+                // `inline-flex items-center gap-1` so the trailing
+                // ExternalLinkIcon stays glued to the "Docs" label as a
+                // single un-breakable inline-flex line. Pre-fix the icon
+                // was a separate inline-flow sibling — the browser saw a
+                // line-break opportunity between the text node and the
+                // SVG and wrapped the icon to the next line whenever the
+                // nav was even slightly tight, breaking header height
+                // consistency. (User-reported, 2026-04-27.) The
+                // `whitespace-nowrap` belt holds even if a future style
+                // ever drops `flex` semantics.
                 <a
                   key={link.label}
                   href={link.href}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="text-[13.5px] font-medium px-3 py-2 rounded-md text-white/85 hover:text-white hover:bg-white/5 no-underline transition-all duration-(--duration-base) ease-(--ease-out)"
+                  className="inline-flex items-center gap-1 whitespace-nowrap text-[13.5px] font-medium px-3 py-2 rounded-md text-white/85 hover:text-white hover:bg-white/5 no-underline transition-all duration-(--duration-base) ease-(--ease-out)"
                 >
                   {link.label}
-                  <ExternalLinkIcon size={11} style={{ marginLeft: 4, opacity: 0.6 }} />
+                  <ExternalLinkIcon size={11} style={{ opacity: 0.6 }} />
                 </a>
               ) : (
                 <Link
