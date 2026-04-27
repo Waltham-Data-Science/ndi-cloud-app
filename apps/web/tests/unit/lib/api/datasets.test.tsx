@@ -53,6 +53,15 @@ describe('lib/api/datasets — hook URL contracts', () => {
     vi.clearAllMocks();
   });
 
+  // Hooks now thread TanStack Query's per-query AbortSignal into
+  // apiFetch (Batch A — perf foundational). Tests assert URL + the
+  // `signal` option's presence/type rather than the bare URL, so a
+  // future caller-supplied option doesn't silently get dropped from
+  // the fetch wrapper.
+  const signalOpt = expect.objectContaining({
+    signal: expect.any(AbortSignal),
+  });
+
   it('usePublishedDatasets fetches the correct page+pageSize', async () => {
     renderHook(() => usePublishedDatasets(2, 50), { wrapper: withClient() });
     // CQ1: hook now passes a `schema` for runtime shape validation.
@@ -65,6 +74,7 @@ describe('lib/api/datasets — hook URL contracts', () => {
         '/api/datasets/published?page=2&pageSize=50',
         expect.objectContaining({
           schema: expect.objectContaining({ parse: expect.any(Function) }),
+          signal: expect.any(AbortSignal),
         }),
       ),
     );
@@ -73,14 +83,20 @@ describe('lib/api/datasets — hook URL contracts', () => {
   it('useMyDatasets passes scope=all when explicitly requested', async () => {
     renderHook(() => useMyDatasets(true, 'all'), { wrapper: withClient() });
     await waitFor(() =>
-      expect(mockedApiFetch).toHaveBeenCalledWith('/api/datasets/my?scope=all'),
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        '/api/datasets/my?scope=all',
+        signalOpt,
+      ),
     );
   });
 
   it('useMyDatasets defaults to /api/datasets/my (scope=mine)', async () => {
     renderHook(() => useMyDatasets(true), { wrapper: withClient() });
     await waitFor(() =>
-      expect(mockedApiFetch).toHaveBeenCalledWith('/api/datasets/my'),
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        '/api/datasets/my',
+        signalOpt,
+      ),
     );
   });
 
@@ -96,8 +112,10 @@ describe('lib/api/datasets — hook URL contracts', () => {
       expect(mockedApiFetch).toHaveBeenCalledWith(
         '/api/datasets/d1',
         // CQ1: schema arg added for runtime shape validation.
+        // Batch A: signal arg added for cancellation.
         expect.objectContaining({
           schema: expect.objectContaining({ parse: expect.any(Function) }),
+          signal: expect.any(AbortSignal),
         }),
       ),
     );
@@ -108,6 +126,7 @@ describe('lib/api/datasets — hook URL contracts', () => {
     await waitFor(() =>
       expect(mockedApiFetch).toHaveBeenCalledWith(
         '/api/datasets/d1/class-counts',
+        signalOpt,
       ),
     );
   });
@@ -115,7 +134,10 @@ describe('lib/api/datasets — hook URL contracts', () => {
   it('useDatasetSummary fetches /api/datasets/:id/summary', async () => {
     renderHook(() => useDatasetSummary('d1'), { wrapper: withClient() });
     await waitFor(() =>
-      expect(mockedApiFetch).toHaveBeenCalledWith('/api/datasets/d1/summary'),
+      expect(mockedApiFetch).toHaveBeenCalledWith(
+        '/api/datasets/d1/summary',
+        signalOpt,
+      ),
     );
   });
 
@@ -124,6 +146,7 @@ describe('lib/api/datasets — hook URL contracts', () => {
     await waitFor(() =>
       expect(mockedApiFetch).toHaveBeenCalledWith(
         '/api/datasets/d1/provenance',
+        signalOpt,
       ),
     );
   });
@@ -135,6 +158,7 @@ describe('lib/api/datasets — hook URL contracts', () => {
     await waitFor(() =>
       expect(mockedApiFetch).toHaveBeenCalledWith(
         '/api/datasets/d1/pivot/subject',
+        signalOpt,
       ),
     );
   });
@@ -142,7 +166,7 @@ describe('lib/api/datasets — hook URL contracts', () => {
   it('useFacets fetches /api/facets', async () => {
     renderHook(() => useFacets(), { wrapper: withClient() });
     await waitFor(() =>
-      expect(mockedApiFetch).toHaveBeenCalledWith('/api/facets'),
+      expect(mockedApiFetch).toHaveBeenCalledWith('/api/facets', signalOpt),
     );
   });
 

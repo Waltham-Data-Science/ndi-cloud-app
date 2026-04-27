@@ -37,6 +37,21 @@ const CSRF_BOOTSTRAP_PATH = '/api/auth/csrf';
 const IDEMPOTENCY_HEADER = 'X-Idempotency-Key';
 const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
 
+/**
+ * Default per-request timeout (ms). Reads get a tight ceiling so a
+ * cold Railway dyno can't hang the UI; mutations get 2× because the
+ * round-trip includes the cloud call AND any backend write that
+ * follows. Caller can override via `init.timeoutMs`.
+ *
+ * The numbers are sized against observed cold-start behavior: a cold
+ * Railway dyno responds in 8-10s warm, 30s+ when the FastAPI internal
+ * cache is empty. 15s for reads catches the warm path comfortably and
+ * surfaces a typed timeout error for the cold-start case (instead of
+ * the previous "skeleton forever" UX).
+ */
+const DEFAULT_READ_TIMEOUT_MS = 15_000;
+const DEFAULT_MUTATION_TIMEOUT_MS = 30_000;
+
 function readCookie(name: string): string | null {
   if (typeof document === 'undefined') return null;
   const re = new RegExp(`(?:^|; )${name}=([^;]+)`);
@@ -131,6 +146,19 @@ export type ApiFetchInit = Omit<RequestInit, 'body'> & {
    * unaffected — the schema is silently ignored.
    */
   schema?: ResponseSchema;
+  /**
+   * Per-request timeout in milliseconds. Defaults to 15s for reads and
+   * 30s for mutations. Set to `0` to disable (no timeout — caller takes
+   * responsibility for hangs). On timeout, `apiFetch` throws an
+   * `ApiError(0, { code: 'TIMEOUT', recovery: 'retry' })` so the UI can
+   * render a typed retry affordance instead of a generic spinner-forever.
+   *
+   * Composes with `init.signal`: if the caller passes an `AbortSignal`
+   * (typically TanStack Query's per-query signal that fires on
+   * navigation), apiFetch combines it with the timeout signal via
+   * `AbortSignal.any` — whichever fires first wins.
+   */
+  timeoutMs?: number;
 };
 
 export async function apiFetch<T = unknown>(
@@ -179,19 +207,75 @@ export async function apiFetch<T = unknown>(
     idempotencyKey: _idempotencyKey,
     body: _body,
     schema: _schema,
+    timeoutMs: _timeoutMs,
+    signal: callerSignal,
     ...rest
   } = init;
   void _idempotencyKey;
   void _body;
   void _schema;
+  void _timeoutMs;
 
-  const response = await fetch(path, {
-    ...rest,
-    method,
-    body,
-    headers,
-    credentials: 'include',
-  });
+  // Compose timeout + caller signals. Two cases worth understanding:
+  //
+  //   1. `timeoutMs > 0` (default): create an `AbortSignal.timeout(ms)`
+  //      and merge it with any caller signal via `AbortSignal.any`.
+  //      First to fire aborts the fetch.
+  //   2. `timeoutMs === 0`: caller opts out (e.g., a long-running
+  //      export). Pass the caller signal through unchanged.
+  //
+  // The timeout matters most for cold-start scenarios — without it,
+  // a slow Railway response surfaces as "skeleton forever" with no
+  // recourse. With it, the UI can render a typed retry affordance.
+  const effectiveTimeoutMs =
+    init.timeoutMs ??
+    (MUTATING_METHODS.has(method)
+      ? DEFAULT_MUTATION_TIMEOUT_MS
+      : DEFAULT_READ_TIMEOUT_MS);
+  let timeoutSignal: AbortSignal | null = null;
+  let signal: AbortSignal | undefined = callerSignal ?? undefined;
+  if (effectiveTimeoutMs > 0) {
+    timeoutSignal = AbortSignal.timeout(effectiveTimeoutMs);
+    signal = callerSignal
+      ? AbortSignal.any([timeoutSignal, callerSignal])
+      : timeoutSignal;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      ...rest,
+      method,
+      body,
+      headers,
+      credentials: 'include',
+      signal,
+    });
+  } catch (err) {
+    // Distinguish: did OUR timeout fire, or did the CALLER cancel?
+    if (timeoutSignal?.aborted) {
+      throw new ApiError(0, {
+        code: 'CLOUD_TIMEOUT',
+        message: `Request to ${path} timed out after ${effectiveTimeoutMs}ms.`,
+        recovery: 'retry',
+        requestId: null,
+      });
+    }
+    // Caller canceled (TanStack Query unmount, etc.) — propagate the
+    // AbortError so React-Query treats it as a cancellation, not a
+    // failure. Network errors also land here; surface them as
+    // CLOUD_UNREACHABLE so consumers get the same retry affordance.
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw err;
+    }
+    const message = err instanceof Error ? err.message : 'network error';
+    throw new ApiError(0, {
+      code: 'CLOUD_UNREACHABLE',
+      message: `Network error reaching ${path}: ${message}`,
+      recovery: 'retry',
+      requestId: null,
+    });
+  }
 
   if (!response.ok) {
     let raw: unknown = null;

@@ -1,6 +1,6 @@
 {
   "_comment": "Bundle-size ratchet baseline. Updated by `pnpm bundle-size --update` from the repo root after a successful build. Never edit by hand. Phase 6.7 A2 introduced the ratchet (replacing the hard 200 KB constant); the value below is the byte count from the last passing CI build, recomputed by check-bundle-size.mjs. Local builds may measure +/- ~hundred bytes due to gzip-encoder cross-platform variance — the script's RATCHET_SLACK_BYTES (1 KB) absorbs this.",
-  "_updated": "2026-04-26",
+  "_updated": "2026-04-27",
   "_context": "Phase 6.7 Sequence 5 — A2 ratchet introduction",
-  "rootMainGzBytes": 172200
+  "rootMainGzBytes": 172033
 }
