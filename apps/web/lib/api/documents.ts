@@ -4,7 +4,7 @@
  * Document hooks — list, detail, dependency graph.
  * Ported verbatim from `ndi-data-browser-v2/frontend/src/api/documents.ts`.
  */
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { apiFetch } from './client';
 
 export interface DocumentSummary {
@@ -48,6 +48,79 @@ export function useDocuments(
         `/api/datasets/${datasetId}/documents?${qs.toString()}`,
         { signal, timeoutMs: DOCUMENTS_TIMEOUT_MS },
       ),
+    enabled: !!datasetId,
+    retry: 0,
+    staleTime: DOCUMENTS_STALE_MS,
+  });
+}
+
+/**
+ * Progressive (page-by-page) document loading via TanStack Query's
+ * :func:`useInfiniteQuery`. Used by `<DocumentExplorer>` so users see
+ * rows arrive AS the backend returns each page instead of waiting for
+ * the whole list — important for large datasets (78k+ docs at 50/page
+ * = 1500+ pages, but we load only what the user wants to see).
+ *
+ * Contract:
+ *
+ *   - The query function fetches one page (`pageParam`) at a time;
+ *     `getNextPageParam` walks to the next page until cumulative
+ *     `documents.length >= total`.
+ *   - The component flat-maps `data.pages` into a single array of
+ *     :class:`DocumentSummary` items for rendering.
+ *   - The component decides when to call `fetchNextPage()` — typically
+ *     once on each successful page so loading is visibly progressive
+ *     without firing 1500 simultaneous requests.
+ *
+ * Cap: the **caller** decides when to stop calling `fetchNextPage`.
+ * The hook itself doesn't impose a hard ceiling — TanStack Query's
+ * `hasNextPage` is purely a function of pageParam advancement vs
+ * total.
+ *
+ * Per-page timeout/retry behavior matches `useDocuments` (60s timeout,
+ * 0 retries, 60s staleTime). When a single page errors, downstream
+ * pages stop advancing; the component shows the partial view + a
+ * retry affordance.
+ */
+export interface DocumentPage {
+  documents: DocumentSummary[];
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export function useDocumentsInfinite(
+  datasetId: string | undefined,
+  className: string | null,
+  pageSize: number,
+) {
+  return useInfiniteQuery({
+    queryKey: ['documents:infinite', datasetId, className, pageSize],
+    queryFn: ({ pageParam, signal }) => {
+      const qs = new URLSearchParams({
+        page: String(pageParam),
+        pageSize: String(pageSize),
+      });
+      if (className) qs.set('class', className);
+      return apiFetch<DocumentListResponse>(
+        `/api/datasets/${datasetId}/documents?${qs.toString()}`,
+        { signal, timeoutMs: DOCUMENTS_TIMEOUT_MS },
+      );
+    },
+    initialPageParam: 1,
+    /**
+     * Advance to the next page until we've covered `total`. The
+     * arithmetic uses cumulative loaded-document count (not page
+     * count × pageSize) so a partial last page from the backend
+     * doesn't trick us into asking for a page that doesn't exist.
+     */
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce(
+        (n, p) => n + p.documents.length, 0,
+      );
+      if (loaded >= lastPage.total) return undefined;
+      return lastPage.page + 1;
+    },
     enabled: !!datasetId,
     retry: 0,
     staleTime: DOCUMENTS_STALE_MS,
