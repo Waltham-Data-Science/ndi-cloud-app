@@ -123,4 +123,24 @@ describe('ForgotPasswordForm', () => {
     expect(await screen.findByText(/network error/i)).toBeInTheDocument();
     expect(pushMock).not.toHaveBeenCalled();
   });
+
+  // Audit 2026-04-27 #7: heading describes the page action ("Forgot
+  // your password?" — request a code), not the next page ("Reset
+  // your password" — what /reset-forgotten-password does once the
+  // code arrives).
+  it('uses the question-form heading "Forgot your password?"', () => {
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <ForgotPasswordForm />
+      </Wrapper>,
+    );
+    expect(
+      screen.getByRole('heading', { name: /forgot your password/i }),
+    ).toBeInTheDocument();
+    // The pre-fix heading must NOT render — pin the regression.
+    expect(
+      screen.queryByRole('heading', { name: /reset your password/i }),
+    ).not.toBeInTheDocument();
+  });
 });

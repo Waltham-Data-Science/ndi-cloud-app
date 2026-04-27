@@ -213,3 +213,55 @@ describe('LoginForm', () => {
     });
   });
 });
+
+describe('LoginForm — returnTo banner (audit #12)', () => {
+  // The login form is reachable from a `/my*` redirect; pre-fix it
+  // looked identical regardless of how the user got there. The
+  // ReturnToBanner adds destination context. Pin the visibility
+  // matrix so a later refactor can't silently regress it.
+  it('renders the banner with the returnTo path when user is bounced from a deep route', () => {
+    searchParamsMock.get.mockImplementation(
+      (k: string) => (k === 'returnTo' ? '/my/datasets/abc' : null),
+    );
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <LoginForm />
+      </Wrapper>,
+    );
+    const banner = screen.getByTestId('return-to-banner');
+    expect(banner).toHaveTextContent('/my/datasets/abc');
+    expect(banner).toHaveTextContent(/log in to continue/i);
+  });
+
+  it('hides the banner when returnTo is absent (direct /login visit)', () => {
+    searchParamsMock.get.mockReturnValue(null);
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <LoginForm />
+      </Wrapper>,
+    );
+    expect(
+      screen.queryByTestId('return-to-banner'),
+    ).not.toBeInTheDocument();
+  });
+
+  it.each(['/', '/datasets', '/my'])(
+    'hides the banner for the generic landing target %s (no extra context worth surfacing)',
+    (target) => {
+      searchParamsMock.get.mockImplementation(
+        (k: string) => (k === 'returnTo' ? target : null),
+      );
+      const Wrapper = withClient();
+      render(
+        <Wrapper>
+          <LoginForm />
+        </Wrapper>,
+      );
+      expect(
+        screen.queryByTestId('return-to-banner'),
+      ).not.toBeInTheDocument();
+    },
+  );
+});
