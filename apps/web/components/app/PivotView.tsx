@@ -263,9 +263,20 @@ function PivotDisabledCard() {
     <Card data-testid="pivot-disabled">
       <CardHeader>
         <CardTitle className="text-base">Grain pivot</CardTitle>
-        <CardDescription className="text-xs">
-          This feature is disabled on the current deployment. Set{' '}
-          <code className="font-mono">FEATURE_PIVOT_V1=true</code> to enable.
+        {/*
+          Audit 2026-04-27 #11 — the pre-fix copy ("Set FEATURE_PIVOT_V1=true
+          to enable.") leaked an internal env-var name into user copy. End
+          users can't toggle backend env vars; the operator-grade hint was
+          wasted screen real estate AND read like a runtime error. Replaced
+          with a forward-looking note. Operators can still tell the feature
+          is gated by the env var via the data-flag attribute below.
+        */}
+        <CardDescription
+          className="text-xs"
+          data-feature-flag="FEATURE_PIVOT_V1"
+        >
+          Pivot view is in development and not available on this deployment yet.
+          Check back soon — the table tabs above cover the same shape today.
         </CardDescription>
       </CardHeader>
     </Card>

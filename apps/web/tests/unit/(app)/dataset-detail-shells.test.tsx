@@ -17,9 +17,19 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
-vi.mock('@/lib/api/client', () => ({
-  apiFetch: vi.fn(),
-}));
+// Mock `apiFetch` only; preserve the rest of the module's exports
+// (notably `ApiError`, which production code at `table-shell.tsx`
+// uses for `instanceof` checks on 404 responses — audit 2026-04-27
+// #6 fix). A blanket `() => ({ apiFetch: vi.fn() })` would break the
+// re-exported `ApiError` symbol, making `instanceof` checks fail
+// silently with `Right-hand side of instanceof is not callable`.
+vi.mock('@/lib/api/client', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/lib/api/client')>();
+  return {
+    ...actual,
+    apiFetch: vi.fn(),
+  };
+});
 
 // Phase 6.5b/6.5c: PivotShell mounts the real `<PivotView>` and
 // DocumentsShell mounts the real `<DocumentExplorer>`. Both call
@@ -124,15 +134,90 @@ describe('TableShell', () => {
         <TableShell datasetId="d1" className="treatment" />
       </Wrapper>,
     );
-    // The empty-state copy interpolates the active class name into a
-    // separate `<span>` node ("No <span>treatment</span> rows…"), so the
-    // class id appears as its own match target.
+    // Audit 2026-04-27 #6 — the empty-state copy now uses the
+    // friendly per-class label (`treatments`) instead of the raw
+    // URL slug (`treatment`). Sub-nav still shows "Treatments"
+    // (capitalized); the empty-state span renders the lowercase
+    // friendly label so the sentence reads naturally.
     await waitFor(() => {
-      // Two `treatment` strings in the DOM: the active sub-nav link
-      // ("Treatments") and the empty-state span. Match the span via
-      // exact-text equality against the bare class id.
-      expect(screen.getByText('treatment', { selector: 'span' })).toBeInTheDocument();
+      expect(screen.getByText('treatments', { selector: 'span' })).toBeInTheDocument();
     });
+  });
+
+  it('treats a 404 from the table endpoint as empty (audit #6), not as an error', async () => {
+    // The `useSummaryTable` query throws ApiError(404, ...) when
+    // the dataset doesn't publish this class. Pre-fix, the renderer
+    // showed alarming "Failed to load… Something went wrong" copy
+    // for what's really an empty state. Audit's fix: distinguish
+    // 404 from real failures and route 404 to the empty-state
+    // branch.
+    // Import ApiError directly from `@/lib/api/errors` — the
+    // module mock at the top of this file replaces `@/lib/api/client`
+    // entirely with `{ apiFetch: vi.fn() }`, dropping its re-export
+    // of ApiError. The errors module isn't mocked, so it's the
+    // canonical source.
+    const { ApiError } = await import('@/lib/api/errors');
+    mockedApiFetch.mockRejectedValueOnce(
+      new ApiError(404, {
+        error: {
+          code: 'NOT_FOUND',
+          message: 'No treatment table for dataset d1',
+          recovery: 'none',
+          requestId: null,
+        },
+      }),
+    );
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <TableShell datasetId="d1" className="treatment" />
+      </Wrapper>,
+    );
+    await waitFor(() => {
+      // Empty-state span (friendly label, lowercase).
+      expect(
+        screen.getByText('treatments', { selector: 'span' }),
+      ).toBeInTheDocument();
+    });
+    // The "Couldn't load… please retry" alarm copy must NOT render.
+    expect(screen.queryByText(/please retry/i)).not.toBeInTheDocument();
+    // Body should explain the empty state, not surface the 404
+    // request id / error code.
+    expect(screen.queryByText(/something went wrong/i)).not.toBeInTheDocument();
+  });
+
+  it('keeps the retry-style copy for non-404 errors (audit #6 negative case)', async () => {
+    // 503 / 504 / 500 are real failures; the retry copy must still
+    // render so the user knows to try again.
+    // Import ApiError directly from `@/lib/api/errors` — the
+    // module mock at the top of this file replaces `@/lib/api/client`
+    // entirely with `{ apiFetch: vi.fn() }`, dropping its re-export
+    // of ApiError. The errors module isn't mocked, so it's the
+    // canonical source.
+    const { ApiError } = await import('@/lib/api/errors');
+    mockedApiFetch.mockRejectedValueOnce(
+      new ApiError(503, {
+        error: {
+          code: 'CLOUD_UNREACHABLE',
+          message: 'cloud upstream unreachable',
+          recovery: 'retry',
+          requestId: 'req-503-test',
+        },
+      }),
+    );
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <TableShell datasetId="d1" className="subject" />
+      </Wrapper>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/please retry/i)).toBeInTheDocument();
+    });
+    // The empty-state copy must NOT render for a 503.
+    expect(
+      screen.queryByText(/this dataset doesn.+publish/i),
+    ).not.toBeInTheDocument();
   });
 
   it('clicking a subject row navigates to the document detail page', async () => {

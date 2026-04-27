@@ -348,6 +348,28 @@ export async function fetchDatasetServer(
   id: string,
   cookieHeader?: string,
 ): Promise<DatasetRecord | null> {
+  const result = await fetchDatasetServerWithStatus(baseUrl, id, cookieHeader);
+  return result.data;
+}
+
+/**
+ * Variant of :func:`fetchDatasetServer` that surfaces the HTTP
+ * status alongside the parsed body. Layouts use this to call
+ * Next.js's :func:`notFound` on a clean 404 (audit 2026-04-27 #10 —
+ * a bad `[id]` shouldn't render the dataset chrome with the bare
+ * id as h1).
+ *
+ * Status `0` means "network/timeout/parse error, status unknown" —
+ * callers should treat this as transient and fall through to client
+ * fetch, NOT as a 404. We never speculate-return 404 from a non-404
+ * failure mode because that would silently swap a bad-network
+ * detail page for a not-found page on a real network blip.
+ */
+export async function fetchDatasetServerWithStatus(
+  baseUrl: string,
+  id: string,
+  cookieHeader?: string,
+): Promise<{ status: number; data: DatasetRecord | null }> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (cookieHeader) headers['Cookie'] = cookieHeader;
   try {
@@ -363,17 +385,25 @@ export async function fetchDatasetServer(
       cache: 'force-cache',
       next: { revalidate: 60 },
     });
-    if (!res.ok) return null;
+    if (!res.ok) return { status: res.status, data: null };
     const raw = await res.json();
     // Apply the schema so the cloud's `_id`-only responses get
     // transformed to `id`-bearing records, matching the shape the
     // client-side `useDataset` hook receives via `apiFetch + schema`.
     // Without this transform, a hydrated cache would carry `_id`
     // but the client's render code reads `id`, breaking cards.
-    return DatasetRecordSchema.parse(raw) as DatasetRecord;
+    const parsed = DatasetRecordSchema.safeParse(raw);
+    if (!parsed.success) {
+      // 2xx body that doesn't match the schema → treat as no data
+      // but preserve the 200 status so the caller doesn't 404-route
+      // on a backend shape drift. Logged via the existing
+      // RESPONSE_SHAPE_INVALID path on the client.
+      return { status: res.status, data: null };
+    }
+    return { status: res.status, data: parsed.data as DatasetRecord };
   } catch {
-    // Network blip / Railway flap / schema mismatch — return null and
-    // let caller fall back to the client-side fetch path.
-    return null;
+    // Network blip / Railway flap — status unknown. Caller should
+    // NOT 404-route on this (it's transient).
+    return { status: 0, data: null };
   }
 }

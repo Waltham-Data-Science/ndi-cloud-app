@@ -29,6 +29,7 @@ import { useRouter } from 'next/navigation';
 import { useCallback } from 'react';
 
 import { cn } from '@/lib/cn';
+import { ApiError } from '@/lib/api/client';
 import { useSummaryTable } from '@/lib/api/tables';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -45,6 +46,20 @@ const COMMON_CLASSES = [
   { id: 'combined', label: 'Combined' },
   { id: 'ontology', label: 'Ontology' },
 ] as const;
+
+/**
+ * Pretty per-class label for the empty-state copy. The URL slug is
+ * the source of truth (`subject`, `element`, `treatment`...) but it's
+ * jargon when shown to a user — render the friendlier label from the
+ * sub-nav config instead.
+ */
+const CLASS_LABELS: Record<string, string> = COMMON_CLASSES.reduce(
+  (acc, c) => {
+    acc[c.id] = c.label.toLowerCase();
+    return acc;
+  },
+  {} as Record<string, string>,
+);
 
 export function TableShell({
   datasetId,
@@ -192,11 +207,35 @@ function StandardTableContent({
   }
 
   if (query.isError) {
+    // Audit 2026-04-27 #6 — distinguish 404 ("dataset doesn't have
+    // any rows of this class") from a true server error. The
+    // backend returns 404 for "no rows" cases (most datasets don't
+    // have treatments, openminds_subject, or probe_location); the
+    // pre-fix UI rendered "Failed to load" + "Something went wrong"
+    // alarm copy for what is really an empty state. Cross-reference
+    // ApiError.status: 404 is empty, anything else is real failure.
+    const friendlyName = CLASS_LABELS[className] ?? className;
+    if (query.error instanceof ApiError && query.error.status === 404) {
+      return (
+        <Card>
+          <CardBody>
+            <p className="text-sm text-fg-secondary">
+              No <span className="font-mono">{friendlyName}</span> rows in this dataset.
+            </p>
+            <p className="text-xs text-fg-muted mt-2">
+              This dataset doesn&rsquo;t publish the {friendlyName} grain.
+              Try another tab.
+            </p>
+          </CardBody>
+        </Card>
+      );
+    }
     return (
       <Card>
         <CardBody>
           <p className="text-sm text-red-700">
-            Failed to load <span className="font-mono">{className}</span> table.
+            Couldn&rsquo;t load the <span className="font-mono">{friendlyName}</span>{' '}
+            table — please retry.
           </p>
           <p className="text-xs text-fg-muted mt-2 font-mono">
             {query.error instanceof Error ? query.error.message : String(query.error)}
@@ -208,15 +247,16 @@ function StandardTableContent({
 
   const data = query.data;
   if (!data || data.rows.length === 0) {
+    const friendlyName = CLASS_LABELS[className] ?? className;
     return (
       <Card>
         <CardBody>
           <p className="text-sm text-fg-secondary">
-            No <span className="font-mono">{className}</span> rows in this dataset.
+            No <span className="font-mono">{friendlyName}</span> rows in this dataset.
           </p>
           <p className="text-xs text-fg-muted mt-2 italic">
             The table endpoint returned 0 rows. Try a different class or
-            confirm this dataset publishes the {className} grain.
+            confirm this dataset publishes the {friendlyName} grain.
           </p>
         </CardBody>
       </Card>
