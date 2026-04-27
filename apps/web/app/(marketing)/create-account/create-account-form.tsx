@@ -188,20 +188,23 @@ export function CreateAccountForm() {
               audit #3 flagged this as a regression. */}
           {submitting ? 'Sending verification code…' : 'Send verification code'}
         </MarketingButton>
-        <div className="mt-5 pt-5 border-t border-border-subtle text-sm text-fg-muted flex flex-wrap gap-x-3 gap-y-1">
-          <span>
-            Already have an account?{' '}
-            <Link href="/login" className="text-ndi-teal hover:underline">
-              Log in
-            </Link>
-            .
-          </span>
-          {/* Forgot Password? was a peer link in the source's
-              additionalActions row (audit #4 — dropped during port).
-              Restored so users who arrive on /create-account intending
-              to recover an existing password don't have to bounce
-              through /login first. */}
-          <span className="text-fg-muted">·</span>
+        {/* Audit 2026-04-27 #14 — pre-fix, the row was three peer
+            elements in a flex container: ("Already have an account?
+            Log in.") + ("·") + ("Forgot password?"). When the form
+            column was narrow enough for the third item to wrap, the
+            second item ("·") sat orphaned at the end of line one,
+            making the line read "Log in. ·" with nothing after.
+            Inlining all three into ONE span keeps the separator with
+            its right-hand neighbor across all viewport widths, AND
+            drops the trailing period after "Log in" so the inline
+            sentence reads as one phrase ("Log in · Forgot password?")
+            rather than two. */}
+        <div className="mt-5 pt-5 border-t border-border-subtle text-sm text-fg-muted">
+          Already have an account?{' '}
+          <Link href="/login" className="text-ndi-teal hover:underline">
+            Log in
+          </Link>
+          {' · '}
           <Link
             href="/forgot-password"
             className="text-ndi-teal hover:underline"

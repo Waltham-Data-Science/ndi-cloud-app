@@ -69,6 +69,7 @@ export function LoginForm() {
       <p className="text-[0.92rem] text-fg-secondary mb-7 m-0">
         Sign in to your lab&rsquo;s workspace.
       </p>
+      <ReturnToBanner returnTo={params.get('returnTo')} />
       <form onSubmit={handleSubmit} noValidate>
         {error && <FormError>{error}</FormError>}
         <Field
@@ -110,5 +111,44 @@ export function LoginForm() {
         </div>
       </form>
     </AuthSplitLayout>
+  );
+}
+
+/**
+ * Banner explaining WHY the login form is here when the user was
+ * redirected from a protected route.
+ *
+ * Audit 2026-04-27 #12 — pre-fix, the login form looked identical to
+ * the directly-accessed login regardless of how the user got here.
+ * A user who clicked a `/my*` link from the catalog and got bounced
+ * to `/login?returnTo=/my` had no contextual hint that the login was
+ * required. Now: a small dismissible-styled banner reads from the
+ * `returnTo` param and surfaces destination context.
+ *
+ * The banner is purely informational — the login flow already
+ * honors `returnTo` post-success (see `handleSubmit` push above).
+ *
+ * Renders nothing when `returnTo` is missing or points at a generic
+ * landing surface (`/`, `/datasets`, `/my`) — those cases need no
+ * extra context.
+ */
+function ReturnToBanner({ returnTo }: { returnTo: string | null }) {
+  if (!returnTo) return null;
+  // Bounce-back targets that are mundane enough to skip the banner
+  // — telling a user they need to log in to "see your account" when
+  // /my IS the account page is just noise. Anything more specific
+  // (a deeplink to a specific dataset, a query, etc.) is worth
+  // surfacing.
+  const generic = new Set(['/', '/datasets', '/my']);
+  if (generic.has(returnTo)) return null;
+  return (
+    <div
+      role="status"
+      className="mb-5 rounded-md border border-brand-blue-3/30 bg-brand-blue-3/[0.06] px-3 py-2 text-[12.5px] text-fg-secondary"
+      data-testid="return-to-banner"
+    >
+      Log in to continue to{' '}
+      <span className="font-mono text-fg-primary">{returnTo}</span>.
+    </div>
   );
 }
