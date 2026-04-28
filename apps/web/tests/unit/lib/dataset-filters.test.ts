@@ -16,6 +16,7 @@ import {
   matchesFilters,
   compareBy,
   licenseOptionsFor,
+  isDefaultBranch,
 } from '@/lib/dataset-filters';
 
 function record(overrides: Partial<DatasetRecord> = {}): DatasetRecord {
@@ -85,6 +86,92 @@ describe('matchesFilters — text query', () => {
         license: [],
       }),
     ).toBe(false);
+  });
+
+  // 2026-04-28 — token-AND match for abbreviated species searches
+  // (team review feedback). Pre-fix this used `hay.includes(needle)`
+  // so `"C elegans"` (with space) didn't match a record whose
+  // species field reads `"Caenorhabditis elegans"`. Post-fix the
+  // needle is split into tokens and ALL must appear somewhere in
+  // the hay, so the user's "find rows containing both 'c' AND
+  // 'elegans'" intent works.
+  it('matches "C elegans" against a Caenorhabditis elegans dataset', () => {
+    const r = record({ name: 'Behavioral arena', species: 'Caenorhabditis elegans' });
+    expect(
+      matchesFilters(r, { q: 'C elegans', species: [], regions: [], license: [] }),
+    ).toBe(true);
+  });
+  it('matches "M musc" against a Mus musculus dataset (partial token)', () => {
+    const r = record({ name: 'V1 recordings', species: 'Mus musculus' });
+    expect(
+      matchesFilters(r, { q: 'M musc', species: [], regions: [], license: [] }),
+    ).toBe(true);
+  });
+  it('strips token punctuation so "C." matches "Caenorhabditis"', () => {
+    const r = record({ name: 'X', species: 'Caenorhabditis elegans' });
+    expect(
+      matchesFilters(r, { q: 'C. elegans', species: [], regions: [], license: [] }),
+    ).toBe(true);
+  });
+  it('rejects when one of multiple tokens does not match', () => {
+    const r = record({ name: 'Cortical V1', species: 'Mus musculus' });
+    expect(
+      matchesFilters(r, {
+        q: 'cortical zebrafish',
+        species: [],
+        regions: [],
+        license: [],
+      }),
+    ).toBe(false);
+  });
+});
+
+describe('matchesFilters — license normalization', () => {
+  // 2026-04-28 — the catalog facet sidebar shows normalized license
+  // tags (`CC-BY-4.0` etc.); without per-record normalization in
+  // matchesFilters, datasets with the variant raw form (`CC-BY 4.0`,
+  // `Creative Commons Attribution 4.0`) wouldn't match the chip the
+  // user picked. These tests pin that behavior.
+  it('matches a CC-BY 4.0 (with space) dataset when the filter picks CC-BY-4.0', () => {
+    expect(
+      matchesFilters(record({ license: 'CC-BY 4.0' }), {
+        q: '',
+        species: [],
+        regions: [],
+        license: ['CC-BY-4.0'],
+      }),
+    ).toBe(true);
+  });
+  it('matches a "Creative Commons Attribution 4.0" dataset when the filter picks CC-BY-4.0', () => {
+    expect(
+      matchesFilters(record({ license: 'Creative Commons Attribution 4.0' }), {
+        q: '',
+        species: [],
+        regions: [],
+        license: ['CC-BY-4.0'],
+      }),
+    ).toBe(true);
+  });
+});
+
+describe('isDefaultBranch', () => {
+  it('returns true for falsy input', () => {
+    expect(isDefaultBranch(undefined)).toBe(true);
+    expect(isDefaultBranch(null)).toBe(true);
+    expect(isDefaultBranch('')).toBe(true);
+  });
+  it('returns true for "main" / "original" / "original submission"', () => {
+    expect(isDefaultBranch('main')).toBe(true);
+    expect(isDefaultBranch('original')).toBe(true);
+    expect(isDefaultBranch('original submission')).toBe(true);
+  });
+  it('is case-insensitive and trims whitespace', () => {
+    expect(isDefaultBranch('  Main  ')).toBe(true);
+    expect(isDefaultBranch('ORIGINAL SUBMISSION')).toBe(true);
+  });
+  it('returns false for actual non-default branch names', () => {
+    expect(isDefaultBranch('v2-revision')).toBe(false);
+    expect(isDefaultBranch('feature/foo')).toBe(false);
   });
 });
 
@@ -213,5 +300,24 @@ describe('licenseOptionsFor', () => {
       record({ id: '2' }),
     ];
     expect(licenseOptionsFor(datasets)).toEqual(['MIT']);
+  });
+  // 2026-04-28 — variants (CC-BY 4.0 with space, "Creative Commons
+  // Attribution 4.0", CC0 bare) collapse to a single canonical chip
+  // each. Pre-fix the sidebar showed three separate chips for what
+  // is conceptually one license — reviewer flagged the inconsistency.
+  it('collapses CC-BY variants to a single canonical chip', () => {
+    const datasets = [
+      record({ id: '1', license: 'CC-BY-4.0' }),
+      record({ id: '2', license: 'CC-BY 4.0' }),
+      record({ id: '3', license: 'Creative Commons Attribution 4.0' }),
+    ];
+    expect(licenseOptionsFor(datasets)).toEqual(['CC-BY-4.0']);
+  });
+  it('collapses bare CC0 to CC0-1.0', () => {
+    const datasets = [
+      record({ id: '1', license: 'CC0' }),
+      record({ id: '2', license: 'CC0-1.0' }),
+    ];
+    expect(licenseOptionsFor(datasets)).toEqual(['CC0-1.0']);
   });
 });

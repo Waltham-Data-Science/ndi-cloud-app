@@ -44,6 +44,7 @@ import type { DatasetRecord } from '@/lib/api/datasets';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardBody, CardTitle } from '@/components/ui/Card';
 import { cn } from '@/lib/cn';
+import { isDefaultBranch } from '@/lib/dataset-filters';
 import {
   cleanAbstract,
   cleanDatasetName,
@@ -51,6 +52,7 @@ import {
   formatDate,
   truncate,
 } from '@/lib/format';
+import { normalizeLicense } from '@/lib/license-normalize';
 
 interface DatasetCardProps {
   dataset: DatasetRecord;
@@ -111,6 +113,11 @@ function DatasetCardInner({
     .map((c) => [c.firstName, c.lastName].filter(Boolean).join(' '))
     .filter(Boolean);
   const summary = dataset.summary ?? null;
+  // Fold `CC-BY 4.0` / `CC-BY-4.0` / `Creative Commons Attribution 4.0`
+  // → canonical `CC-BY-4.0` so the badge text matches across all
+  // datasets. See `lib/license-normalize.ts`. `null` if the cloud
+  // record has no license at all (the badge then doesn't render).
+  const normalizedLicense = normalizeLicense(dataset.license);
 
   return (
     <Card
@@ -147,32 +154,49 @@ function DatasetCardInner({
       )}
       <CardBody className="p-6 md:p-7">
         <div className="flex items-center gap-2 mb-3 flex-wrap">
-          {/* Status pill: PUBLISHED (green) vs DRAFT (amber/secondary). */}
-          {dataset.isPublished === false ? (
+          {/* Status pill: PUBLISHED (green) / DRAFT (amber) / PROCESSING.
+              2026-04-28 — these were previously stacked: Published +
+              Processing rendered side-by-side whenever the synthesizer
+              was still indexing a published dataset, which read as a
+              contradiction ("is it published or not?"). Reviewer
+              flagged. New rule: when `processing` is true we show
+              ONLY the Processing pill — same pill spot, same chip
+              semantics, no stacking. Once enrichment lands, the
+              Published/Draft pill returns. */}
+          {processing ? (
+            <Badge variant="secondary" title="Synthesizer enrichment in progress">
+              ● Processing
+            </Badge>
+          ) : dataset.isPublished === false ? (
             <Badge variant="secondary" title="Draft — not yet published">
               ● Draft
             </Badge>
           ) : (
             <Badge variant="pub">● Published</Badge>
           )}
-          {dataset.license && (
+          {normalizedLicense && (
             <Badge variant="outline" className="font-mono normal-case">
-              {dataset.license}
+              {normalizedLicense}
             </Badge>
           )}
-          {dataset.branchName && dataset.branchName !== 'original' && (
+          {!isDefaultBranch(dataset.branchName) && (
             <Badge variant="teal" className="font-mono normal-case">
               {dataset.branchName}
             </Badge>
           )}
-          {dataset.publishStatus && dataset.publishStatus !== 'published' && (
-            <Badge variant="secondary">{dataset.publishStatus}</Badge>
-          )}
-          {processing && (
-            <Badge variant="secondary" title="Synthesizer enrichment in progress">
-              Processing
-            </Badge>
-          )}
+          {/* `publishStatus` is the cloud's lifecycle field (`in-review`,
+              `processing`, `draft`, etc.). The Processing rendering
+              above already covers the "synthesizer running" case; if
+              the cloud reports a non-published lifecycle status that
+              ISN'T just synthesizer-processing, surface that distinct
+              status here. Skipping when `processing` is also set
+              avoids the same double-pill the abstract-flag path used
+              to hit. */}
+          {!processing &&
+            dataset.publishStatus &&
+            dataset.publishStatus !== 'published' && (
+              <Badge variant="secondary">{dataset.publishStatus}</Badge>
+            )}
         </div>
 
         <CardTitle

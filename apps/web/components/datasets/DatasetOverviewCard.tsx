@@ -22,7 +22,9 @@ import { ExternalAnchor } from '@/components/ui/ExternalAnchor';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardBody, CardHeader } from '@/components/ui/Card';
+import { isDefaultBranch } from '@/lib/dataset-filters';
 import { cleanAbstract, formatDate } from '@/lib/format';
+import { normalizeLicense } from '@/lib/license-normalize';
 import { normalizeOrcid } from '@/lib/orcid';
 import type {
   AssociatedPublication,
@@ -47,6 +49,9 @@ export function DatasetOverviewCard({
   const { text: abstract, processing } = cleanAbstract(
     ds.description ?? ds.abstract,
   );
+  // Normalize the license string so the badge text matches what
+  // DatasetCard renders. See `lib/license-normalize.ts`.
+  const normalizedLicense = normalizeLicense(ds.license);
   const [citeOpen, setCiteOpen] = useState(false);
   const [useDataOpen, setUseDataOpen] = useState(false);
   return (
@@ -57,18 +62,28 @@ export function DatasetOverviewCard({
           Details
         </h2>
         <div className="flex flex-wrap gap-1.5 pt-1">
-          {ds.license && <Badge variant="outline">{ds.license}</Badge>}
-          {ds.branchName && ds.branchName !== 'main' && (
+          {normalizedLicense && (
+            <Badge variant="outline">{normalizedLicense}</Badge>
+          )}
+          {/* `isDefaultBranch` covers `main` / `original` /
+              `original submission` so neither catalog surface leaks
+              the default branch name as a noisy badge. See
+              `DEFAULT_BRANCH_NAMES` in `lib/dataset-filters.ts`. */}
+          {!isDefaultBranch(ds.branchName) && (
             <Badge variant="secondary">{ds.branchName}</Badge>
           )}
-          {ds.isPublished === false && <Badge variant="secondary">draft</Badge>}
-          {/* See `cleanAbstract` — `Processing` surfaces the synthesizer
-              in-flight marker as a discrete pill instead of leaking
-              into the abstract paragraph as ALL-CAPS body copy. */}
-          {processing && (
+          {/* Mutually exclusive: when the synthesizer is processing, we
+              surface "Processing" only and skip the Draft pill (the
+              dataset is mid-enrichment, "is it draft or processing"
+              is a confusing parallel question — Processing wins).
+              Once enrichment finishes, the Draft pill returns. Same
+              rule as DatasetCard's status pill block. */}
+          {processing ? (
             <Badge variant="secondary" title="Synthesizer enrichment in progress">
               Processing
             </Badge>
+          ) : (
+            ds.isPublished === false && <Badge variant="secondary">draft</Badge>
           )}
         </div>
       </CardHeader>

@@ -28,6 +28,8 @@ import type { ReactNode } from 'react';
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useDataset } from '@/lib/api/datasets';
+import { isDefaultBranch } from '@/lib/dataset-filters';
+import { normalizeLicense } from '@/lib/license-normalize';
 import {
   cleanDatasetName,
   formatBytes,
@@ -82,11 +84,18 @@ export function DatasetDetailHero({ datasetId }: { datasetId: string }) {
               ) : (
                 <Badge variant="pub">● Published</Badge>
               )}
-              {data.license ? (
-                <Badge variant="outline" className="font-mono normal-case bg-white/10 ring-white/20 text-white/85">
-                  {data.license}
-                </Badge>
-              ) : (
+              {/* Normalize the license string so the hero badge matches
+                  the catalog (`DatasetCard` + `DatasetOverviewCard`).
+                  See `lib/license-normalize.ts`. */}
+              {(() => {
+                const normalizedLicense = normalizeLicense(data.license);
+                return normalizedLicense ? (
+                  <Badge variant="outline" className="font-mono normal-case bg-white/10 ring-white/20 text-white/85">
+                    {normalizedLicense}
+                  </Badge>
+                ) : null;
+              })()}
+              {!data.license && (
                 /*
                   Audit 2026-04-27 #19 (design call) — pre-fix, datasets
                   with an empty `license` field rendered nothing in the
@@ -113,7 +122,11 @@ export function DatasetDetailHero({ datasetId }: { datasetId: string }) {
                   </Badge>
                 )
               )}
-              {data.branchName && data.branchName !== 'original' && (
+              {/* `isDefaultBranch` covers `main` / `original` /
+                  `original submission` so the hero matches the catalog
+                  surfaces. See `DEFAULT_BRANCH_NAMES` in
+                  `lib/dataset-filters.ts`. */}
+              {!isDefaultBranch(data.branchName) && (
                 <Badge variant="teal" className="font-mono normal-case">
                   {data.branchName}
                 </Badge>
