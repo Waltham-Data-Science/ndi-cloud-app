@@ -37,6 +37,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useRef, type KeyboardEvent } from 'react';
 import {
+  BookOpen,
   FolderOpen,
   LayoutDashboard,
   Table2,
@@ -44,9 +45,10 @@ import {
 } from 'lucide-react';
 
 import { cn } from '@/lib/cn';
+import { hasTutorial } from '@/lib/data/tutorials';
 
 interface TabSpec {
-  id: 'overview' | 'tables' | 'documents';
+  id: 'overview' | 'tables' | 'documents' | 'tutorials';
   label: string;
   icon: LucideIcon;
   /**
@@ -61,6 +63,13 @@ interface TabSpec {
    * intentionally non-overlapping.
    */
   isActive: (pathname: string, datasetId: string) => boolean;
+  /**
+   * Optional gate: if present, the tab only renders when the predicate
+   * returns true for the active dataset id. Used by the Tutorials tab,
+   * which only ships on the two datasets with published tutorial HTMLs
+   * (see `DATASETS_WITH_TUTORIALS` in `lib/data/tutorials.ts`).
+   */
+  isAvailable?: (datasetId: string) => boolean;
 }
 
 const TABS: readonly TabSpec[] = [
@@ -92,6 +101,21 @@ const TABS: readonly TabSpec[] = [
       if (path.startsWith(`${base}?`)) return true;
       return false;
     },
+  },
+  {
+    // 2026-04-28 — Tutorials tab (team review feedback). Only renders
+    // for datasets in the published-tutorials allowlist. The tab's
+    // `isAvailable` predicate hides it on every other dataset; the
+    // page route at `/datasets/[id]/tutorials/page.tsx` shows a soft
+    // empty state for direct navigations on non-allowlisted datasets.
+    // See `lib/data/tutorials.ts` for the allowlist; see
+    // `components/app/TutorialView.tsx` for the iframe render.
+    id: 'tutorials',
+    label: 'Tutorial',
+    icon: BookOpen,
+    href: (id) => `/datasets/${id}/tutorials`,
+    isActive: (path, id) => path.startsWith(`/datasets/${id}/tutorials`),
+    isAvailable: (id) => hasTutorial(id),
   },
 ];
 
@@ -130,7 +154,9 @@ export function DatasetTabs({ datasetId }: { datasetId: string }) {
         onKeyDown={onKeyDown}
         className="mx-auto flex max-w-[1200px] items-center gap-1 px-7"
       >
-        {TABS.map((tab) => {
+        {TABS.filter((tab) =>
+          tab.isAvailable ? tab.isAvailable(datasetId) : true,
+        ).map((tab) => {
           const active = tab.isActive(pathname, datasetId);
           const Icon = tab.icon;
           return (
