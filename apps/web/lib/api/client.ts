@@ -333,3 +333,122 @@ export async function apiFetch<T = unknown>(
   // Non-JSON 2xx — return text. Caller knows what to do.
   return (await response.text()) as unknown as T;
 }
+
+/**
+ * Result of a binary fetch — the raw bytes plus a few hand-picked
+ * response headers that the backend uses to ferry metadata alongside
+ * the octet-stream body. Notably:
+ *
+ *   - `X-NDI-Doc-Id` / `X-NDI-Class-Name` on `/data/raw` (companion to
+ *     `ndi-data-browser-v2` PR #106): identify the source doc and class
+ *     without an extra round-trip when the caller already knows the doc
+ *     id. The frontend currently uses these for diagnostics + debug
+ *     logging on the canvas-decode path; they're not load-bearing.
+ *
+ * Headers are returned as a flat record (lowercase keys) so consumers
+ * don't have to thread a `Headers` instance through TanStack Query's
+ * cache (the `Headers` object isn't structured-clone-friendly).
+ */
+export interface BinaryFetchResult {
+  data: ArrayBuffer;
+  headers: Record<string, string>;
+}
+
+/**
+ * Sibling to `apiFetch<T>` for endpoints that return raw binary bytes
+ * (`Content-Type: application/octet-stream`). The JSON-shaped fetch
+ * couldn't be made to handle this cleanly without wrecking its return-
+ * type discipline, so the binary path lives in a parallel function:
+ *
+ *   - **No CSRF / mutation logic** — binary endpoints in this app are
+ *     all reads (`GET /api/datasets/:id/documents/:docId/data/raw`,
+ *     companion to `ndi-data-browser-v2` PR #106). If a binary mutation
+ *     ever lands, this helper grows a `MUTATING_METHODS` branch like
+ *     `apiFetch`; today YAGNI.
+ *   - **No body encoding** — reads carry no body.
+ *   - **Same timeout + signal composition** as `apiFetch` so cold
+ *     Railway dynos surface as `CLOUD_TIMEOUT` instead of "skeleton
+ *     forever". Default timeout matches `DEFAULT_READ_TIMEOUT_MS`
+ *     because the imageStack `/data/raw` endpoint streams S3 bytes
+ *     through the FastAPI proxy without a heavy decode step.
+ *   - **Same error mapping** as `apiFetch`: non-2xx bodies are JSON-
+ *     parsed (FastAPI errors stay JSON even when the success path is
+ *     octet-stream) and unwrapped through `ApiError`. A `BINARY_NOT_FOUND`
+ *     surfaces with the same recovery hint the JSON path uses.
+ *
+ * Returns the raw `ArrayBuffer` plus a flattened lowercase-key header
+ * record. The caller is expected to know the encoding (e.g., for
+ * imageStack uint8 frames the contract is fixed by the
+ * `imageStack_parameters` sidecar doc — see `useImageStackParameters`).
+ */
+export async function apiFetchBinary(
+  path: string,
+  init: Pick<ApiFetchInit, 'signal' | 'timeoutMs'> = {},
+): Promise<BinaryFetchResult> {
+  const headers = new Headers({ Accept: 'application/octet-stream' });
+
+  const effectiveTimeoutMs = init.timeoutMs ?? DEFAULT_READ_TIMEOUT_MS;
+  const callerSignal = init.signal ?? undefined;
+  let timeoutSignal: AbortSignal | null = null;
+  let signal: AbortSignal | undefined = callerSignal;
+  if (effectiveTimeoutMs > 0) {
+    timeoutSignal = AbortSignal.timeout(effectiveTimeoutMs);
+    signal = callerSignal
+      ? AbortSignal.any([timeoutSignal, callerSignal])
+      : timeoutSignal;
+  }
+
+  let response: Response;
+  try {
+    response = await fetch(path, {
+      method: 'GET',
+      credentials: 'include',
+      headers,
+      signal,
+    });
+  } catch (err) {
+    if (timeoutSignal?.aborted) {
+      throw new ApiError(0, {
+        code: 'CLOUD_TIMEOUT',
+        message: `Request to ${path} timed out after ${effectiveTimeoutMs}ms.`,
+        recovery: 'retry',
+        requestId: null,
+      });
+    }
+    if (err instanceof Error && err.name === 'AbortError') {
+      throw err;
+    }
+    const message = err instanceof Error ? err.message : 'network error';
+    throw new ApiError(0, {
+      code: 'CLOUD_UNREACHABLE',
+      message: `Network error reaching ${path}: ${message}`,
+      recovery: 'retry',
+      requestId: null,
+    });
+  }
+
+  if (!response.ok) {
+    let raw: unknown = null;
+    try {
+      raw = await response.json();
+    } catch {
+      // Non-JSON error body — surface a generic ApiError below.
+    }
+    const inner =
+      raw !== null &&
+      typeof raw === 'object' &&
+      'error' in raw &&
+      typeof (raw as { error: unknown }).error === 'object' &&
+      (raw as { error: unknown }).error !== null
+        ? (raw as { error: unknown }).error
+        : raw;
+    throw new ApiError(response.status, inner);
+  }
+
+  const data = await response.arrayBuffer();
+  const headerRecord: Record<string, string> = {};
+  response.headers.forEach((value, key) => {
+    headerRecord[key.toLowerCase()] = value;
+  });
+  return { data, headers: headerRecord };
+}

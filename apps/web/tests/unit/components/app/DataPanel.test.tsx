@@ -36,8 +36,10 @@ import type {
 } from '@/lib/api/binary';
 
 const apiFetchMock = vi.fn();
+const apiFetchBinaryMock = vi.fn();
 vi.mock('@/lib/api/client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
+  apiFetchBinary: (...args: unknown[]) => apiFetchBinaryMock(...args),
 }));
 
 // Stub uPlot — the constructor would crash in jsdom on first
@@ -65,6 +67,7 @@ function withClient(seed?: (qc: QueryClient) => void) {
 
 beforeEach(() => {
   apiFetchMock.mockReset();
+  apiFetchBinaryMock.mockReset();
 });
 
 describe('DataPanel — Phase 6.6 REBUILD-10', () => {
@@ -261,5 +264,189 @@ describe('DataPanel — Phase 6.6 REBUILD-10', () => {
     );
     // Source: `Timeseries${format ? ` (${FORMAT.toUpperCase()})` : ''}`.
     expect(screen.getByText(/Timeseries \(MDA\)/i)).toBeInTheDocument();
+  });
+
+  // -------------------------------------------------------------------------
+  // imageStack canvas-decode dispatch
+  // -------------------------------------------------------------------------
+  //
+  // The new branch: when class is `imageStack` AND we have a partner
+  // `imageStack_parameters` doc AND `data_type === 'uint8'`, route the
+  // image render through `<ImageStackCanvasViewer>` instead of the PIL
+  // `/data/image` path. uint16 / float32 / logical fall through to the
+  // PIL path (which surfaces "preview not supported" for those formats).
+
+  // Patch HTMLCanvasElement.getContext globally so the canvas viewer's
+  // useEffect can call putImageData without crashing in jsdom. Also
+  // stubs `createImageData` because the component falls back to it
+  // when `globalThis.ImageData` isn't defined (jsdom default).
+  function withCanvasMock<T>(fn: () => T): T {
+    const original = HTMLCanvasElement.prototype.getContext;
+    const ctx = {
+      putImageData: vi.fn(),
+      createImageData: vi.fn(
+        (width: number, height: number) => ({
+          width,
+          height,
+          data: new Uint8ClampedArray(width * height * 4),
+          colorSpace: 'srgb',
+        }) as unknown as ImageData,
+      ),
+    } as unknown as CanvasRenderingContext2D;
+    HTMLCanvasElement.prototype.getContext = vi.fn(
+      () => ctx,
+    ) as unknown as typeof HTMLCanvasElement.prototype.getContext;
+    try {
+      return fn();
+    } finally {
+      HTMLCanvasElement.prototype.getContext = original;
+    }
+  }
+
+  it('routes imageStack uint8 docs through the canvas viewer (not the <img> tag)', async () => {
+    // Image-kind detection routes to the image branch; the document
+    // fetch returns class=imageStack with an ndiId that matches the
+    // partner doc's depends_on; the partner doc carries
+    // imageStack_parameters with data_type=uint8 → canvas path.
+    const docs = {
+      total: 1,
+      page: 1,
+      pageSize: 500,
+      documents: [
+        {
+          id: 'partner-1',
+          ndiId: 'ndi:imagestack_parameters:1',
+          className: 'imageStack_parameters',
+          data: {
+            depends_on: [
+              { name: 'imageStack_id', value: 'ndi:imagestack:abc' },
+            ],
+            imageStack_parameters: {
+              dimension_size: [4, 4, 3, 1, 1],
+              dimension_order: 'YXCZT',
+              data_type: 'uint8',
+              data_limits: [0, 255],
+            },
+          },
+        },
+      ],
+    };
+
+    apiFetchMock.mockImplementation((url: string) => {
+      if (url.endsWith('/data/type')) {
+        return Promise.resolve({ kind: 'image' });
+      }
+      if (url === '/api/datasets/d1/documents/doc-1') {
+        return Promise.resolve({
+          id: 'doc-1',
+          ndiId: 'ndi:imagestack:abc',
+          className: 'imageStack',
+          data: {},
+        });
+      }
+      if (url.includes('class=imageStack_parameters')) {
+        return Promise.resolve(docs);
+      }
+      return Promise.reject(new Error(`unexpected url ${url}`));
+    });
+    apiFetchBinaryMock.mockResolvedValue({
+      data: new ArrayBuffer(4 * 4 * 3),
+      headers: { 'x-ndi-doc-id': 'doc-1', 'x-ndi-class-name': 'imageStack' },
+    });
+
+    const Wrapper = withClient();
+    await withCanvasMock(async () => {
+      render(
+        <Wrapper>
+          <DataPanel datasetId="d1" documentId="doc-1" />
+        </Wrapper>,
+      );
+      // Canvas mounts with the test id.
+      const canvas = await screen.findByTestId('imagestack-canvas');
+      expect(canvas).toBeInTheDocument();
+      expect(canvas.tagName).toBe('CANVAS');
+      // The PIL <img> is NOT in the DOM — we skipped /data/image.
+      expect(document.querySelector('img[alt="NDI image data"]')).toBeNull();
+      // The raw binary endpoint was hit, not /data/image.
+      expect(apiFetchBinaryMock).toHaveBeenCalledWith(
+        expect.stringContaining('/data/raw'),
+        expect.any(Object),
+      );
+      const imageUrls = apiFetchMock.mock.calls
+        .map((c) => String(c[0]))
+        .filter((u) => u.endsWith('/data/image'));
+      expect(imageUrls).toHaveLength(0);
+    });
+  });
+
+  it('falls through to the PIL path when the imageStack data_type is uint16 (canvas decode skipped)', async () => {
+    // Same wiring as the uint8 test, but the partner doc says uint16 →
+    // we skip the canvas path entirely and let /data/image run. PIL
+    // still can't decode uint16 frame stacks, so the user sees the
+    // friendly "preview not supported" copy via BINARY_DECODE_FAILED.
+    const docs = {
+      total: 1,
+      page: 1,
+      pageSize: 500,
+      documents: [
+        {
+          id: 'partner-1',
+          ndiId: 'ndi:imagestack_parameters:1',
+          className: 'imageStack_parameters',
+          data: {
+            depends_on: [
+              { name: 'imageStack_id', value: 'ndi:imagestack:abc' },
+            ],
+            imageStack_parameters: {
+              dimension_size: [4, 4, 1, 1, 1],
+              dimension_order: 'YXCZT',
+              data_type: 'uint16',
+              data_limits: [0, 65535],
+            },
+          },
+        },
+      ],
+    };
+
+    const { ApiError } = await import('@/lib/api/errors');
+    const decodeErr = new ApiError(502, {
+      code: 'BINARY_DECODE_FAILED',
+      message: 'Could not read the binary data for this document.',
+      recovery: 'contact_support',
+      requestId: 'test-rid-789',
+    });
+
+    apiFetchMock.mockImplementation((url: string) => {
+      if (url.endsWith('/data/type')) {
+        return Promise.resolve({ kind: 'image' });
+      }
+      if (url === '/api/datasets/d1/documents/doc-1') {
+        return Promise.resolve({
+          id: 'doc-1',
+          ndiId: 'ndi:imagestack:abc',
+          className: 'imageStack',
+          data: {},
+        });
+      }
+      if (url.includes('class=imageStack_parameters')) {
+        return Promise.resolve(docs);
+      }
+      if (url.endsWith('/data/image')) {
+        return Promise.reject(decodeErr);
+      }
+      return Promise.reject(new Error(`unexpected url ${url}`));
+    });
+
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <DataPanel datasetId="d1" documentId="doc-1" />
+      </Wrapper>,
+    );
+    // Friendly fallback (NOT a canvas).
+    expect(await screen.findByText(/preview not supported/i)).toBeInTheDocument();
+    expect(screen.queryByTestId('imagestack-canvas')).toBeNull();
+    // The raw endpoint was NOT hit because canCanvasDecode is false.
+    expect(apiFetchBinaryMock).not.toHaveBeenCalled();
   });
 });

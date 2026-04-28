@@ -12,13 +12,16 @@ import {
   useBinaryKind,
   useFitcurve,
   useImageData,
+  useImageStackParameters,
+  useRawImageData,
   useTimeseries,
   useVideoUrl,
 } from '@/lib/api/binary';
+import { useDocument } from '@/lib/api/documents';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
 
-import { ImageViewer } from './ImageViewer';
+import { ImageStackCanvasViewer, ImageViewer } from './ImageViewer';
 import { VideoPlayer } from './VideoPlayer';
 
 // CQ5: Dynamic imports for the uPlot-backed chart components. uPlot is
@@ -72,8 +75,61 @@ export function DataPanel({ datasetId, documentId }: DataPanelProps) {
   const isVideo = kind === 'video';
   const isFitcurve = kind === 'fitcurve';
 
+  // Doc-level fetch — needed to detect class `imageStack` and grab the
+  // ndiId for the partner-doc lookup. Only enabled on the image branch
+  // (the document-detail page already fetches the same doc, so this is
+  // a TanStack-Query cache hit in the common path; the `enabled` here
+  // keeps it from firing on non-image branches where we don't need it).
+  const docDetail = useDocument(
+    isImage ? datasetId : undefined,
+    isImage ? documentId : undefined,
+  );
+  const isImageStack = isImage && docDetail.data?.className === 'imageStack';
+  const imageStackNdiId = isImageStack ? docDetail.data?.ndiId : undefined;
+
+  // Sidecar parameters lookup. `useImageStackParameters` returns null
+  // params when no partner doc resolves — DataPanel falls back to the
+  // PIL `/data/image` path in that case so non-imageStack image-class
+  // docs (and any imageStack lacking a sidecar) still work.
+  const stackParams = useImageStackParameters(
+    datasetId,
+    imageStackNdiId,
+    isImageStack,
+  );
+  // Only canvas-decode when we have uint8 data + valid params. uint16 /
+  // float32 / logical fall through to the PIL path (and from there
+  // typically to "preview not supported"). Window/level sliders for
+  // those formats are a separate v2 PR.
+  const canCanvasDecode =
+    isImageStack && stackParams.params?.data_type === 'uint8';
+
+  // Raw bytes for the canvas decode. Cache key is distinct from the
+  // PIL path's so the two endpoints don't fight over a key.
+  const raw = useRawImageData(datasetId, documentId, canCanvasDecode);
+
   const ts = useTimeseries(datasetId, documentId, isTimeseries);
-  const img = useImageData(datasetId, documentId, isImage);
+  // PIL `/data/image` is enabled only when we know we're not going
+  // through the canvas path. The dependent gate:
+  //
+  //   - If kind isn't image → never fire PIL.
+  //   - If kind is image but the doc-class lookup is still in flight →
+  //     wait. Otherwise we'd fire PIL on every imageStack while the
+  //     partner-doc lookup is racing (a wasted round-trip that
+  //     surfaces as `BINARY_DECODE_FAILED` for the cases this PR is
+  //     meant to fix).
+  //   - If image AND not imageStack → fire PIL (no canvas to wait on).
+  //   - If imageStack AND uint8 partner found → never fire PIL
+  //     (canvas path took over).
+  //   - If imageStack AND partner not found / not uint8 → fire PIL
+  //     (canvas path can't help; PIL might still succeed for
+  //     non-uint8 stacks the backend has special-cased).
+  //   - If imageStack AND partner lookup still in flight → wait.
+  const docResolved = !!docDetail.data || docDetail.isError;
+  const partnerLookupSettled =
+    !isImageStack || stackParams.params !== null || !stackParams.isLoading;
+  const enableImg =
+    isImage && !canCanvasDecode && docResolved && partnerLookupSettled;
+  const img = useImageData(datasetId, documentId, enableImg);
   const vid = useVideoUrl(datasetId, documentId, isVideo);
   const fit = useFitcurve(datasetId, documentId, isFitcurve);
 
@@ -118,14 +174,36 @@ export function DataPanel({ datasetId, documentId }: DataPanelProps) {
           ) : tsData ? (
             <TimeseriesChart data={tsData} />
           ) : null)}
-        {isImage &&
-          (img.isLoading ? (
+        {isImage && (
+          canCanvasDecode ? (
+            // Canvas-decode path for raw uint8 imageStacks. Sidesteps
+            // PIL on the backend (`/data/image` returns
+            // BINARY_DECODE_FAILED on these); paints frames from the
+            // octet-stream `/data/raw` bytes onto a `<canvas>` using
+            // the layout from the partner `imageStack_parameters` doc.
+            raw.isLoading || stackParams.isLoading ? (
+              <Skeleton className="h-64 w-full" />
+            ) : raw.isError ? (
+              <BinaryFetchError error={raw.error} kindLabel="image" />
+            ) : raw.data && stackParams.params ? (
+              <ImageStackCanvasViewer
+                buffer={raw.data.data}
+                params={stackParams.params}
+              />
+            ) : null
+          ) : !enableImg ? (
+            // Doc / partner lookups still in flight — show a skeleton
+            // instead of letting the panel collapse to nothing while
+            // we figure out which decode path to take.
+            <Skeleton className="h-64 w-full" />
+          ) : img.isLoading ? (
             <Skeleton className="h-64 w-full" />
           ) : img.isError ? (
             <BinaryFetchError error={img.error} kindLabel="image" />
           ) : imgData ? (
             <ImageViewer data={imgData} />
-          ) : null)}
+          ) : null
+        )}
         {isVideo &&
           (vid.isLoading ? (
             <Skeleton className="h-64 w-full" />
