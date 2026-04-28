@@ -115,6 +115,66 @@ swap. The agent that ran Phases 1-6 stops here. **You** drive Phase 7.
    out users on the still-live `app.ndi-cloud.com` before the new
    monorepo owns the apex.
 
+6. **🔒 LOGIN GATE — verify before proceeding to watch window.**
+
+   This is the single most important post-swap gate. Pre-cutover, the
+   new app's auth flow could only be partially verified because the
+   `Domain=.ndi-cloud.com` cookie is rejected on `*.vercel.app` URLs
+   (browser-level cookie-domain rule, well-defined per RFC 6265). At
+   step 2 above, the apex is finally pointed at this project, so the
+   page origin matches the cookie domain — auth on the new code
+   becomes testable for the first time.
+
+   **Procedure** (≤ 60 seconds):
+
+   - Open `https://ndi-cloud.com/login` in a private/incognito window
+     (no stale cookies from any prior context).
+   - Sign in with a known-valid test account.
+   - Confirm: redirect to `/my` succeeds, the workspace renders with
+     dataset rows, no red error banners. Header shows the signed-in
+     state (avatar/menu, not "Log in").
+   - Open DevTools → Network → click any catalog row to navigate to
+     a dataset detail. Confirm the auth cookie is sent on requests
+     (Cookie header carries `session=...`).
+   - Sign out via the header menu. Confirm `/my` redirects back to
+     `/login` and the cookie is cleared.
+
+   **PASS** → continue to step 7 (watch window).
+
+   **FAIL** → execute rollback (next section) immediately. DO NOT
+   spend more than 5 minutes diagnosing a login regression on the
+   live apex; rolling back to the legacy project takes ~30 s and is
+   strictly safer than the unknown-cause failure mode. After rollback
+   investigate the failure offline, file a fix PR, redeploy, and
+   re-attempt cutover later.
+
+7. **Cutover-day code cleanup (PR after step 6 passes)** — the
+   pre-cutover Origin allowlist hardcode is now obsolete and the
+   new apex is the strict allowlist target. Ship the cleanup:
+
+   - Delete the `'https://ndi-cloud-app-web.vercel.app'` line +
+     `PRE-PHASE-7-CUTOVER` warning block from
+     `apps/web/middleware.ts`'s allowlist Set.
+   - Delete the env-var defense-in-depth path in
+     `getAllowedOrigins()` (the
+     `if (readEnv('VERCEL_ENV') === 'production' &&
+     envFlagOn('ALLOW_PROJECT_PRODUCTION_URL_ORIGIN'))` block).
+   - Update `apps/web/tests/unit/middleware.test.ts`: drop the three
+     pre-cutover test cases (production-admits-hardcoded-alias,
+     production+flag-admits-PROD_URL, production+flag-still-rejects-
+     unrelated). Add a regression test pinning that the alias now
+     403s.
+   - Vercel dashboard: delete `ALLOW_PROJECT_PRODUCTION_URL_ORIGIN`
+     from the Production environment vars.
+
+   Search `PRE-PHASE-7-CUTOVER` across the repo to confirm no other
+   references remain. Single-PR title:
+   `chore(cutover): restore strict apex-only Origin allowlist`.
+
+   Order matters: ship this AFTER step 6 passes, BEFORE the watch
+   window expires. The hardcode is harmless to keep for an extra
+   hour but should not survive into the post-cutover steady state.
+
 ## Watch window (60 minutes)
 
 - **Vercel Analytics error rate**. Threshold for rollback: >2% 5xx
