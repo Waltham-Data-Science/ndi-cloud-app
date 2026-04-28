@@ -515,7 +515,10 @@ function SessionCard({
     draft: 'Draft',
   };
   return (
-    <div className="bg-bg-surface border border-border-subtle rounded-lg p-4 shadow-xs">
+    // Shared team-card hover pattern. Smaller status card so the
+    // shadow scale is `shadow-xs` → `shadow-sm` on hover (one step
+    // smaller than the larger marketing tiles to stay proportional).
+    <div className="bg-bg-surface border border-border-subtle rounded-lg p-4 shadow-xs transition-all duration-(--duration-base) ease-(--ease-out) hover:border-ndi-teal-border hover:-translate-y-0.5 hover:shadow-sm">
       <div className="flex items-start justify-between gap-3 mb-3">
         <div className="text-sm font-semibold text-fg-primary">{title}</div>
         <span

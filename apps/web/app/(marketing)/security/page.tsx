@@ -259,7 +259,10 @@ function PillarCard({
   body: string;
 }) {
   return (
-    <div className="bg-bg-surface border border-border-subtle rounded-xl p-7 shadow-sm">
+    // Shared team-card hover pattern across the marketing pages —
+    // see `apps/web/app/(marketing)/about/page.tsx:198` for the
+    // reference implementation.
+    <div className="bg-bg-surface border border-border-subtle rounded-xl p-7 shadow-sm transition-all duration-(--duration-base) ease-(--ease-out) hover:border-ndi-teal-border hover:-translate-y-0.5 hover:shadow-md">
       <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-2">
         {kicker}
       </div>
