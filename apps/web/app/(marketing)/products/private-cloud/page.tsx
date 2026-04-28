@@ -74,10 +74,10 @@ export default function PrivateCloudPage() {
             <em className="not-italic text-brand-blue">one workspace.</em>
           </h1>
           <p className="text-[17px] leading-relaxed text-white/80 max-w-[720px] mx-auto mb-8 m-0">
-            The Data Browser is where your lab works. Upload sessions from your
-            rig or analysis workstation, organize them into datasets, add
-            openMINDS metadata, and publish your work with a Crossref-registered
-            DOI — all backed by the open NDI data model.
+            The Data Browser is where your lab works. Upload sessions from the
+            rig or your workstation, group them into datasets, attach openMINDS
+            metadata, and publish with a Crossref DOI when the dataset is ready.
+            The same data model, from rig to citation.
           </p>
           <div className="flex gap-3 flex-wrap justify-center mb-12">
             <Link
@@ -176,8 +176,9 @@ export default function PrivateCloudPage() {
             Browse, organize, and publish your lab&rsquo;s data.
           </h2>
           <p className="text-base leading-relaxed text-fg-secondary max-w-[680px] mb-10 m-0">
-            The Data Browser is the control room for every dataset in your lab —
-            from raw recording to published DOI.
+            The Data Browser is the control room for everything in your
+            lab&rsquo;s data pipeline — from the rig&rsquo;s first write to the
+            published DOI.
           </p>
 
           {/* Editorial-style stacked rows. Source `.caps`/`.cap`
@@ -198,12 +199,17 @@ export default function PrivateCloudPage() {
               title="openMINDS metadata"
               body={
                 <>
-                  Every session carries structured openMINDS metadata with real
-                  ontology IDs: species (<code className="font-mono text-[0.88em] bg-gray-100 text-brand-navy px-1.5 py-px rounded-[4px]">NCBITaxon:10090</code>{' '}
-                  · <code className="font-mono text-[0.88em] bg-gray-100 text-brand-navy px-1.5 py-px rounded-[4px]">M. musculus</code>), brain
-                  region (<code className="font-mono text-[0.88em] bg-gray-100 text-brand-navy px-1.5 py-px rounded-[4px]">UBERON:0002436</code> · primary
-                  visual cortex), strain, sex, stimulus. Search across your
-                  whole lab&rsquo;s work in one query.
+                  Every session carries structured openMINDS metadata — real
+                  ontology IDs, not free-text. A query for{' '}
+                  <code className="font-mono text-[0.88em] bg-gray-100 text-brand-navy px-1.5 py-px rounded-[4px]">
+                    NCBITaxon:10090
+                  </code>{' '}
+                  returns every M. musculus session in your lab; a query for{' '}
+                  <code className="font-mono text-[0.88em] bg-gray-100 text-brand-navy px-1.5 py-px rounded-[4px]">
+                    UBERON:0002436
+                  </code>{' '}
+                  returns every V1 recording. Search across years of work in one
+                  go.
                 </>
               }
             />
@@ -408,11 +414,12 @@ export default function PrivateCloudPage() {
         />
         <div className="relative max-w-[800px] mx-auto text-center">
           <h2 className="text-[1.75rem] font-bold tracking-tight leading-[1.2] mb-3 m-0">
-            Move your lab&rsquo;s data to NDI.
+            Get your first dataset published in two weeks.
           </h2>
           <p className="text-base leading-relaxed text-white/75 mb-8 m-0">
-            We&rsquo;ll help you upload your first sessions and publish your first
-            dataset.
+            Create the account, upload a session you already have on disk, and
+            we&rsquo;ll walk you through the metadata fields and the first
+            publish. Most labs ship their first DOI inside two weeks.
           </p>
           <div className="flex gap-3 justify-center flex-wrap">
             <Link

@@ -71,9 +71,9 @@ export default function LabChatPage() {
           </h1>
           <p className="text-[17px] leading-relaxed text-white/80 max-w-[720px] mx-auto mb-3 m-0">
             An AI assistant grounded in your lab&rsquo;s papers, protocols, and
-            NDI Cloud datasets. Every answer cites the specific source it came
-            from. Your corpus stays in your lab&rsquo;s index — we don&rsquo;t
-            use it to train models, and answers don&rsquo;t pull from the open
+            NDI datasets. Every answer cites the exact passage it came from —
+            paper, PDF, or session. Your corpus stays in your lab&rsquo;s index.
+            We don&rsquo;t train on it, and answers never pull from the open
             web.
           </p>
           <p className="text-sm text-brand-blue-3 max-w-[680px] mx-auto mb-7 m-0">
@@ -188,8 +188,9 @@ export default function LabChatPage() {
           </h2>
           <p className="text-base leading-relaxed text-fg-secondary max-w-[680px] mb-10 m-0">
             LabChat indexes your lab&rsquo;s published papers, internal
-            protocols, session metadata, and notebook entries. It answers in
-            plain English and cites the specific passage each claim came from.
+            protocols, session metadata, and notebook entries — every document
+            the lab actually generates. Answers come back in plain English, with
+            a numbered citation behind every claim.
           </p>
 
           {/* Editorial-style stacked rows. Source `.caps`/`.cap`
@@ -458,12 +459,13 @@ export default function LabChatPage() {
         />
         <div className="relative max-w-[800px] mx-auto text-center">
           <h2 className="text-[1.75rem] font-bold tracking-tight leading-[1.2] mb-3 m-0">
-            Get your lab&rsquo;s knowledge queryable in about a day.
+            Your lab&rsquo;s knowledge, queryable, in about a day.
           </h2>
           <p className="text-base leading-relaxed text-white/75 mb-8 m-0">
-            LabChat runs on dedicated infrastructure per lab. We handle setup,
-            ingest your corpus, and hand you a URL your team can start using
-            right away.
+            LabChat is deployed per lab, on dedicated infrastructure. You send
+            us your corpus, we ingest it and stand up your URL, you start asking
+            questions. Setup is usually a day. The team-onboarding payoff is
+            forever.
           </p>
           <div className="flex gap-3 justify-center flex-wrap">
             <MarketingButton
