@@ -138,22 +138,25 @@ export default function PrivateCloudPage() {
                     <path d="M5 8V5a3 3 0 0 1 6 0v3" />
                   </svg>
                 </span>
-                ndi-cloud.com / data-commons
+                ndi-cloud.com / dataset / document
               </div>
             </div>
             {/*
-              2026-04-28 — placeholder mockup (`data-browser.png`)
-              replaced with a real production capture of the public
-              Data Commons catalog (`/datasets`). 4K Retina (3840×2160)
-              source so next/image generates Retina-quality srcsets via
-              `quality={90}`. Captured with the FastAPI cron-warmed
-              edge cache so the catalog rendered with all eight
-              published datasets (real titles, real DOIs, real species
-              + document counts) — concrete provenance beats invented.
+              2026-04-28 — switched the hero capture from the public
+              Data Commons catalog (a paged list view) to a document
+              detail page. The catalog screenshot pitched "we have
+              published datasets"; the document-detail capture pitches
+              "look at the depth your lab's data goes to" — concrete
+              imageStack with structured properties on the left and a
+              28-node dependency graph on the right (the unique-to-NDI
+              relational structure). Side-by-side layout shipped in
+              PR #121 so this view exists at md+ widths. 4K Retina
+              (3840×2160) source so next/image generates Retina-quality
+              srcsets via `quality={90}`.
             */}
             <Image
-              src="/mockups/data-browser-catalog.png"
-              alt="NDI Data Commons catalog: search, facet filters by species and brain region, and a paged list of published datasets with DOIs, document counts, and sizes"
+              src="/mockups/data-browser-document-detail.png"
+              alt="NDI Data Browser document detail: an imageStack document's structured properties (label, dimension order, scale, timestamps, clocktype) on the left with a 28-node dependency graph showing the document's relational links to subjects and subject groups on the right"
               width={3840}
               height={2160}
               priority
