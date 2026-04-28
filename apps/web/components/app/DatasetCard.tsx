@@ -1,3 +1,5 @@
+'use client';
+
 /**
  * DatasetCard — wide-format catalog card.
  *
@@ -11,13 +13,37 @@
  * app-route consumer of the data-browser primitives. ESLint enforces the
  * MUI exclusion in `components/app/**`; this card uses only Tailwind +
  * lucide-react + the ported `components/ui/*` primitives.
+ *
+ * # Click-pending visual feedback (audit 2026-04-27 #1, take 2)
+ *
+ * The original audit's `useLinkStatus` recommendation. Batch A shipped
+ * `loading.tsx` instead, which doesn't activate during a layout-level
+ * `await` — Next.js's `loading.tsx` is the Suspense fallback for the
+ * PAGE, not the LAYOUT, so a top-level layout `await` blocks the page
+ * (and its loading fallback) entirely. Verified visually: clicking
+ * Sophie on production froze the catalog for 6+ s with NO visual
+ * feedback at all.
+ *
+ * `useLinkStatus()` is the canonical fix. It's pure client-side state
+ * — Next.js's router maintains a "pending" flag for each in-flight
+ * navigation, and the hook reads it. The card's inner content renders
+ * a "pending" treatment the moment the click is registered, holds it
+ * for the entire navigation, and clears it when the new page mounts.
+ * The user always sees the click "took."
+ *
+ * Constraint: `useLinkStatus()` only works in components that are
+ * DESCENDANTS of a `<Link>`. We split the inner content into
+ * `<DatasetCardInner>` so the hook lives below the `<Link>` boundary.
  */
 import Link from 'next/link';
+import { useLinkStatus } from 'next/link';
+import { Loader2 } from 'lucide-react';
 import type { CSSProperties } from 'react';
 
 import type { DatasetRecord } from '@/lib/api/datasets';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardBody, CardTitle } from '@/components/ui/Card';
+import { cn } from '@/lib/cn';
 import {
   cleanAbstract,
   cleanDatasetName,
@@ -42,173 +68,208 @@ export function DatasetCard({ dataset }: DatasetCardProps) {
   // some abstracts ship with. See `cleanDatasetName` / `cleanAbstract`
   // in `lib/format.ts` for the full rationale.
   const displayName = cleanDatasetName(dataset.name);
+
+  return (
+    <Link
+      href={`/datasets/${dataset.id}/overview`}
+      className="block group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue-3 rounded-lg"
+      aria-label={`Open dataset ${displayName}`}
+    >
+      <DatasetCardInner dataset={dataset} displayName={displayName} />
+    </Link>
+  );
+}
+
+/**
+ * Inner content split out so we can call `useLinkStatus()` — the hook
+ * requires a Link-descendant context. The `pending` flag flips to true
+ * the moment the user clicks the card, then back to false when the
+ * destination route mounts. Total time can be 6+ s on slow datasets
+ * where the cloud's `/document-class-counts` is timing out.
+ *
+ * The pending treatment:
+ *   - Card opacity drops to 80% so it visually recedes
+ *   - A brand-tinted ring stays prominent so the click target is still
+ *     identified
+ *   - A "Loading…" pill with spinner pops at the top-right of the card
+ *     — the unambiguous "yes the click registered" signal
+ *   - aria-busy + aria-live announce the pending state to SR users
+ */
+function DatasetCardInner({
+  dataset,
+  displayName,
+}: {
+  dataset: DatasetRecord;
+  displayName: string;
+}) {
+  const { pending } = useLinkStatus();
+
   const { text: abstractText, processing } = cleanAbstract(
     dataset.abstract ?? dataset.description,
   );
   const contributors = (dataset.contributors ?? [])
     .map((c) => [c.firstName, c.lastName].filter(Boolean).join(' '))
     .filter(Boolean);
-
   const summary = dataset.summary ?? null;
 
   return (
-    <Link
-      href={`/datasets/${dataset.id}/overview`}
-      // `cursor-pointer` is redundant on `<a>` per the spec, but Safari
-      // and Firefox briefly drop it during the navigation pending state
-      // (between click and the route's loading.tsx painting), so the
-      // user — already waiting on a slow-cloud detail fetch — sees the
-      // cursor revert to the default arrow mid-click. Forcing it via
-      // Tailwind keeps the cursor consistent for the whole click→paint
-      // window. Pairs with the route-level loading.tsx (audit #1) so
-      // the click registers immediately AND looks clickable.
-      className="block group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue-3 rounded-lg"
-      aria-label={`Open dataset ${displayName}`}
+    <Card
+      // Audit #16 hover affordance preserved (2 px lift + ring + shadow).
+      // Pending state stacks on top: stronger ring + dimmed body + visible
+      // spinner. A future tweak could swap to a top-of-page progress bar
+      // (NProgress style) if the per-card treatment ever feels noisy.
+      className={cn(
+        'relative transition-all',
+        'group-hover:-translate-y-[2px] group-hover:shadow-lg',
+        'group-hover:ring-2 group-hover:ring-brand-blue-3/30 group-hover:border-brand-blue-3/40',
+        pending && [
+          'opacity-80 ring-2 ring-brand-blue-3/60',
+          // Disable the hover-translate while pending so the card
+          // doesn't bounce when the cursor moves over it mid-load.
+          'group-hover:translate-y-0',
+        ],
+      )}
+      style={HOVER_STYLE}
+      aria-busy={pending || undefined}
     >
-      <Card
-        // Audit #16: hover affordance was previously a 1 px Y-translate
-        // + soft shadow. On dense catalogs at 1280 px+ the lift was
-        // imperceptible and the card looked unclickable. Bumping the
-        // lift to 2 px + adding a ring-2 + brand-tinted shadow under
-        // hover makes the affordance visceral without the card jumping
-        // around. `transition-all` covers ring + shadow + transform.
-        className="transition-all group-hover:-translate-y-[2px] group-hover:shadow-lg group-hover:ring-2 group-hover:ring-brand-blue-3/30 group-hover:border-brand-blue-3/40"
-        style={HOVER_STYLE}
-      >
-        <CardBody className="p-6 md:p-7">
-          <div className="flex items-center gap-2 mb-3 flex-wrap">
-            {/* Status pill: PUBLISHED (green) vs DRAFT (amber/secondary).
-                Previously always showed "● Published" — a draft dataset
-                visible in /my would visually misrepresent itself as
-                live (publishing-workflow safety regression flagged by
-                visual-comparison audit #15). */}
-            {dataset.isPublished === false ? (
-              <Badge variant="secondary" title="Draft — not yet published">
-                ● Draft
-              </Badge>
+      {/* Pending pill — top-right corner, brand-blue with spinner. Only
+          rendered when pending; takes itself out of layout when not. */}
+      {pending && (
+        <div
+          className="absolute top-3 right-3 inline-flex items-center gap-1.5 rounded-full bg-brand-blue-3 px-2.5 py-1 text-[11px] font-semibold text-white shadow-md"
+          role="status"
+          aria-live="polite"
+          data-testid="dataset-card-pending"
+        >
+          <Loader2 className="h-3 w-3 animate-spin" aria-hidden />
+          Loading…
+        </div>
+      )}
+      <CardBody className="p-6 md:p-7">
+        <div className="flex items-center gap-2 mb-3 flex-wrap">
+          {/* Status pill: PUBLISHED (green) vs DRAFT (amber/secondary). */}
+          {dataset.isPublished === false ? (
+            <Badge variant="secondary" title="Draft — not yet published">
+              ● Draft
+            </Badge>
+          ) : (
+            <Badge variant="pub">● Published</Badge>
+          )}
+          {dataset.license && (
+            <Badge variant="outline" className="font-mono normal-case">
+              {dataset.license}
+            </Badge>
+          )}
+          {dataset.branchName && dataset.branchName !== 'original' && (
+            <Badge variant="teal" className="font-mono normal-case">
+              {dataset.branchName}
+            </Badge>
+          )}
+          {dataset.publishStatus && dataset.publishStatus !== 'published' && (
+            <Badge variant="secondary">{dataset.publishStatus}</Badge>
+          )}
+          {processing && (
+            <Badge variant="secondary" title="Synthesizer enrichment in progress">
+              Processing
+            </Badge>
+          )}
+        </div>
+
+        <CardTitle
+          as="h3"
+          className="text-[1.2rem] leading-snug mb-2 group-hover:text-ndi-teal transition-colors"
+        >
+          {displayName}
+        </CardTitle>
+
+        {(contributors.length > 0 || dataset.uploadedAt || dataset.createdAt) && (
+          <p className="text-[13px] text-fg-secondary mb-4">
+            {contributors.length > 0 && (
+              <>
+                {contributors.slice(0, 3).join(', ')}
+                {contributors.length > 3 && ` +${contributors.length - 3}`}
+              </>
+            )}
+            {contributors.length > 0 && (dataset.uploadedAt || dataset.createdAt) && (
+              <span className="mx-2 text-fg-muted">·</span>
+            )}
+            {(dataset.uploadedAt || dataset.createdAt) && (
+              <span className="text-fg-muted">
+                {formatDate(dataset.uploadedAt || dataset.createdAt!)}
+              </span>
+            )}
+          </p>
+        )}
+
+        <div className="border-t border-b border-border-subtle/70 py-3 mb-4 flex flex-wrap gap-x-8 gap-y-3 text-[13px]">
+          <MetaCell label="Species">
+            {summary?.species && summary.species.length > 0 ? (
+              <span className="font-mono">
+                {truncate(summary.species.map((s) => s.label).join(', '), 40)}
+              </span>
+            ) : dataset.species ? (
+              <span className="font-mono">{truncate(dataset.species, 40)}</span>
             ) : (
-              <Badge variant="pub">● Published</Badge>
+              <span className="text-fg-muted">—</span>
             )}
-            {dataset.license && (
-              <Badge variant="outline" className="font-mono normal-case">
-                {dataset.license}
-              </Badge>
+          </MetaCell>
+          <MetaCell label="Region">
+            {summary?.brainRegions && summary.brainRegions.length > 0 ? (
+              <span className="font-mono">
+                {truncate(
+                  summary.brainRegions.map((r) => r.label).join(', '),
+                  40,
+                )}
+              </span>
+            ) : dataset.brainRegions ? (
+              <span className="font-mono">
+                {truncate(dataset.brainRegions, 40)}
+              </span>
+            ) : (
+              <span className="text-fg-muted">—</span>
             )}
-            {dataset.branchName && dataset.branchName !== 'original' && (
-              <Badge variant="teal" className="font-mono normal-case">
-                {dataset.branchName}
-              </Badge>
+          </MetaCell>
+          <MetaCell label="Documents">
+            {summary?.counts.totalDocuments != null ? (
+              <span className="font-mono">
+                {summary.counts.totalDocuments.toLocaleString('en-US')}
+              </span>
+            ) : dataset.documentCount != null ? (
+              <span className="font-mono">
+                {dataset.documentCount.toLocaleString('en-US')}
+              </span>
+            ) : (
+              <span className="text-fg-muted">—</span>
             )}
-            {dataset.publishStatus && dataset.publishStatus !== 'published' && (
-              <Badge variant="secondary">{dataset.publishStatus}</Badge>
-            )}
-            {/* Surface the cloud-side "DATASET BEING PROCESSED" marker as
-                a discrete badge instead of letting it leak into the
-                abstract paragraph as ALL-CAPS body copy that reads like
-                an error. */}
-            {processing && (
-              <Badge variant="secondary" title="Synthesizer enrichment in progress">
-                Processing
-              </Badge>
-            )}
-          </div>
-
-          <CardTitle
-            as="h3"
-            className="text-[1.2rem] leading-snug mb-2 group-hover:text-ndi-teal transition-colors"
-          >
-            {displayName}
-          </CardTitle>
-
-          {(contributors.length > 0 || dataset.uploadedAt || dataset.createdAt) && (
-            <p className="text-[13px] text-fg-secondary mb-4">
-              {contributors.length > 0 && (
-                <>
-                  {contributors.slice(0, 3).join(', ')}
-                  {contributors.length > 3 && ` +${contributors.length - 3}`}
-                </>
-              )}
-              {contributors.length > 0 && (dataset.uploadedAt || dataset.createdAt) && (
-                <span className="mx-2 text-fg-muted">·</span>
-              )}
-              {(dataset.uploadedAt || dataset.createdAt) && (
-                <span className="text-fg-muted">
-                  {formatDate(dataset.uploadedAt || dataset.createdAt!)}
-                </span>
-              )}
-            </p>
+          </MetaCell>
+          {summary && summary.counts.subjects > 0 && (
+            <MetaCell label="Subjects">
+              <span className="font-mono">
+                {summary.counts.subjects.toLocaleString('en-US')}
+              </span>
+            </MetaCell>
           )}
-
-          <div className="border-t border-b border-border-subtle/70 py-3 mb-4 flex flex-wrap gap-x-8 gap-y-3 text-[13px]">
-            <MetaCell label="Species">
-              {summary?.species && summary.species.length > 0 ? (
-                <span className="font-mono">
-                  {truncate(summary.species.map((s) => s.label).join(', '), 40)}
-                </span>
-              ) : dataset.species ? (
-                <span className="font-mono">{truncate(dataset.species, 40)}</span>
-              ) : (
-                <span className="text-fg-muted">—</span>
-              )}
+          {dataset.totalSize != null && dataset.totalSize > 0 && (
+            <MetaCell label="Size">
+              <span className="font-mono">{formatBytes(dataset.totalSize)}</span>
             </MetaCell>
-            <MetaCell label="Region">
-              {summary?.brainRegions && summary.brainRegions.length > 0 ? (
-                <span className="font-mono">
-                  {truncate(
-                    summary.brainRegions.map((r) => r.label).join(', '),
-                    40,
-                  )}
-                </span>
-              ) : dataset.brainRegions ? (
-                <span className="font-mono">
-                  {truncate(dataset.brainRegions, 40)}
-                </span>
-              ) : (
-                <span className="text-fg-muted">—</span>
-              )}
-            </MetaCell>
-            <MetaCell label="Documents">
-              {summary?.counts.totalDocuments != null ? (
-                <span className="font-mono">
-                  {summary.counts.totalDocuments.toLocaleString('en-US')}
-                </span>
-              ) : dataset.documentCount != null ? (
-                <span className="font-mono">
-                  {dataset.documentCount.toLocaleString('en-US')}
-                </span>
-              ) : (
-                <span className="text-fg-muted">—</span>
-              )}
-            </MetaCell>
-            {summary && summary.counts.subjects > 0 && (
-              <MetaCell label="Subjects">
-                <span className="font-mono">
-                  {summary.counts.subjects.toLocaleString('en-US')}
-                </span>
-              </MetaCell>
-            )}
-            {dataset.totalSize != null && dataset.totalSize > 0 && (
-              <MetaCell label="Size">
-                <span className="font-mono">{formatBytes(dataset.totalSize)}</span>
-              </MetaCell>
-            )}
-            {dataset.doi && (
-              <MetaCell label="DOI">
-                <span className="font-mono truncate inline-block max-w-[260px] align-bottom">
-                  {dataset.doi.replace(/^https?:\/\//, '')}
-                </span>
-              </MetaCell>
-            )}
-          </div>
-
-          {abstractText && (
-            <p className="text-[13.5px] text-fg-secondary leading-relaxed line-clamp-2">
-              {abstractText}
-            </p>
           )}
-        </CardBody>
-      </Card>
-    </Link>
+          {dataset.doi && (
+            <MetaCell label="DOI">
+              <span className="font-mono truncate inline-block max-w-[260px] align-bottom">
+                {dataset.doi.replace(/^https?:\/\//, '')}
+              </span>
+            </MetaCell>
+          )}
+        </div>
+
+        {abstractText && (
+          <p className="text-[13.5px] text-fg-secondary leading-relaxed line-clamp-2">
+            {abstractText}
+          </p>
+        )}
+      </CardBody>
+    </Card>
   );
 }
 

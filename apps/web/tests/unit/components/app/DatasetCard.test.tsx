@@ -8,13 +8,31 @@
  * routes detail tabs as nested URLs, with `/datasets/[id]` redirecting
  * to `./overview`).
  */
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
 import type { DatasetRecord } from '@/lib/api/datasets';
 import type { CompactDatasetSummary } from '@/lib/types/dataset-summary';
 
+// Mock `useLinkStatus` so tests can control the pending flag. The
+// hook normally reads from Next.js's internal navigation state, which
+// is only populated by an actual <Link> click. Default mock returns
+// `{ pending: false }` so the existing static-render tests stay
+// happy; the dedicated pending-state test below overrides per-call.
+const useLinkStatusMock = vi.fn(() => ({ pending: false }));
+vi.mock('next/link', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('next/link')>();
+  return {
+    ...actual,
+    useLinkStatus: () => useLinkStatusMock(),
+  };
+});
+
 import { DatasetCard } from '@/components/app/DatasetCard';
+
+beforeEach(() => {
+  useLinkStatusMock.mockReturnValue({ pending: false });
+});
 
 function baseDataset(overrides: Partial<DatasetRecord> = {}): DatasetRecord {
   return {
@@ -190,6 +208,56 @@ describe('DatasetCard — wide-format card', () => {
       name: /open dataset A Testing Dataset/i,
     });
     expect(link.className).toMatch(/cursor-pointer/);
+  });
+
+  // Audit 2026-04-27 #1 (take 2) — `useLinkStatus`-driven pending
+  // state. Pre-fix, clicking a slow dataset (Sophie 101k docs) froze
+  // the catalog for 6+ seconds with no visible feedback — the card
+  // was loaded but unclickable-looking. The pending pill + dimmed
+  // card make the click "land" instantly even though the actual
+  // navigation completes seconds later.
+  describe('pending-state visual feedback (audit #1, take 2)', () => {
+    it('renders the "Loading…" pending pill when useLinkStatus reports pending', () => {
+      useLinkStatusMock.mockReturnValue({ pending: true });
+      render(<DatasetCard dataset={baseDataset({ summary: compactSummary() })} />);
+      const pill = screen.getByTestId('dataset-card-pending');
+      expect(pill).toBeInTheDocument();
+      expect(pill).toHaveTextContent(/Loading/i);
+      // role=status + aria-live for SR users.
+      expect(pill).toHaveAttribute('role', 'status');
+      expect(pill).toHaveAttribute('aria-live', 'polite');
+    });
+
+    it('does NOT render the pending pill when navigation is idle', () => {
+      useLinkStatusMock.mockReturnValue({ pending: false });
+      render(<DatasetCard dataset={baseDataset({ summary: compactSummary() })} />);
+      expect(
+        screen.queryByTestId('dataset-card-pending'),
+      ).not.toBeInTheDocument();
+    });
+
+    it('marks the card aria-busy while pending', () => {
+      useLinkStatusMock.mockReturnValue({ pending: true });
+      const { container } = render(
+        <DatasetCard dataset={baseDataset({ summary: compactSummary() })} />,
+      );
+      // The Card primitive carries aria-busy; query by attribute since
+      // the role is implicit (div with no explicit role).
+      const busy = container.querySelector('[aria-busy="true"]');
+      expect(busy).not.toBeNull();
+    });
+
+    it('clears aria-busy when not pending (no aria-busy attribute, not aria-busy=false)', () => {
+      // Avoid emitting `aria-busy="false"` — that's noise for SR users
+      // when there's nothing busy. The component sets the attr to
+      // `pending || undefined` so React drops it entirely on idle.
+      useLinkStatusMock.mockReturnValue({ pending: false });
+      const { container } = render(
+        <DatasetCard dataset={baseDataset({ summary: compactSummary() })} />,
+      );
+      const anyBusy = container.querySelector('[aria-busy]');
+      expect(anyBusy).toBeNull();
+    });
   });
 
   it('lifts the card with a brand-tinted ring + shadow on hover', () => {
