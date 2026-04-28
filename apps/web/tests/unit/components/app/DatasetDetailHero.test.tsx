@@ -144,7 +144,14 @@ describe('DatasetDetailHero', () => {
    * facts are available so a fact-less dataset doesn't show an empty
    * decorative bar.
    */
-  it('renders the HeroFact strip with all six facts when present', async () => {
+  // 2026-04-28 — Species + Region facts dropped from the hero (team
+  // review feedback: they were duplicated by the auto-derived
+  // ontology pills in the Overview tab's DatasetSummaryCard, and
+  // the manually-entered hero values weren't accurate). This test
+  // pins the new "four facts max" hero contract: Documents,
+  // Subjects, Size, License — the cardinal facts that don't have
+  // a richer surface elsewhere.
+  it('renders the HeroFact strip with the four cardinal facts (no Species / Region)', async () => {
     mockedApiFetch.mockResolvedValueOnce({
       id: 'd1',
       name: 'Full-fact dataset',
@@ -163,21 +170,19 @@ describe('DatasetDetailHero', () => {
       </Wrapper>,
     );
     await waitFor(() => {
-      expect(screen.getByText('Species')).toBeInTheDocument();
+      expect(screen.getByText('Documents')).toBeInTheDocument();
     });
-    expect(screen.getByText('Mus musculus')).toBeInTheDocument();
-    expect(screen.getByText('Region')).toBeInTheDocument();
-    expect(screen.getByText('V1, M1')).toBeInTheDocument();
-    expect(screen.getByText('Documents')).toBeInTheDocument();
+    // Species / Region are no longer in the hero — they belong to
+    // the Overview tab's auto-derived ontology pills.
+    expect(screen.queryByText('Species')).not.toBeInTheDocument();
+    expect(screen.queryByText('Region')).not.toBeInTheDocument();
     expect(screen.getByText('412')).toBeInTheDocument();
     expect(screen.getByText('Subjects')).toBeInTheDocument();
     expect(screen.getByText('17')).toBeInTheDocument();
     expect(screen.getByText('Size')).toBeInTheDocument();
-    // Size formatted via formatBytes — matches the lib/format.ts contract.
     expect(screen.getByText(/GB$/)).toBeInTheDocument();
     // License appears twice — once in the badge row above the h1, once
-    // in the fact strip dt/dd. The single `getByText` would throw on
-    // multiple matches, so use `getAllByText`.
+    // in the fact strip dt/dd.
     const licenseHits = screen.getAllByText('CC-BY-4.0');
     expect(licenseHits.length).toBeGreaterThanOrEqual(2);
   });
@@ -238,12 +243,15 @@ describe('DatasetDetailHero', () => {
     mockedApiFetch.mockResolvedValueOnce({
       id: 'd1',
       name: 'Rich dataset',
-      species: 'Mus musculus',
-      brainRegions: 'V1',
+      // Species + brainRegions ignored by the hero post-2026-04-28
+      // (see "four cardinal facts" comment above). To get 4+ facts
+      // populated we now need Documents / Subjects / Size / License
+      // since species/region don't count toward the strip.
       documentCount: 412,
       numberOfSubjects: 17,
       totalSize: 1_000_000,
-      // 5 facts populated.
+      license: 'CC-BY-4.0',
+      // 4 facts populated.
       isPublished: true,
     });
     const Wrapper = withClient();
@@ -256,7 +264,7 @@ describe('DatasetDetailHero', () => {
       expect(screen.getByText('Subjects')).toBeInTheDocument();
     });
     const dl = container.querySelector('dl[data-fact-count]');
-    expect(dl?.getAttribute('data-fact-count')).toBe('5');
+    expect(dl?.getAttribute('data-fact-count')).toBe('4');
     expect(dl?.className).toMatch(/justify-start/);
     expect(dl?.className).not.toMatch(/justify-center/);
   });
