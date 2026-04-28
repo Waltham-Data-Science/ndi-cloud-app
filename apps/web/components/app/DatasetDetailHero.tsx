@@ -82,10 +82,36 @@ export function DatasetDetailHero({ datasetId }: { datasetId: string }) {
               ) : (
                 <Badge variant="pub">● Published</Badge>
               )}
-              {data.license && (
+              {data.license ? (
                 <Badge variant="outline" className="font-mono normal-case bg-white/10 ring-white/20 text-white/85">
                   {data.license}
                 </Badge>
+              ) : (
+                /*
+                  Audit 2026-04-27 #19 (design call) — pre-fix, datasets
+                  with an empty `license` field rendered nothing in the
+                  hero badge row, leaving "● Published" alone next to
+                  the branchName badge. Visually that read as
+                  "license missing on purpose," when in fact most
+                  empty-license cases just mean the cloud record didn't
+                  populate the field.
+                  Showing a quiet "License unspecified" badge gives the
+                  user an explicit hand-off ("ask the dataset author")
+                  rather than an absence. Italic + muted variant
+                  signals that this is a soft label, not a license
+                  identifier itself. Skipping for explicit non-public
+                  cases (Draft) — those have their own status pill
+                  carrying the visibility story.
+                */
+                data.isPublished !== false && (
+                  <Badge
+                    variant="outline"
+                    className="italic normal-case bg-white/5 ring-white/15 text-white/55"
+                    title="No license set on the dataset record. Ask the dataset author for licensing details."
+                  >
+                    License unspecified
+                  </Badge>
+                )
               )}
               {data.branchName && data.branchName !== 'original' && (
                 <Badge variant="teal" className="font-mono normal-case">

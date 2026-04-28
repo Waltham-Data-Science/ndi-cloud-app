@@ -154,7 +154,23 @@ export function DatasetOverviewCard({
               </dd>
             </>
           )}
-          {ds.organizationId && (
+          {/*
+            Audit 2026-04-27 #23 — pre-fix the row read "Org
+            649b1b1bea20f31db68d4f9f" (a Mongo ObjectId) which is
+            meaningless to readers. The cloud's `/api/datasets/:id`
+            response returns the organization's _id only — there's
+            no name in the same payload. Hiding the row entirely
+            until we have a name is honest. A follow-up can resolve
+            the id to a name via a separate cloud call and re-show
+            the row when the name lands.
+
+            Detection rule: render the row ONLY if `organizationId`
+            exists AND doesn't look like a 24-hex Mongo ObjectId.
+            The 24-hex test is the standard ObjectId shape (12-byte
+            hex). User-friendly slugs (e.g. `walthamdatascience`,
+            `brandeis-lab`) pass through unchanged.
+          */}
+          {ds.organizationId && !isMongoObjectId(ds.organizationId) && (
             <>
               <dt>Org</dt>
               <dd>{ds.organizationId}</dd>
@@ -273,4 +289,14 @@ function PublicationRow({ p }: { p: AssociatedPublication }) {
       </div>
     </li>
   );
+}
+
+/**
+ * Mongo ObjectId test — 24 lowercase hex chars. Used to suppress the
+ * "Org" row when the cloud only ships the organization's `_id`
+ * (audit 2026-04-27 #23). Slugs and human-readable names pass
+ * through unchanged.
+ */
+function isMongoObjectId(s: string): boolean {
+  return /^[0-9a-f]{24}$/i.test(s);
 }

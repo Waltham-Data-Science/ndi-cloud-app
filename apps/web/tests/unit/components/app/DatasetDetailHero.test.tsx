@@ -261,3 +261,79 @@ describe('DatasetDetailHero', () => {
     expect(dl?.className).not.toMatch(/justify-center/);
   });
 });
+
+describe('DatasetDetailHero — License unspecified badge (audit #19)', () => {
+  // Audit 2026-04-27 #19 (design call) — when the cloud record has
+  // no license set, render a quiet "License unspecified" badge
+  // instead of leaving the badge row with just the status pill.
+  // The placeholder badge gives the user an explicit hand-off
+  // ("ask the author") rather than an ambiguous absence.
+
+  it('renders a "License unspecified" badge when the dataset has no license', async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      id: 'd1',
+      name: 'No-license dataset',
+      isPublished: true,
+      // No license field.
+    });
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <DatasetDetailHero datasetId="d1" />
+      </Wrapper>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/License unspecified/i)).toBeInTheDocument();
+    });
+  });
+
+  it('does NOT render the placeholder when a real license is set', async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      id: 'd1',
+      name: 'Real-license dataset',
+      isPublished: true,
+      license: 'CC0-1.0',
+    });
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <DatasetDetailHero datasetId="d1" />
+      </Wrapper>,
+    );
+    // License "CC0-1.0" appears in two places: the badge row above
+    // the h1 AND the HeroFact strip below the byline. Using
+    // getAllByText avoids the ambiguity-error from getByText.
+    await waitFor(() => {
+      expect(screen.getAllByText('CC0-1.0').length).toBeGreaterThanOrEqual(1);
+    });
+    expect(
+      screen.queryByText(/License unspecified/i),
+    ).not.toBeInTheDocument();
+  });
+
+  it('does NOT render the placeholder on a draft dataset', async () => {
+    // Draft pill carries the visibility story — adding "License
+    // unspecified" on top would clutter without telling the user
+    // anything they don't already know from the Draft badge.
+    mockedApiFetch.mockResolvedValueOnce({
+      id: 'd1',
+      name: 'Draft dataset',
+      isPublished: false,
+    });
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <DatasetDetailHero datasetId="d1" />
+      </Wrapper>,
+    );
+    // "Draft" matches both the badge text "● Draft" and the
+    // dataset name "Draft dataset". getAllByText is fine here —
+    // we just need the badge to exist somewhere.
+    await waitFor(() => {
+      expect(screen.getAllByText(/Draft/i).length).toBeGreaterThanOrEqual(1);
+    });
+    expect(
+      screen.queryByText(/License unspecified/i),
+    ).not.toBeInTheDocument();
+  });
+});

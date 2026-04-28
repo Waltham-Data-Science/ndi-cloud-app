@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 295 305" role="img" aria-label="NDI Cloud">
+  <!--
+    NDI Cloud favicon — square mark extracted from
+    /public/logos/ndicloud-mark-color.svg's `cls-2` paths (the
+    interlocking-corner brand symbol; the long horizontal wordmark
+    isn't readable at favicon scale).
+
+    Audit 2026-04-27 #22 — pre-fix, browsers requested /favicon.ico
+    on every page and got a 404 because the app declared no icon.
+    Next.js's `app/icon.svg` convention auto-emits
+    `<link rel="icon" type="image/svg+xml" href="…">` and serves the
+    file with the right Content-Type, satisfying both modern browsers
+    (which prefer SVG) and the legacy /favicon.ico fallback (Next
+    serves the convention asset on both paths).
+
+    Color: brand-navy (#002054) for the symbol, on transparent
+    background — matches the marketing Header's navy and reads
+    cleanly on light + dark browser tab backgrounds.
+  -->
+  <g fill="#002054">
+    <path d="M49.08,122.87l29.25,19.93,57.35-38.6V0L23.97,75.12C8.97,85.23,0,102.08,0,120.19c0,11.85,3.86,23.21,10.77,32.45-6.9,9.24-10.77,20.59-10.77,32.45,0,18.1,8.97,34.95,23.97,45.06l111.71,75.12v-104.21l-40.17-27.06-31.74-21.36-12.18-8.21-4.89-3.27-4.73-3.21c-2.4-1.63-4.41-3.69-5.93-6.03-2.22-3.42-3.42-7.44-3.42-11.74,0-7.34,3.48-13.92,9.57-18l32.3-21.69,28.59-19.25v25.55l-53.99,36.06Zm53.99,121.15l-60.89-40.94c-6.09-4.08-9.57-10.65-9.57-17.98,0-4.31,1.2-8.33,3.42-11.75l67.03,45.12v25.55Z"/>
+    <path d="M245.78,182.41l-29.25-19.93-57.35,38.6v104.21l111.71-75.12c15-10.11,23.97-26.96,23.97-45.07,0-11.85-3.86-23.21-10.77-32.45,6.9-9.24,10.77-20.59,10.77-32.45,0-18.1-8.97-34.95-23.97-45.06L159.18,0v104.21l40.17,27.06,31.74,21.36,12.18,8.21,4.89,3.27,4.73,3.21c2.4,1.63,4.41,3.69,5.92,6.03,2.24,3.42,3.44,7.44,3.44,11.74,0,7.34-3.48,13.92-9.57,18l-32.3,21.69-28.59,19.25v-25.55l53.99-36.06Zm-53.99-121.15l60.89,40.94c6.09,4.08,9.57,10.65,9.57,17.98,0,4.31-1.2,8.33-3.44,11.75l-67.02-45.12v-25.55Z"/>
+  </g>
+</svg>
