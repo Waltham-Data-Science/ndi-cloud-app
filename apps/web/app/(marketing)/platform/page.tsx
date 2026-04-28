@@ -581,10 +581,17 @@ function TrustMetric({
   sub: string;
   numSmall?: boolean;
 }) {
+  // The third metric ("SCR_023368") renders as small mono instead of a
+  // big numeral, but the row reads as broken if its label + sub start
+  // higher than the other two columns'. Pin the number container to the
+  // big-numeral height (`h-12` ≈ text-5xl leading-none) and bottom-align
+  // the content so all three columns share the same baseline. Result:
+  // labels + subs across the three columns all start at the same Y and
+  // the row reads as a single trust band rather than three loose tiles.
   return (
     <div>
       <div
-        className={`font-display font-extrabold text-brand-blue-3 leading-none mb-2 ${
+        className={`font-display font-extrabold text-brand-blue-3 leading-none mb-2 h-12 flex items-end ${
           numSmall ? 'text-2xl tracking-tight font-mono' : 'text-5xl'
         }`}
       >
