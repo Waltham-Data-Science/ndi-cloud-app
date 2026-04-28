@@ -5,7 +5,15 @@ import Link from 'next/link';
 import { MarketingButton } from '@/components/marketing/Button';
 
 /**
- * /about — team + partnerships + SfN.
+ * /about — team + partnerships.
+ *
+ * 2026-04-28: SfN 2025 section removed pre-launch. The conference
+ * dated the page (Booth TBD; Nov 8–12) and the team wanted a clean
+ * about page for the team review pass. Re-add (or replace with the
+ * next conference) when that information is finalized — the
+ * `<SfNSection>` markup + `id="sfn"` anchor are recoverable from
+ * git history. The corresponding footer link in
+ * `components/marketing/Footer.tsx` was dropped at the same time.
  *
  * Ported from ndi-web-app-wds/app/src/pages/about/index.tsx. Pure RSC;
  * the LinkedIn icon stays as inline SVG (server-renderable). Static
@@ -24,7 +32,7 @@ export const metadata: Metadata = {
     url: 'https://ndi-cloud.com/about',
     title: 'About NDI Cloud',
     description:
-      'Commercializing the open Neuroscience Data Interface. Meet the team, see our partnerships, and find us at SfN 2025.',
+      'Commercializing the open Neuroscience Data Interface. Meet the team and see our partnerships.',
     images: ['https://ndi-cloud.com/logos/ndicloud-wordmark-color.svg'],
     siteName: 'NDI Cloud',
   },
@@ -295,59 +303,6 @@ export default function AboutPage() {
               }}
             />
           </div>
-        </div>
-      </section>
-
-      {/* SfN — dark band with blue radial glow (Phase 6.6 PR-D polish).
-       *
-       * Source `.sfnSection` is `bg-bg-depth` (near-black `#0d1117`)
-       * with a `::after` 500x500px blue radial glow at top-right
-       * (rgba(23,167,255,0.15) → transparent 70%). This replaces the
-       * previous bright teal band — the dark+glow treatment matches
-       * the marketing chrome (CTA, Bridge, etc.) and creates visual
-       * cadence rather than a jarring teal flash between the
-       * partnerships and CTA sections.
-       */}
-      <section
-        className="relative overflow-hidden px-7 py-16 text-white"
-        style={{ background: 'var(--color-bg-depth)' }}
-        id="sfn"
-      >
-        {/* Blue radial glow — top-right offset by negative half-width,
-         * matches source `&::after { width: 500px; height: 500px;
-         * radius: 50%; background: radial-gradient(circle, rgba(23,167,255,0.15) 0%, transparent 70%);
-         * top: -250px; right: -150px; }`. */}
-        <div
-          aria-hidden
-          className="pointer-events-none absolute"
-          style={{
-            width: 500,
-            height: 500,
-            top: -250,
-            right: -150,
-            borderRadius: '50%',
-            background:
-              'radial-gradient(circle, rgba(23, 167, 255, 0.15) 0%, transparent 70%)',
-          }}
-        />
-        <div className="relative max-w-[1100px] mx-auto text-center">
-          <div className="text-xs font-bold tracking-eyebrow uppercase text-white/80 mb-3">
-            Where to find us
-          </div>
-          <h2
-            className="font-display font-extrabold leading-[1.1] tracking-tight mb-3 m-0"
-            style={{ fontSize: 'clamp(1.75rem, 4vw, 2.75rem)' }}
-          >
-            SfN 2025 <em className="not-italic text-brand-blue-3">·</em> San
-            Diego.
-          </h2>
-          <p className="text-lg font-semibold m-0 mb-2">
-            Nov 8–12 · San Diego Convention Center · Booth TBD
-          </p>
-          <p className="text-base text-white/75 max-w-[600px] mx-auto m-0">
-            Drop by to see the Data Browser live and ask what LabChat can do with
-            your lab&rsquo;s papers.
-          </p>
         </div>
       </section>
 
