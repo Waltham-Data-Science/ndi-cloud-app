@@ -318,15 +318,25 @@ describe('SummaryTableView — B6a canonical column defaults (subject grain)', (
     expect(within(tableEl).getByText('CRF-Cre, OTR-IRES-Cre')).toBeInTheDocument();
   });
 
-  it('surfaces the discovered dynamic treatment column with a generated header', () => {
+  // 2026-04-28 — dynamic treatment columns are now hidden-by-default
+  // on the subject grain (team review feedback: treatments shown not
+  // attached to a specific subject are misleading; backend's
+  // `_row_subject` doesn't currently emit per-subject treatment
+  // joins, but a parallel path broadcasts treatment values onto
+  // every subject row). The column stays discoverable through the
+  // column-picker — tests below pin both behaviors:
+  //  (a) the discovered column does NOT appear in the visible
+  //      header row
+  //  (b) the column IS still present in the column-toggle picker
+  //      so power users can re-enable it
+  it('hides the discovered dynamic treatment column from the default visible headers (subject grain)', () => {
     render(withProviders(<SummaryTableView data={francesconiSubjectTable} tableType="subject" />));
     const tableEl = document.querySelector('table');
     if (!tableEl) throw new Error('no table rendered');
     const headers = visibleHeaders(tableEl as HTMLElement);
-    // Header text comes from `prettyHeaderFromCamelCase` — space-separated words.
     expect(
       headers.some((h) => h.includes('Optogenetic Tetanus Stimulation Target Location')),
-    ).toBe(true);
+    ).toBe(false);
   });
 });
 

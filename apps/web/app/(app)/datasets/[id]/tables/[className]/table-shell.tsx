@@ -64,13 +64,21 @@ const COMMON_CLASSES = [
 ] as const;
 
 /**
- * Tabs that bypass the count-driven hide rule. `combined` is a join over
- * whichever per-class grains DO exist on the dataset (still useful when
- * only some classes are populated). `ontology` lives in its own endpoint
- * with its own response shape (groups, not rows) and is never reflected
- * in `/class-counts`, so we never hide it.
+ * Tabs that bypass the count-driven hide rule. `ontology` lives in its
+ * own endpoint with its own response shape (groups, not rows) and is
+ * never reflected in `/class-counts`, so we never hide it.
+ *
+ * 2026-04-28 — `combined` removed from this set (team review feedback).
+ * The combined table's backend builder iterates over `element_epochs`,
+ * so for behavioral C. elegans datasets (bhar, haley) which have
+ * subjects + treatments but no probes/elements/epochs, the table is
+ * always empty. Reviewer: "What is the combined summary table supposed
+ * to show? I only see empty tables." Now we gate combined on
+ * `element_epoch > 0` (or its legacy alias `epoch`) — the same data
+ * that powers the table — so it stops appearing for datasets where
+ * the join would produce zero rows.
  */
-const ALWAYS_VISIBLE_CLASSES = new Set(['combined', 'ontology']);
+const ALWAYS_VISIBLE_CLASSES = new Set(['ontology']);
 
 /**
  * Pretty per-class label for the empty-state copy. The URL slug is
@@ -106,10 +114,13 @@ export function TableShell({
       // The count for `element` is occasionally keyed `probe` server-
       // side (legacy column name kept after the slug rename); accept
       // either to avoid a false-empty drop on the Elements tab.
+      // `combined` gates on the element_epoch count (the iterable the
+      // backend builds the join from) — see the ALWAYS_VISIBLE_CLASSES
+      // comment above.
       const count =
         c.id === 'element'
           ? countsResp.classCounts.element ?? countsResp.classCounts.probe ?? 0
-          : c.id === 'element_epoch'
+          : c.id === 'element_epoch' || c.id === 'combined'
             ? countsResp.classCounts.element_epoch ?? countsResp.classCounts.epoch ?? 0
             : countsResp.classCounts[c.id] ?? 0;
       return count > 0;
@@ -234,6 +245,37 @@ function StandardTableContent({
   const query = useSummaryTable(datasetId, className);
   const router = useRouter();
 
+  // 2026-04-28 — Subject grain row enrichment for the strain-raw-ID bug
+  // (team review feedback). The `subject` summary endpoint sometimes
+  // returns `strainName` as an array of `ndi://`-prefixed companion-doc
+  // references rather than a human-readable label (Schema-B Strain
+  // docs whose `fields.name` is itself a list of references). The
+  // table's `csvJoinFormatter` then stringifies the array, producing
+  // the raw `ndi://412695ff…` text the reviewer flagged. The
+  // `strainOntology` sibling column DOES carry a clean `WBStrain:…`
+  // value — the SummaryTableView's ontology-popover machinery
+  // already lights that up as a clickable resolver chip. Best-
+  // available frontend fix: when `strainName` looks like an
+  // `ndi://`-only payload AND `strainOntology` has a real ontology
+  // ID, swap `strainName` to the ontology ID so the cell renders the
+  // resolver chip instead of the raw NDI ref. The label-resolution
+  // path lives in OntologyPopover; the user-visible result is "the
+  // strain cell shows a clickable WBStrain:WBStrain00027007 chip
+  // that resolves to N2" instead of "the strain cell shows
+  // ndi://412695ff…". Long-term, the synthesizer should resolve
+  // Schema-B nested name references on the backend (a Steve task);
+  // this is the unblocker today.
+  const enrichedData = useMemo(() => {
+    if (!query.data) return query.data;
+    if (className !== 'subject') return query.data;
+    return {
+      ...query.data,
+      rows: query.data.rows.map((r) =>
+        rewriteStrainNdiRefToOntology(r as Record<string, unknown>),
+      ) as typeof query.data.rows,
+    };
+  }, [query.data, className]);
+
   // Wire row-click navigation to `/datasets/[id]/documents/[ndiId]`.
   // Any `*DocumentIdentifier` cell value IS the ndiId — the cloud's
   // detail endpoint resolves either Mongo `_id` or ndiId, so we don't
@@ -308,7 +350,7 @@ function StandardTableContent({
     );
   }
 
-  const data = query.data;
+  const data = enrichedData;
   if (!data || data.rows.length === 0) {
     const friendlyName = CLASS_LABELS[className] ?? className;
     return (
@@ -335,4 +377,64 @@ function StandardTableContent({
       onRowClick={onRowClick}
     />
   );
+}
+
+/**
+ * Detect whether a value is an `ndi://`-prefixed reference (single
+ * string or a list of strings, all of which start with `ndi://`).
+ *
+ * The cloud's Schema-B Strain documents store `fields.name` as a list
+ * of `ndi://` companion-doc references rather than a human-readable
+ * label. The summary table's column projection passes those through
+ * unchanged, and `csvJoinFormatter` then stringifies the array — the
+ * user sees `ndi://412695ff44…` text, not a strain name.
+ */
+function isNdiRefPayload(v: unknown): boolean {
+  if (Array.isArray(v)) {
+    return (
+      v.length > 0 &&
+      v.every((x) => typeof x === 'string' && x.startsWith('ndi://'))
+    );
+  }
+  if (typeof v === 'string') {
+    return v.startsWith('ndi://');
+  }
+  return false;
+}
+
+/**
+ * Best-available frontend fix for the strain-raw-ID render bug. When
+ * the subject row's `strainName` is an `ndi://`-only payload AND the
+ * sibling `strainOntology` carries a real `PROVIDER:ID` ontology
+ * value, replace `strainName` with the ontology ID so the cell renders
+ * the existing OntologyPopover chip (clickable, label-resolved) instead
+ * of the raw NDI reference. Same treatment for `backgroundStrainName`
+ * which has the same Schema-B shape.
+ *
+ * Returns the row unchanged when the strain fields are already clean
+ * strings or when there's no ontology sibling to fall back on. Pure
+ * function — does not mutate the input row.
+ *
+ * Long-term, the synthesizer should resolve Schema-B nested name
+ * references on the backend; this helper is the team-review-pass
+ * unblocker so the bhar/haley datasets render strains today.
+ */
+function rewriteStrainNdiRefToOntology(
+  row: Record<string, unknown>,
+): Record<string, unknown> {
+  let out: Record<string, unknown> | null = null;
+  for (const [nameKey, ontologyKey] of [
+    ['strainName', 'strainOntology'],
+    ['backgroundStrainName', 'backgroundStrainOntology'],
+  ] as const) {
+    if (
+      isNdiRefPayload(row[nameKey]) &&
+      typeof row[ontologyKey] === 'string' &&
+      row[ontologyKey].includes(':')
+    ) {
+      if (!out) out = { ...row };
+      out[nameKey] = row[ontologyKey];
+    }
+  }
+  return out ?? row;
 }
