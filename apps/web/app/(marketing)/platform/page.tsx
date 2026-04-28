@@ -91,14 +91,24 @@ export default function PlatformPage() {
             className="font-display font-extrabold leading-[1.05] tracking-tight text-white mb-5 m-0 max-w-[900px]"
             style={{ fontSize: 'clamp(2.25rem, 6vw, 4rem)' }}
           >
-            A single data graph,{' '}
-            <em className="not-italic text-brand-blue">three views.</em>
+            One data graph,{' '}
+            <em className="not-italic text-brand-blue">three interfaces.</em>
           </h1>
+          {/*
+            2026-04-28 hero refresh. Pre-fix lede was "all read from
+            the same NDI data model… because it's the same dataset,
+            not three copies" — accurate but indirect, restated the
+            "single graph" framing instead of giving the user a reason
+            to care. New copy leads with the user outcome (one
+            permission + provenance surface across public + private
+            workspaces) so the platform page mirrors the homepage's
+            concrete-affordance tone.
+          */}
           <p className="text-[17px] leading-relaxed text-white/80 max-w-[720px] mb-8 m-0">
-            The Data Commons, the Data Browser, and LabChat all read from the
-            same NDI data model. A dataset looks the same in public, in your
-            private workspace, and in a LabChat answer — because it&rsquo;s the
-            same dataset, not three copies.
+            The Commons, the Data Browser, and LabChat surface the same
+            versioned dataset with the same permissions and provenance —
+            so a finding stands up the same way whether it&rsquo;s in a
+            paper, your workspace, or an AI answer.
           </p>
           {/* Hero CTA row standardised to `MarketingButton` lg. The
               previous inline `px-6 py-3 text-base` matched source `.btnPrimaryLg`
@@ -148,7 +158,7 @@ export default function PlatformPage() {
       </section>
 
       {/* DIAGRAMS */}
-      <section id="how" className="px-7 py-20 bg-bg-canvas">
+      <section id="how" className="px-7 py-16 bg-bg-canvas">
         <div className="max-w-[1200px] mx-auto">
           <div className="mb-12">
             <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
@@ -171,10 +181,9 @@ export default function PlatformPage() {
               Your data flows through one graph.
             </h3>
             <p className="text-base leading-relaxed text-fg-secondary mb-8 m-0">
-              Raw sessions from the rig, analysis on your workstation, datasets
-              published to the public commons — same model from end to end. One
-              identity. One permission system. One provenance chain that follows
-              the data wherever it goes.
+              Raw sessions, analyses, and published datasets all flow
+              through a single identity, permission layer, and provenance
+              chain. Same data model from rig to citation.
             </p>
 
             {/* 3-column flow: Your lab → NDI Cloud → The world */}
@@ -255,10 +264,10 @@ export default function PlatformPage() {
               The difference, in one picture.
             </h3>
             <p className="text-base leading-relaxed text-fg-secondary mb-8 m-0">
-              Most labs run on a patchwork of external drives, shared folders,
-              and whichever-laptop-the-grad-student-took-home. NDI replaces that
-              with one store where every session is an addressable object —
-              citable, downloadable, and still there next semester.
+              Most labs live on scattered external drives, shared folders,
+              and personal laptops. NDI is a single store where every session
+              is a permanent, citable, downloadable object — still resolvable
+              next semester, next decade.
             </p>
 
             <div className="grid grid-cols-2 max-[840px]:grid-cols-1 gap-5">
@@ -342,8 +351,15 @@ export default function PlatformPage() {
                 </div>
               </div>
 
-              {/* NDI side */}
-              <div className="bg-ndi-teal-light border border-ndi-teal-border rounded-xl p-6 relative overflow-hidden">
+              {/*
+                NDI side. `min-h-[356px]` matches the Legacy panel's
+                visual weight: that panel's scatter viz is 300px tall
+                + p-6 padding (24px top + 24px bottom) + the ~16px
+                footer row, so the right panel needs ~356px to read
+                as paired-equal. Without this, the NDI side reads as
+                an afterthought next to the bigger Legacy block.
+              */}
+              <div className="bg-ndi-teal-light border border-ndi-teal-border rounded-xl p-6 relative overflow-hidden min-h-[356px]">
                 <div className="mb-4">
                   <span className="inline-block text-[10px] font-bold tracking-wide uppercase text-ndi-teal bg-white/60 px-2 py-0.5 rounded-full mb-2">
                     With NDI
@@ -418,10 +434,10 @@ export default function PlatformPage() {
               Four layers, built on open standards.
             </h3>
             <p className="text-base leading-relaxed text-fg-secondary mb-8 m-0">
-              NDI Cloud is built on the NDI data model — an open spec, not a
+              NDI Cloud runs on the NDI data model — an open spec, not a
               closed product. Storage, the workspace apps, the Commons, and
-              LabChat are all layers on top. Every layer is inspectable. The
-              data model is the contract; everything above it is implementation.
+              LabChat are all inspectable layers above it. The data model is
+              the foundation; everything else is pluggable.
             </p>
 
             <div className="flex flex-col gap-2">
@@ -490,7 +506,7 @@ export default function PlatformPage() {
 
       {/* CTA */}
       <section
-        className="relative overflow-hidden px-7 py-20 text-white"
+        className="relative overflow-hidden px-7 py-16 text-white"
         style={{ background: 'var(--grad-depth)' }}
       >
         <div
@@ -666,10 +682,18 @@ function SvcChip({
   color?: 'teal' | 'navy' | 'cream' | 'blue';
   label: string;
 }) {
+  // 2026-04-28: cream dot was invisible against the SvcChip's
+  // `bg-gray-50` chip surface (both near-white). The other cream-keyed
+  // surfaces in this file (`NodePill` line 630, `LegendItem` line 720)
+  // already pair `bg-brand-cream` with `border-brand-blue-3/30`-ish
+  // outlines for the same reason. Mirroring that pattern here so the
+  // "Crossref DOIs" chip's dot reads as a real visual cue rather than
+  // a missing element. Other dot colors (teal/navy/blue) are saturated
+  // enough on gray-50 not to need the ring.
   const dot: Record<string, string> = {
     teal: 'bg-ndi-teal',
     navy: 'bg-brand-navy',
-    cream: 'bg-brand-cream',
+    cream: 'bg-brand-cream ring-1 ring-brand-blue-3/50',
     blue: 'bg-brand-blue-3',
   };
   const dotCls = dot[color ?? 'blue'];
@@ -846,15 +870,19 @@ function ArchLayer({
     core: 'border-brand-navy/22 text-fg-primary',
   };
   return (
-    // 2026-04-28 — restored hover affordance from the source
-    // marketing site (`Home.module.scss .d3Layer`): a 4px nudge
-    // right with a 200ms cubic-bezier ease, hinting that each layer
-    // is the "input" to the next. The legacy site lost this in the
-    // Next.js port, leaving the architecture diagram completely
-    // flat. Pure transform — no shadow / glow / scale — so it
-    // matches the source visual language exactly.
+    // 2026-04-28 (round 2) — hover refresh. PR #110 restored the
+    // source `.d3Layer` 4px-translateX nudge as the hover affordance,
+    // matching the legacy SCSS exactly. User feedback on visual review
+    // was that the nudge alone reads as too subtle — the architecture
+    // layers should match the team-card / FAIR-tile reactivity pattern
+    // (border tint + shadow lift) so they feel like equally "alive"
+    // surfaces. We layer the FAIR pattern on top: keep the directional
+    // translateX (preserves the input→output flow hint), add the
+    // teal border + shadow lift the other marketing cards use. Custom
+    // cubic-bezier preserved so motion language stays distinct from
+    // the more standard --ease-out curve elsewhere.
     <div
-      className={`border rounded-xl p-5 grid grid-cols-[180px_1fr_180px] max-[840px]:grid-cols-1 gap-4 items-center transition-transform duration-200 hover:translate-x-1 ${palette[variant]}`}
+      className={`border rounded-xl p-5 grid grid-cols-[180px_1fr_180px] max-[840px]:grid-cols-1 gap-4 items-center transition-all duration-200 hover:translate-x-1 hover:border-ndi-teal-border hover:shadow-md ${palette[variant]}`}
       style={{
         background: gradient[variant],
         transitionTimingFunction: 'cubic-bezier(0.22, 0.61, 0.36, 1)',
