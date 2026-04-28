@@ -15,6 +15,28 @@ const config: NextConfig = {
   },
 
   /*
+   * Vercel Skew Protection opt-in. The dashboard toggle (Settings →
+   * Advanced → Skew Protection) is necessary but NOT sufficient for
+   * Next.js 16+: the framework also has to stamp the deployment ID
+   * into asset URLs, Server Actions, and the dynamic-import / Suspense
+   * boundaries so Vercel's gateway has something to enforce on. Without
+   * this top-level `deploymentId` field, Vercel serves whatever's at
+   * the URL regardless of the `?dpl=...` query param — verified
+   * empirically on 2026-04-28 (bogus dpl returned 200 instead of the
+   * expected 404, even though the dashboard reported Skew Protection
+   * enabled with 12h max age and Pro plan tier).
+   *
+   * Vercel auto-injects `NEXT_DEPLOYMENT_ID` on every Vercel build
+   * (system env var, see https://vercel.com/docs/skew-protection).
+   * The `||` fallback to undefined keeps local dev / bare CI runs
+   * (no Vercel env) from accidentally pinning to a hardcoded id.
+   *
+   * Verified post-deploy with
+   *   curl '?dpl=dpl_DOES_NOT_EXIST_BOGUS_TEST' → 404 (was 200 pre-fix)
+   */
+  deploymentId: process.env.NEXT_DEPLOYMENT_ID,
+
+  /*
    * Permanent (308) redirects for legacy URLs.
    *
    * Three categories:
