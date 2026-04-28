@@ -36,6 +36,32 @@ test-results/
 # Vercel
 .vercel/
 
+# Local agent / MCP state directories.
+# `.claude/` is the Claude Code per-project local data store
+# (transient session metadata, not source-controlled). `.playwright-mcp/`
+# holds Playwright-MCP browser snapshots and console logs from agent
+# runs. Both are per-developer; never commit.
+.claude/
+.playwright-mcp/
+
+# Audit / verify / walk artifacts at repo root.
+# Screenshots and yaml dumps from agent-driven Playwright audits + visual-
+# review walkthroughs (audit-NN.{png,jpg}, verify-NN.png, walk-NN.png,
+# audit-Q9-NN-*.png, NN-*.{png,yml}). Useful on disk for reference during
+# the audit but never committed — they balloon the repo and they're per-
+# session. Patterns are anchored to the repo root via `/` so equivalent
+# names inside subdirectories are NOT ignored.
+/audit-*.png
+/audit-*.jpg
+/audit-*.jpeg
+/verify-*.png
+/verify-*.jpg
+/walk-*.png
+/walk-*.jpg
+/[0-9][0-9]-*.png
+/[0-9][0-9]-*.jpg
+/[0-9][0-9]-*.yml
+
 # macOS Finder duplicate files + directories (caught by hygiene CI; should
 # never reach repo). Cover both extension-bearing files (`Foo 2.tsx`) and
 # extension-less files (`pre-push 2`, `.npmrc 2`) and dup-named dirs
