@@ -37,20 +37,18 @@ afterEach(() => {
 });
 
 describe('DatasetTabs — audit #65 a11y', () => {
-  it('emits role="tablist" with four role="tab" children (Overview, Summary tables, Pivot, Document explorer)', () => {
+  it('emits role="tablist" with three role="tab" children (Overview, Summary tables, Document explorer)', () => {
     pathnameMock.mockReturnValue('/datasets/d1/overview');
     render(<DatasetTabs datasetId="d1" />);
     const tablist = screen.getByRole('tablist');
     const tabs = screen.getAllByRole('tab');
     expect(tablist).toBeInTheDocument();
-    // Audit 2026-04-27 #5 — Pivot tab restored. Pre-fix this was 3
-    // tabs and pivot URLs lit up Summary tables. Now pivot is its
-    // own tab; the Summary tables matcher narrows to /tables/* only.
-    expect(tabs).toHaveLength(4);
+    // 2026-04-28 — Pivot tab removed (route + proxy + component
+    // deleted in the same PR). The bar is back to three tabs.
+    expect(tabs).toHaveLength(3);
     expect(tabs.map((t) => t.textContent?.trim())).toEqual([
       'Overview',
       'Summary tables',
-      'Pivot',
       'Document explorer',
     ]);
   });
@@ -70,20 +68,6 @@ describe('DatasetTabs — audit #65 a11y', () => {
     expect(
       screen.getByRole('tab', { name: /summary tables/i }).getAttribute('aria-selected'),
     ).toBe('true');
-  });
-
-  it('marks the Pivot tab aria-selected on any /pivot/* path (NOT Summary tables)', () => {
-    // Audit 2026-04-27 #5 — pre-fix, pivot URLs cross-wired to
-    // Summary tables because both shared a matcher. Now Pivot owns
-    // /pivot/* exclusively, and Summary tables stays inert.
-    pathnameMock.mockReturnValue('/datasets/d1/pivot/session');
-    render(<DatasetTabs datasetId="d1" />);
-    expect(
-      screen.getByRole('tab', { name: /^pivot$/i }).getAttribute('aria-selected'),
-    ).toBe('true');
-    expect(
-      screen.getByRole('tab', { name: /summary tables/i }).getAttribute('aria-selected'),
-    ).toBe('false');
   });
 
   it('marks the Document explorer tab aria-selected on /documents path', () => {

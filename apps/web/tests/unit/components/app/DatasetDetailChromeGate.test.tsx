@@ -3,7 +3,7 @@
  *
  * The dataset-detail layout (`/datasets/[id]/layout.tsx`) renders the
  * dataset hero + tab bar above every nested route. That's correct for
- * the four primary tabs (Overview, Tables, Pivot, Documents/explorer)
+ * the three primary tabs (Overview, Tables, Documents/explorer)
  * but visually misleading on the document detail drilldown
  * (`/datasets/[id]/documents/[docId]`) — the source data-browser had
  * document detail rendered "outside the Outlet" with its own hero.

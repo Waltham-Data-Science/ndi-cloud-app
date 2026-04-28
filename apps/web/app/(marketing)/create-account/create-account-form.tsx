@@ -9,11 +9,12 @@ import { signup } from '@/lib/api/auth';
 import { AuthSplitLayout } from '@/components/marketing/AuthSplitLayout';
 import { Field, FormError } from '@/components/marketing/AuthForm';
 import { MarketingButton } from '@/components/marketing/Button';
-
-const MIN_PASSWORD = 12;
-const MAX_PASSWORD = 99;
-const MIN_NAME = 2;
-const MAX_NAME = 50;
+import {
+  MAX_NAME,
+  MAX_PASSWORD,
+  MIN_NAME,
+  MIN_PASSWORD,
+} from '@/lib/validation-constants';
 
 /**
  * Password complexity requirements (M7).

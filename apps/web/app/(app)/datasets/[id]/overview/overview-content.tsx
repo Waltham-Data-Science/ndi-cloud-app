@@ -83,9 +83,15 @@ export function OverviewContent({ datasetId }: { datasetId: string }) {
   }, [summary.data, ds.data]);
 
   return (
-    <div className="grid gap-5 lg:grid-cols-[1fr_360px] min-w-0">
+    // 2026-04-28 — breakpoint dropped from `lg:` (1024px) to `md:`
+    // (768px). At 200% Safari zoom on 32" 4K (CSS viewport
+    // ~960-1080px), `lg:` was just below the threshold, stacking
+    // overview vertically and burying the abstract under the sidecar
+    // pills. `md:` keeps abstract + sidecar side-by-side from 768px
+    // upward, restoring v2's effective behavior at high-zoom levels.
+    <div className="grid gap-5 md:grid-cols-[1fr_360px] min-w-0">
       {/* ── Main column: details (abstract + authors + pubs + cite) ── */}
-      <div className="space-y-4 min-w-0 order-2 lg:order-1">
+      <div className="space-y-4 min-w-0 order-2 md:order-1">
         {ds.isPending && !ds.data && <CardSkeleton />}
         {ds.isError && (
           // Source data-browser used `<ErrorState onRetry={…} />` for a
@@ -106,7 +112,7 @@ export function OverviewContent({ datasetId }: { datasetId: string }) {
       </div>
 
       {/* ── Sidecar: summary pills + provenance ─────────────────────── */}
-      <aside className="space-y-4 min-w-0 order-1 lg:order-2">
+      <aside className="space-y-4 min-w-0 order-1 md:order-2">
         {summaryShowSkeleton && <CardSkeleton />}
         {summary.isError && (
           // Audit #6 — summary errors were swallowed silently so a

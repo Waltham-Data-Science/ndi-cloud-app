@@ -245,46 +245,6 @@ export function useDatasetProvenance(datasetId: string | undefined) {
 }
 
 /**
- * Grain-selectable pivot response envelope (Plan B B6e).
- */
-export interface PivotColumn {
-  key: string;
-  label: string;
-}
-
-export interface PivotResponse {
-  datasetId: string;
-  grain: string;
-  columns: PivotColumn[];
-  rows: Array<Record<string, unknown>>;
-  computedAt: string;
-  schemaVersion: 'pivot:v1';
-  totalRows: number;
-}
-
-export type PivotGrain = 'subject' | 'session' | 'element';
-
-/**
- * Fetches the pivot table for a given dataset + grain. Gated by
- * `FEATURE_PIVOT_V1` on the backend — a 503 indicates the feature is
- * disabled and the pivot nav should hide itself.
- */
-export function useDatasetPivot(
-  datasetId: string | undefined,
-  grain: PivotGrain | undefined,
-) {
-  return useQuery({
-    queryKey: ['dataset', datasetId, 'pivot', grain],
-    queryFn: ({ signal }) =>
-      apiFetch<PivotResponse>(`/api/datasets/${datasetId}/pivot/${grain}`, {
-        signal,
-      }),
-    enabled: !!datasetId && !!grain,
-    staleTime: 60_000,
-  });
-}
-
-/**
  * Cross-dataset facet aggregation (Plan B B3).
  */
 export function useFacets() {

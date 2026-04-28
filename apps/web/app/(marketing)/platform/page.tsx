@@ -843,9 +843,19 @@ function ArchLayer({
     core: 'border-brand-navy/22 text-fg-primary',
   };
   return (
+    // 2026-04-28 — restored hover affordance from the source
+    // marketing site (`Home.module.scss .d3Layer`): a 4px nudge
+    // right with a 200ms cubic-bezier ease, hinting that each layer
+    // is the "input" to the next. The legacy site lost this in the
+    // Next.js port, leaving the architecture diagram completely
+    // flat. Pure transform — no shadow / glow / scale — so it
+    // matches the source visual language exactly.
     <div
-      className={`border rounded-xl p-5 grid grid-cols-[180px_1fr_180px] max-[840px]:grid-cols-1 gap-4 items-center ${palette[variant]}`}
-      style={{ background: gradient[variant] }}
+      className={`border rounded-xl p-5 grid grid-cols-[180px_1fr_180px] max-[840px]:grid-cols-1 gap-4 items-center transition-transform duration-200 hover:translate-x-1 ${palette[variant]}`}
+      style={{
+        background: gradient[variant],
+        transitionTimingFunction: 'cubic-bezier(0.22, 0.61, 0.36, 1)',
+      }}
     >
       <div>
         <div className="text-[10px] font-bold tracking-eyebrow uppercase opacity-70 mb-1">

@@ -22,7 +22,6 @@ import {
   fetchPublishedDatasets,
   useClassCounts,
   useDataset,
-  useDatasetPivot,
   useDatasetProvenance,
   useDatasetSummary,
   useFacets,
@@ -146,18 +145,6 @@ describe('lib/api/datasets — hook URL contracts', () => {
     await waitFor(() =>
       expect(mockedApiFetch).toHaveBeenCalledWith(
         '/api/datasets/d1/provenance',
-        signalOpt,
-      ),
-    );
-  });
-
-  it('useDatasetPivot fetches /api/datasets/:id/pivot/:grain', async () => {
-    renderHook(() => useDatasetPivot('d1', 'subject'), {
-      wrapper: withClient(),
-    });
-    await waitFor(() =>
-      expect(mockedApiFetch).toHaveBeenCalledWith(
-        '/api/datasets/d1/pivot/subject',
         signalOpt,
       ),
     );

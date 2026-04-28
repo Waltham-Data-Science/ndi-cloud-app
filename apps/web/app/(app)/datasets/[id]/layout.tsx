@@ -1,7 +1,7 @@
 /**
  * Dataset detail layout — chrome-only since Bug-1 architectural fix.
  *
- * Wraps every `/datasets/[id]/{overview,tables,pivot,documents}` route
+ * Wraps every `/datasets/[id]/{overview,tables,documents}` route
  * with a shared hero band + the from-scratch a11y tab bar (audit #65).
  * The tab bar is URL-routed (`<Link>` + `usePathname`-derived
  * aria-selected), NOT state-controlled — that's the structural fix
@@ -42,7 +42,6 @@
  *   - `[id]/overview/page.tsx`
  *   - `[id]/tables/[className]/page.tsx`
  *   - `[id]/documents/page.tsx`
- *   - `[id]/pivot/[grain]/page.tsx`
  *   - `[id]/documents/[docId]/page.tsx`
  *
  * The redirect-only pages (`[id]/page.tsx`, `[id]/tables/page.tsx`)
@@ -61,7 +60,6 @@
  * Tabs as nested routes:
  *   `tables/page.tsx`         → server redirect to ./subject
  *   `tables/[className]/page.tsx`
- *   `pivot/[grain]/page.tsx`
  *   `documents/page.tsx`              → DocumentExplorer (under chrome)
  *   `documents/[docId]/page.tsx`      → standalone (chrome hidden)
  */

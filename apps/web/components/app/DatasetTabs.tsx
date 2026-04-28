@@ -22,10 +22,13 @@
  *     active state stays in lockstep with the URL during browser nav
  *     events that don't pass through React state.
  *
- * The "Summary tables" tab is the omnibus — it's active for any
- * `tables/*` AND `pivot/*` URL because pivot is conceptually a table
- * view-mode, not a separate top-level surface (matches the
- * data-browser's prefix-matching behavior).
+ * **2026-04-28 (this PR): Pivot tab removed.** The /pivot/[grain]
+ * surface was retired — the table never matched any concrete user
+ * workflow (no clear pivot story across NDI's session/element/subject
+ * grains, low click-through, the FEATURE_PIVOT_V1 flag stayed off in
+ * prod). The route + proxy + component are deleted in this same PR.
+ * The "Summary tables" tab is now the only summary-tables surface;
+ * legacy `/pivot/*` deeplinks are caught by the dataset's not-found.
  *
  * `<Link>` from `next/link` is rendered as a real `<a>` tag, so
  * `role="tab"` rides on top — semantics + standard navigation, both.
@@ -35,7 +38,6 @@ import { usePathname } from 'next/navigation';
 import { useRef, type KeyboardEvent } from 'react';
 import {
   FolderOpen,
-  Grid3x3,
   LayoutDashboard,
   Table2,
   type LucideIcon,
@@ -44,7 +46,7 @@ import {
 import { cn } from '@/lib/cn';
 
 interface TabSpec {
-  id: 'overview' | 'tables' | 'pivot' | 'documents';
+  id: 'overview' | 'tables' | 'documents';
   label: string;
   icon: LucideIcon;
   /**
@@ -55,9 +57,8 @@ interface TabSpec {
   href: (datasetId: string) => string;
   /**
    * `isActive` returns whether this tab should reflect the current URL
-   * as selected. Each tab owns its own URL prefix; the matcher is
-   * intentionally non-overlapping so pivot URLs light up the Pivot tab
-   * (not Summary tables).
+   * as selected. Each tab owns its own URL prefix; the matchers are
+   * intentionally non-overlapping.
    */
   isActive: (pathname: string, datasetId: string) => boolean;
 }
@@ -75,32 +76,7 @@ const TABS: readonly TabSpec[] = [
     label: 'Summary tables',
     icon: Table2,
     href: (id) => `/datasets/${id}/tables/subject`,
-    // Audit 2026-04-27 #5 — pre-fix this matcher ALSO matched
-    // `/pivot/*`, so deeplinks to `/datasets/[id]/pivot/[grain]`
-    // (legacy bookmarks, share links from the data-browser SPA)
-    // lit up "Summary tables" while the Pivot tab itself was
-    // hidden. The Pivot tab is now restored as a peer below; this
-    // matcher narrows to `/tables/*` only.
     isActive: (path, id) => path.startsWith(`/datasets/${id}/tables`),
-  },
-  {
-    id: 'pivot',
-    label: 'Pivot',
-    icon: Grid3x3,
-    // Default grain is `subject` — matches the data-browser source
-    // and the pivot route's coerceGrain() fallback.
-    href: (id) => `/datasets/${id}/pivot/subject`,
-    // Audit 2026-04-27 #5 — restore the Pivot tab unconditionally.
-    // When `FEATURE_PIVOT_V1` is off the route's leaf renders the
-    // friendly disabled card (PivotDisabledCard, audit #11), so a
-    // user clicking the tab gets a coherent in-development message
-    // rather than a broken page. This matches the audit's
-    // recommendation #5 ("either restore the Pivot tab… or make
-    // the Pivot route render its own tab in the bar with explicit
-    // aria-current"); we picked option 1 because it makes the
-    // surface DISCOVERABLE before we ship the feature, so power
-    // users following docs can find their way in once it's on.
-    isActive: (path, id) => path.startsWith(`/datasets/${id}/pivot`),
   },
   {
     id: 'documents',

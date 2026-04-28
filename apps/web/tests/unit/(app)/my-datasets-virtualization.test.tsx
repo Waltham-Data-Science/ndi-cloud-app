@@ -27,8 +27,8 @@ import { render, screen } from '@testing-library/react';
 // scales O(window) not O(total)" — we mock the hook to return a fixed
 // window of 18 items regardless of input count. The real-browser
 // behavior is verified in Phase 6 Playwright specs against a 10k-row
-// preview deploy. Same pattern as the data-browser PR #76 PivotView
-// test (`vi.mock('@tanstack/react-virtual')`).
+// preview deploy. Same `vi.mock('@tanstack/react-virtual')` pattern as
+// other virtualized-table tests.
 vi.mock('@tanstack/react-virtual', () => ({
   useVirtualizer: ({ count }: { count: number }) => {
     const windowSize = Math.min(count, 18);

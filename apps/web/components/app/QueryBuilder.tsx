@@ -15,11 +15,11 @@
  *      `?field=...`, `?param1=...`, `?param2=...`, `?scope=...`.
  *   2. Imports rewritten for monorepo layout (`@/lib/api/...`,
  *      `@/components/ui/...`, `@/components/errors/...`).
- *   3. Same `react-hooks/incompatible-library` carve-out as Phase 6.5b's
- *      PivotView for the inner `useReactTable` analogue — though
- *      QueryBuilder itself uses no TanStack-Table, the URL-hydration
- *      `useEffect` carries the same intentional one-shot dependency
- *      array as the data-browser.
+ *   3. Same `react-hooks/incompatible-library` carve-out approach as
+ *      other data-browser ports — QueryBuilder itself uses no
+ *      TanStack-Table, but the URL-hydration `useEffect` carries the
+ *      same intentional one-shot dependency array as the data-browser
+ *      source.
  *
  * **Chip-click contract preserved:** Phase 6.5d's catalog FacetPanel
  * pushes `/query?op=contains_string&field=data.ontology_name&param1=...`

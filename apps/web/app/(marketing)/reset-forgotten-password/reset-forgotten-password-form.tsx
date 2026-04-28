@@ -9,8 +9,7 @@ import { resetForgottenPassword } from '@/lib/api/auth';
 import { AuthCard } from '@/components/marketing/AuthCard';
 import { Field, FormError } from '@/components/marketing/AuthForm';
 import { MarketingButton } from '@/components/marketing/Button';
-
-const MIN_PASSWORD = 12;
+import { MIN_PASSWORD } from '@/lib/validation-constants';
 
 export function ResetForgottenPasswordForm() {
   const router = useRouter();
