@@ -161,6 +161,29 @@ describe('Origin allowlist — production vs preview environments', () => {
     }
   });
 
+  it('production: admits the hardcoded ndi-cloud-app-web.vercel.app alias regardless of env vars', async () => {
+    // Pre-Phase-7 hardcode (see middleware.ts comment). Hardcoded
+    // because Turbopack was eliminating the env-var-driven branch.
+    // Working path until cutover; remove the hardcoded entry at
+    // Phase 7 alongside the env-var path.
+    setEnv({
+      VERCEL_ENV: 'production',
+      // No env-var allowance; hardcode covers it.
+      ALLOW_PROJECT_PRODUCTION_URL_ORIGIN: undefined,
+      VERCEL_PROJECT_PRODUCTION_URL: undefined,
+    });
+    try {
+      const req = makeReq('https://ndi-cloud.com/api/visualize/distribution', {
+        method: 'POST',
+        origin: 'https://ndi-cloud-app-web.vercel.app',
+      });
+      const res = await middleware(req);
+      expect(res.status).not.toBe(403);
+    } finally {
+      restoreEnv();
+    }
+  });
+
   it('production + opt-in flag: still rejects an unrelated *.vercel.app Origin', async () => {
     // The opt-in admits ONLY the project's stable alias. Arbitrary
     // *.vercel.app (e.g., another project's preview) still 403s.
