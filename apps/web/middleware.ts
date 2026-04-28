@@ -36,17 +36,27 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  * Compose the set of allowed `Origin` values for `/api/*` mutations.
  *
  * - **Production**: strict allowlist of `ndi-cloud.com` + `www.ndi-cloud.com`
- *   only. The Phase 7 cutover targets. No `*.vercel.app` URLs admitted —
- *   production traffic carries the apex Origin and that's the only
- *   surface that should mutate.
+ *   only. The Phase 7 cutover targets. No `*.vercel.app` URLs admitted by
+ *   default — production traffic carries the apex Origin and that's the
+ *   only surface that should mutate.
  * - **Preview** (`VERCEL_ENV === 'preview'`): the static apex pair PLUS
  *   the per-deployment `VERCEL_URL` and the canonical `VERCEL_BRANCH_URL`.
  *   Without these, every preview deploy on `*.vercel.app` 403s its own
  *   login flow because the Origin header doesn't match the production
- *   allowlist. `VERCEL_PROJECT_PRODUCTION_URL` is intentionally NOT
- *   included — once cutover happens it becomes a redundant alias of
- *   the apex; including it would let post-cutover traffic mutate via
- *   the `*.vercel.app` URL, which we don't want.
+ *   allowlist.
+ * - **Pre-Phase-7 production** (opt-in via `ALLOW_PROJECT_PRODUCTION_URL_ORIGIN`):
+ *   while `ndi-cloud.com` still resolves to the OLD Vercel project, the
+ *   new app's production traffic lands on `ndi-cloud-app-web.vercel.app`
+ *   (the project's stable production alias from `VERCEL_PROJECT_PRODUCTION_URL`).
+ *   Without admitting that specific origin, every mutation surface on the
+ *   new project (login, Quick Plot, account creation, search submit) 403s
+ *   before the application sees it — making end-to-end QA before cutover
+ *   impossible. Gated behind an explicit env flag so the addition is a
+ *   single Vercel-dashboard toggle that disappears at Phase 7: delete
+ *   `ALLOW_PROJECT_PRODUCTION_URL_ORIGIN` from the project env and the
+ *   strict apex-only allowlist returns. This admits ONLY the project's
+ *   stable production alias — arbitrary `*.vercel.app` URLs (e.g., another
+ *   project's preview) still 403.
  *
  * Vercel auto-injects the system env vars on every Vercel build (see
  * https://vercel.com/docs/environment-variables/system-environment-variables);
@@ -68,6 +78,15 @@ function getAllowedOrigins(): Set<string> {
     if (process.env.VERCEL_BRANCH_URL) {
       allowed.add(`https://${process.env.VERCEL_BRANCH_URL}`);
     }
+  }
+  // Pre-Phase-7 escape hatch — see docstring. Removable at cutover by
+  // deleting the env var on the Vercel project (no code change).
+  if (
+    process.env.VERCEL_ENV === 'production' &&
+    process.env.ALLOW_PROJECT_PRODUCTION_URL_ORIGIN === 'true' &&
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
+  ) {
+    allowed.add(`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`);
   }
   return allowed;
 }
