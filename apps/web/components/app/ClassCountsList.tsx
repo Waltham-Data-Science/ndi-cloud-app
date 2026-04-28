@@ -47,7 +47,15 @@ export function ClassCountsList({ datasetId, data }: ClassCountsListProps) {
         {formatNumber(data.totalDocuments)} documents total
       </p>
       <ul className="space-y-1">
-        {sorted.slice(0, 25).map(([cls, n]) => {
+        {/* 2026-04-28 — `slice(0, 25)` removed (team review feedback).
+            The cap was a defensive guard against a pathological dataset
+            with hundreds of classes flooding the sidebar, but in
+            practice all real-world NDI datasets have ≤ ~30 classes,
+            and the cap was silently hiding rare-but-real classes
+            from the user. Show all classes; if a future dataset ever
+            blows past 50 we can revisit with a search filter inside
+            the explorer rather than a silent truncation. */}
+        {sorted.map(([cls, n]) => {
           const pct = (n / total) * 100;
           // Every class stays in the explorer (see file docstring for
           // why this used to split). The class-filter URL form is the

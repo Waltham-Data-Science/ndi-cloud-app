@@ -110,9 +110,23 @@ function OntologyGroupPicker({
       className="flex flex-wrap gap-1 border-b border-border-subtle pb-px"
     >
       {groups.map((g, i) => {
-        const visibleNames = g.variableNames.slice(0, 2).join(' + ');
-        const truncated = g.variableNames.length > 2 ? '…' : '';
-        const label = `${visibleNames}${truncated}`;
+        // 2026-04-28 — per-tab label now reads the deduplicated
+        // ontology prefixes (NCBITaxon · UBERON), not the raw column
+        // names (subject_id + probe_id). Reviewer: "Using the first
+        // column name is misleading." The ontology prefix actually
+        // describes what's in the table — a controlled-vocabulary
+        // mapping for THAT ontology — whereas the column name
+        // describes what the row REFERS to. When a group has no
+        // resolved ontology prefixes (only NDI-internal mappings),
+        // we fall back to the previous "first 2 column names" form
+        // so the user still gets something to click.
+        const ontologyPrefixes = uniquePrefixes(g.ontologyNodes);
+        const label =
+          ontologyPrefixes.length > 0
+            ? ontologyPrefixes.join(' · ')
+            : `${g.variableNames.slice(0, 2).join(' + ')}${
+                g.variableNames.length > 2 ? '…' : ''
+              }`;
         // Stable key per group so reorders (new dataset load) don't
         // defeat React reconciliation.
         const key = g.variableNames.join('|');
@@ -158,6 +172,35 @@ function buildColumnOntology(
   for (let i = 0; i < group.variableNames.length; i++) {
     const key = group.variableNames[i]!;
     out[key] = group.ontologyNodes[i] ?? null;
+  }
+  return out;
+}
+
+/**
+ * Extract the unique ontology prefixes (`NCBITaxon`, `UBERON`, etc.)
+ * from a group's `ontologyNodes`. Each ontology node is a
+ * `PROVIDER:ID` form (`NCBITaxon:6239`, `UBERON:0001062`); the prefix
+ * before the colon is the ontology source. Used to label per-group
+ * tabs in `OntologyGroupPicker` with what the group is conceptually
+ * about, not which columns happen to live in it. Order-preserving:
+ * the prefix appears in the order it's first seen.
+ *
+ * Returns `[]` when no ontology nodes are annotated (the group
+ * picker then falls back to the variable-name label).
+ */
+function uniquePrefixes(
+  ontologyNodes: ReadonlyArray<string | null>,
+): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const node of ontologyNodes) {
+    if (!node) continue;
+    const colonIdx = node.indexOf(':');
+    if (colonIdx <= 0) continue;
+    const prefix = node.slice(0, colonIdx).trim();
+    if (!prefix || seen.has(prefix)) continue;
+    seen.add(prefix);
+    out.push(prefix);
   }
   return out;
 }

@@ -52,6 +52,13 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { SummaryTableView } from '@/components/app/SummaryTableView';
 import { OntologyTablesView } from '@/components/app/OntologyTablesView';
 
+// 2026-04-28 — `Ontology` tab renamed to `Mappings` (team review
+// feedback). The previous label described the data type; the new
+// label describes what the user sees inside — a list of column
+// names mapped to controlled-vocabulary ontology nodes. Reviewer:
+// "Need to come up with a better name for the summary table called
+// ontology." The route slug stays `/tables/ontology` (URL backwards-
+// compat); only the visible label changes.
 const COMMON_CLASSES = [
   { id: 'subject', label: 'Subjects' },
   { id: 'element', label: 'Elements' },
@@ -60,7 +67,7 @@ const COMMON_CLASSES = [
   { id: 'probe_location', label: 'Probe locations' },
   { id: 'openminds_subject', label: 'OpenMINDS subjects' },
   { id: 'combined', label: 'Combined' },
-  { id: 'ontology', label: 'Ontology' },
+  { id: 'ontology', label: 'Mappings' },
 ] as const;
 
 /**

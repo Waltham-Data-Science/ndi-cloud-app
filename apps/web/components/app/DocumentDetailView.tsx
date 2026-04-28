@@ -36,7 +36,7 @@ import type { DocumentSummary } from '@/lib/api/documents';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Separator } from '@/components/ui/Separator';
-import { formatDate } from '@/lib/format';
+import { formatDateTime } from '@/lib/format';
 
 interface DocumentDetailViewProps {
   document: DocumentSummary;
@@ -160,7 +160,11 @@ export function DocumentDetailView({ document: doc, datasetId }: DocumentDetailV
           {datestamp && (
             <p className="flex items-center gap-1">
               <Calendar className="h-2.5 w-2.5" />
-              {formatDate(datestamp)}
+              {/* Date+time per team review feedback (`Apr 22, 2026 at
+                  4:33 PM`) — document timestamps capture a specific
+                  moment, so the time component matters. See `formatDateTime`
+                  in `lib/format.ts`. */}
+              {formatDateTime(datestamp)}
             </p>
           )}
         </div>
