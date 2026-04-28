@@ -66,27 +66,71 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  * Computed per request so tests can flip `process.env.VERCEL_ENV` without
  * `vi.resetModules()`. The function is O(1) and runs at the edge — cheap.
  */
+/**
+ * Read `process.env[key]` through a function rather than direct property
+ * access. Why: Next.js + Turbopack can statically constant-fold
+ * `process.env.X === 'literal'` comparisons at build time, then dead-
+ * code-eliminate any branch that folds to `false`. This is documented
+ * for `NODE_ENV` (Next.js inlines it explicitly) and empirically applies
+ * to other env vars when Turbopack can determine their value at build.
+ *
+ * For Vercel "Sensitive" env vars and any var not exposed during the
+ * build phase, the build-time read returns `undefined`, so
+ * `undefined === 'true'` folds to `false` and the entire branch
+ * disappears from the deployed bundle — even though at runtime the var
+ * IS available.
+ *
+ * Function indirection through `readEnv()` prevents the optimizer from
+ * tracing the access back to a static `process.env` reference; the
+ * comparison stays in the bundle and is evaluated at request time on
+ * the Edge runtime where the env var is actually populated.
+ *
+ * Verified empirically against Vercel deploy 2026-04-28: direct
+ * `process.env.ALLOW_PROJECT_PRODUCTION_URL_ORIGIN === 'true'` was
+ * eliminated by Turbopack; bracket-access via `readEnv()` is preserved.
+ */
+function readEnv(key: string): string | undefined {
+  return process.env[key];
+}
+
+/**
+ * `'true'` / `'TRUE'` / `' true '` all admit. Sensitive env vars hide
+ * their value in the Vercel dashboard, so a stray space or capital is
+ * easy to introduce undetected; lenient parse beats silent failure.
+ */
+function envFlagOn(key: string): boolean {
+  const v = readEnv(key);
+  if (!v) return false;
+  return v.trim().toLowerCase() === 'true';
+}
+
 function getAllowedOrigins(): Set<string> {
   const allowed = new Set<string>([
     'https://ndi-cloud.com',
     'https://www.ndi-cloud.com',
   ]);
-  if (process.env.VERCEL_ENV === 'preview') {
-    if (process.env.VERCEL_URL) {
-      allowed.add(`https://${process.env.VERCEL_URL}`);
+  if (readEnv('VERCEL_ENV') === 'preview') {
+    const previewUrl = readEnv('VERCEL_URL');
+    if (previewUrl) {
+      allowed.add(`https://${previewUrl}`);
     }
-    if (process.env.VERCEL_BRANCH_URL) {
-      allowed.add(`https://${process.env.VERCEL_BRANCH_URL}`);
+    const branchUrl = readEnv('VERCEL_BRANCH_URL');
+    if (branchUrl) {
+      allowed.add(`https://${branchUrl}`);
     }
   }
   // Pre-Phase-7 escape hatch — see docstring. Removable at cutover by
   // deleting the env var on the Vercel project (no code change).
+  // Reads via `readEnv()` so the conditional survives Turbopack's
+  // build-time constant folding.
   if (
-    process.env.VERCEL_ENV === 'production' &&
-    process.env.ALLOW_PROJECT_PRODUCTION_URL_ORIGIN === 'true' &&
-    process.env.VERCEL_PROJECT_PRODUCTION_URL
+    readEnv('VERCEL_ENV') === 'production' &&
+    envFlagOn('ALLOW_PROJECT_PRODUCTION_URL_ORIGIN')
   ) {
-    allowed.add(`https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`);
+    const projectProdUrl = readEnv('VERCEL_PROJECT_PRODUCTION_URL');
+    if (projectProdUrl) {
+      allowed.add(`https://${projectProdUrl}`);
+    }
   }
   return allowed;
 }
