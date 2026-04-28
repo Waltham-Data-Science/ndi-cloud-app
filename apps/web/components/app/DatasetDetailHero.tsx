@@ -140,47 +140,103 @@ export function DatasetDetailHero({ datasetId }: { datasetId: string }) {
                 (value, monospace where the value is a number/code).
                 Source data-browser `HeroFact` SCSS used `gap-x-8 gap-y-3`
                 + a top border in white/10. Only fact-keys with a value
-                render — no empty placeholders. */}
-            {(data.species ||
-              data.brainRegions ||
-              data.documentCount != null ||
-              (data.numberOfSubjects != null && data.numberOfSubjects > 0) ||
-              (data.totalSize != null && data.totalSize > 0) ||
-              data.license) && (
-              <dl className="flex flex-wrap gap-x-8 gap-y-3 mt-5 pt-4 border-t border-white/10 text-[11.5px] max-w-3xl">
-                {data.species && (
-                  <HeroFact label="Species" value={data.species} />
-                )}
-                {data.brainRegions && (
-                  <HeroFact label="Region" value={data.brainRegions} mono />
-                )}
-                {data.documentCount != null && (
+                render — no empty placeholders.
+
+                Audit 2026-04-27 #18 (design call) — pre-fix, datasets
+                with few populated facts (e.g. Reikersdorfer: just
+                Documents + Size) sat awkwardly aligned-left while
+                wider datasets spanned the full row. The layout looked
+                ragged across the catalog. Picked the lighter of the
+                audit's two options: count the rendered facts and
+                center-justify when there are fewer than 4 (so the
+                row visually balances) and keep the natural
+                `justify-start` for ≥4 facts (which already span
+                enough width to look intentional). The alternative —
+                a fixed 6-cell grid with hide-on-empty — would
+                introduce hard layout for a strip that's purely
+                informational and varies by dataset. */}
+            {(() => {
+              const facts: ReactNode[] = [];
+              if (data.species) {
+                facts.push(
+                  <HeroFact key="species" label="Species" value={data.species} />,
+                );
+              }
+              if (data.brainRegions) {
+                facts.push(
                   <HeroFact
+                    key="region"
+                    label="Region"
+                    value={data.brainRegions}
+                    mono
+                  />,
+                );
+              }
+              if (data.documentCount != null) {
+                facts.push(
+                  <HeroFact
+                    key="documents"
                     label="Documents"
                     value={formatNumber(data.documentCount)}
                     mono
-                  />
-                )}
-                {data.numberOfSubjects != null &&
-                  data.numberOfSubjects > 0 && (
-                    <HeroFact
-                      label="Subjects"
-                      value={formatNumber(data.numberOfSubjects)}
-                      mono
-                    />
-                  )}
-                {data.totalSize != null && data.totalSize > 0 && (
+                  />,
+                );
+              }
+              if (
+                data.numberOfSubjects != null &&
+                data.numberOfSubjects > 0
+              ) {
+                facts.push(
                   <HeroFact
+                    key="subjects"
+                    label="Subjects"
+                    value={formatNumber(data.numberOfSubjects)}
+                    mono
+                  />,
+                );
+              }
+              if (data.totalSize != null && data.totalSize > 0) {
+                facts.push(
+                  <HeroFact
+                    key="size"
                     label="Size"
                     value={formatBytes(data.totalSize)}
                     mono
-                  />
-                )}
-                {data.license && (
-                  <HeroFact label="License" value={data.license} mono />
-                )}
-              </dl>
-            )}
+                  />,
+                );
+              }
+              if (data.license) {
+                facts.push(
+                  <HeroFact
+                    key="license"
+                    label="License"
+                    value={data.license}
+                    mono
+                  />,
+                );
+              }
+              if (facts.length === 0) return null;
+              // Center-justify when sparse so the row doesn't sit
+              // awkwardly aligned-left next to the wide hero. With
+              // ≥4 facts, the row spans enough width to look
+              // intentional with the natural left-justify. The
+              // visual breakpoint matches what the audit observer
+              // saw: Reikersdorfer (2 facts) felt asymmetric;
+              // Sophie Griswold (5 facts) didn't.
+              const justify =
+                facts.length < 4 ? 'justify-center' : 'justify-start';
+              return (
+                <dl
+                  className={
+                    `flex flex-wrap gap-x-8 gap-y-3 mt-5 pt-4 border-t border-white/10 ` +
+                    `text-[11.5px] max-w-3xl ${justify}`
+                  }
+                  data-fact-count={facts.length}
+                >
+                  {facts}
+                </dl>
+              );
+            })()}
           </>
         )}
       </div>

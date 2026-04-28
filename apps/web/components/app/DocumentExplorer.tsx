@@ -35,7 +35,9 @@
  */
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+
+import { cn } from '@/lib/cn';
 
 import { useClassCounts } from '@/lib/api/datasets';
 import { useDocumentsInfinite } from '@/lib/api/documents';
@@ -163,27 +165,18 @@ export function DocumentExplorer({ datasetId }: { datasetId: string }) {
   // scrolls horizontally instead of forcing the whole page wider.
   return (
     <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
-      <aside className="min-w-0">
-        <Card>
-          <CardHeader>
-            <CardTitle as="h3" className="text-sm">
-              Document classes
-            </CardTitle>
-            <CardDescription>
-              Click any class to filter below or jump to the summary tables.
-            </CardDescription>
-          </CardHeader>
-          <CardBody>
-            {counts.isLoading && <Skeleton className="h-32 w-full" />}
-            {counts.isError && (
-              <ErrorState error={counts.error} onRetry={() => counts.refetch()} />
-            )}
-            {counts.data && (
-              <ClassCountsList datasetId={datasetId} data={counts.data} />
-            )}
-          </CardBody>
-        </Card>
-      </aside>
+      <DocumentClassesAside
+        datasetId={datasetId}
+        counts={counts}
+        activeClass={cls}
+      />
+      {/* Document table — 2nd grid cell at lg+, stacks BELOW aside
+          on narrower viewports. Pre-fix the aside stacked above the
+          table, forcing the user to scroll past the entire class-
+          counts list (which on a 100-class dataset can fill a screen)
+          before seeing any document. The aside above is now
+          collapsed-by-default at <lg widths so the user lands on
+          the table immediately. */}
 
       <section className="min-w-0">
         <Card>
@@ -340,5 +333,89 @@ export function DocumentExplorer({ datasetId }: { datasetId: string }) {
         </Card>
       </section>
     </div>
+  );
+}
+
+/**
+ * DocumentClassesAside — the sidebar that lists each document class
+ * + its count. At lg+ widths it sits in the left column and is always
+ * visible. Below lg, it stacks above the table.
+ *
+ * Audit 2026-04-27 #17 — pre-fix, on a 100-class dataset (Jess Haley
+ * et al), the user at narrow widths had to scroll past the entire
+ * class list (≈800 px) before seeing any document. Mirrors the
+ * `<FacetSidebar>` collapse pattern from the catalog: a "Show class
+ * filters" toggle visible only at <lg widths; default state is
+ * collapsed so the user lands on the table.
+ *
+ * Unlike the catalog sidebar (which can be `display: none` because
+ * filters are URL-state and the toggle simply re-shows them), the
+ * sticky lg+ rendering must always show the aside. Using `lg:block`
+ * + state keeps both paths simple.
+ */
+function DocumentClassesAside({
+  datasetId,
+  counts,
+  activeClass,
+}: {
+  datasetId: string;
+  counts: ReturnType<typeof useClassCounts>;
+  activeClass: string | null;
+}) {
+  // Open if user has explicitly toggled OR a class filter is active
+  // (so re-opening reveals the chosen class). Closed-by-default at
+  // narrow widths.
+  const [openOnNarrow, setOpenOnNarrow] = useState(false);
+  const showOnNarrow = openOnNarrow || !!activeClass;
+
+  return (
+    <>
+      <div className="lg:hidden">
+        <Button
+          variant="secondary"
+          size="sm"
+          onClick={() => setOpenOnNarrow((v) => !v)}
+          className="w-full justify-center"
+          aria-expanded={showOnNarrow}
+          aria-controls="document-classes-aside"
+        >
+          {showOnNarrow ? 'Hide class filter' : 'Show class filter'}
+          {activeClass && (
+            <span className="ml-2 font-mono text-[11px] text-fg-muted">
+              ({activeClass})
+            </span>
+          )}
+        </Button>
+      </div>
+      <aside
+        id="document-classes-aside"
+        className={cn(
+          'min-w-0',
+          // lg+: always visible. Below: respects state.
+          'lg:block',
+          showOnNarrow ? 'block' : 'hidden lg:block',
+        )}
+      >
+        <Card>
+          <CardHeader>
+            <CardTitle as="h3" className="text-sm">
+              Document classes
+            </CardTitle>
+            <CardDescription>
+              Click any class to filter below or jump to the summary tables.
+            </CardDescription>
+          </CardHeader>
+          <CardBody>
+            {counts.isLoading && <Skeleton className="h-32 w-full" />}
+            {counts.isError && (
+              <ErrorState error={counts.error} onRetry={() => counts.refetch()} />
+            )}
+            {counts.data && (
+              <ClassCountsList datasetId={datasetId} data={counts.data} />
+            )}
+          </CardBody>
+        </Card>
+      </aside>
+    </>
   );
 }

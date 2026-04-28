@@ -164,6 +164,22 @@ export function DatasetsListClient({
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-[260px_1fr] gap-6">
+      {/*
+        Audit 2026-04-27 #15 — pre-fix, keyboard tab order traversed
+        the FacetSidebar (~30 checkboxes) BEFORE reaching the first
+        dataset card. Same pattern as the global "Skip to main
+        content" link wired in `app/layout.tsx`: visually hidden
+        until focused, pins to top-center on focus, jumps directly
+        to the results region (`#datasets-results` below). Same
+        accessible-name vocabulary ("Skip to results") as common
+        ecommerce facet UIs.
+      */}
+      <a
+        href="#datasets-results"
+        className="sr-only focus:not-sr-only focus:fixed focus:top-2 focus:left-1/2 focus:-translate-x-1/2 focus:z-[9999] focus:px-4 focus:py-2 focus:bg-brand-navy focus:text-white focus:font-semibold focus:text-sm focus:rounded-md focus:no-underline focus:shadow-lg"
+      >
+        Skip to results
+      </a>
       <FacetSidebar
         species={(facets.data?.species ?? []).map((t) => t.label)}
         regions={(facets.data?.brainRegions ?? []).map((t) => t.label)}
@@ -177,7 +193,7 @@ export function DatasetsListClient({
         loading={facets.isLoading}
       />
 
-      <div className="min-w-0">
+      <div id="datasets-results" className="min-w-0">
         {/* Results info bar + sort */}
         <div
           className="flex flex-wrap items-center justify-between gap-3 rounded-md bg-white border border-border-subtle px-4 py-2.5 mb-3"

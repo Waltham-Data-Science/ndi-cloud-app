@@ -203,4 +203,61 @@ describe('DatasetDetailHero', () => {
     // The <dl> should NOT be rendered at all when no facts are available.
     expect(container.querySelector('dl')).toBeNull();
   });
+
+  // Audit 2026-04-27 #18 (design call) — when fewer than 4 facts are
+  // populated, center-justify the strip so it doesn't sit awkwardly
+  // aligned-left next to the wide hero. Reikersdorfer-style 2-fact
+  // datasets get justify-center; Sophie-style 5-fact datasets stay
+  // justify-start.
+  it('center-justifies the HeroFact strip when fewer than 4 facts are populated', async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      id: 'd1',
+      name: 'Sparse dataset',
+      documentCount: 12,
+      totalSize: 1_000_000,
+      // Only 2 facts populated (documents + size).
+      isPublished: true,
+    });
+    const Wrapper = withClient();
+    const { container } = render(
+      <Wrapper>
+        <DatasetDetailHero datasetId="d1" />
+      </Wrapper>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText('Documents')).toBeInTheDocument();
+    });
+    const dl = container.querySelector('dl[data-fact-count]');
+    expect(dl).not.toBeNull();
+    expect(dl?.getAttribute('data-fact-count')).toBe('2');
+    expect(dl?.className).toMatch(/justify-center/);
+    expect(dl?.className).not.toMatch(/justify-start/);
+  });
+
+  it('left-justifies the HeroFact strip when 4+ facts are populated', async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      id: 'd1',
+      name: 'Rich dataset',
+      species: 'Mus musculus',
+      brainRegions: 'V1',
+      documentCount: 412,
+      numberOfSubjects: 17,
+      totalSize: 1_000_000,
+      // 5 facts populated.
+      isPublished: true,
+    });
+    const Wrapper = withClient();
+    const { container } = render(
+      <Wrapper>
+        <DatasetDetailHero datasetId="d1" />
+      </Wrapper>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText('Subjects')).toBeInTheDocument();
+    });
+    const dl = container.querySelector('dl[data-fact-count]');
+    expect(dl?.getAttribute('data-fact-count')).toBe('5');
+    expect(dl?.className).toMatch(/justify-start/);
+    expect(dl?.className).not.toMatch(/justify-center/);
+  });
 });
