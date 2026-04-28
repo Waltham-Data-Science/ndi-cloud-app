@@ -189,12 +189,43 @@ async function prefetchDetailEndpoint(
  * importing `DatasetRecordSchema` (which lives in the same
  * `'use client'` file we're routing around).
  */
+/**
+ * Tighter timeout for the existence-check fetch than the secondary
+ * prefetches. The dataset record is the FIRST thing the layout
+ * blocks on — its latency is the lower bound on every dataset
+ * detail click-to-paint. The previous 8s ceiling matched the
+ * other prefetches but produced a 9.3s click freeze on Sophie
+ * (verified visually on production: catalog stayed shown for
+ * 9.3s before the URL changed). 1.5s is tight enough to bound
+ * the freeze AND generous enough to capture the warm-cache case
+ * (Reikersdorfer ~300ms, even Sophie's getDataset is ~2.5s on
+ * cold cache — but we'd rather bail and let the client hook
+ * fetch than block the chrome on a slow getDataset).
+ *
+ * On timeout, the existence check returns `{ status: 0 }` — the
+ * caller treats that as transient and proceeds normally. The bad-
+ * id check (audit #10) only fires on a fast 4xx response; a slow
+ * cloud doesn't masquerade as a missing dataset.
+ *
+ * Underlying issue tracked: loading.tsx still doesn't paint during
+ * this 1.5s window because Next.js's loading.tsx is the Suspense
+ * fallback for the PAGE, not the LAYOUT — a layout-level await
+ * blocks the page from even starting to render. Proper fix
+ * requires moving the existence check + data prefetches OUT of
+ * the layout entirely (into pages or middleware). Out of scope
+ * for this hotfix.
+ */
+const EXISTENCE_CHECK_TIMEOUT_MS = 1_500;
+
 async function fetchDatasetWithStatus(
   baseUrl: string,
   id: string,
 ): Promise<{ status: number; data: unknown }> {
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PREFETCH_TIMEOUT_MS);
+  const timer = setTimeout(
+    () => controller.abort(),
+    EXISTENCE_CHECK_TIMEOUT_MS,
+  );
   try {
     const res = await fetch(`${baseUrl}/api/datasets/${id}`, {
       headers: { Accept: 'application/json' },
@@ -254,7 +285,23 @@ export default async function DatasetDetailLayout({
     } catch {
       datasetResult = { status: 0, data: null };
     }
-    if (datasetResult.status === 404) {
+    // Audit 2026-04-27 #10 — route bad ids to the dataset-scoped
+    // not-found page. The cloud distinguishes:
+    //   - 404: id is Mongo-ObjectId-shaped but doesn't exist
+    //   - 400: id isn't a valid identifier shape (validation
+    //     rejected pre-Mongo-lookup)
+    // Visually verified on production: visiting
+    // `/datasets/nonexistent-id-test/overview` (a non-Mongo-shaped
+    // id) returned the 400 path and rendered the dataset chrome
+    // with the bare id as h1 — the exact UX the audit was
+    // supposed to fix. Treating both 4xx as not-found is the
+    // user-facing correct behavior.
+    //
+    // Other failures (500/502/503/504, status 0): NOT treated as
+    // not-found. A bad network or upstream blip shouldn't
+    // masquerade as a missing dataset; the client hook downstream
+    // surfaces a Retry button for those cases.
+    if (datasetResult.status === 400 || datasetResult.status === 404) {
       notFound();
     }
     queryClient.setQueryData(['dataset', id], datasetResult.data);
