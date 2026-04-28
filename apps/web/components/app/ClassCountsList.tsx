@@ -11,25 +11,27 @@
  * dragging the whole DatasetDetailPage into the import graph). One
  * monorepo adaptation: react-router-dom `<Link>` → Next's `<Link>`.
  *
- * Routing rule: `subject` / `element` / `element_epoch` / `treatment` /
- * `openminds_subject` / `probe_location` are "summary" classes that have
- * a rich table view at `/datasets/[id]/tables/[className]`. Everything
- * else routes to `/datasets/[id]/documents?class=...` for the raw
- * document list.
+ * 2026-04-28 — routing rule simplified. Previously the sidebar split
+ * its links: `subject` / `element` / `element_epoch` / `treatment` /
+ * `openminds_subject` / `probe_location` (the six "summary" classes)
+ * routed to `/datasets/[id]/tables/[className]`, the rest to
+ * `/datasets/[id]/documents?class=...`. The intent was helpful — point
+ * users to the rich table view when one exists — but in practice it
+ * yanked the user OUT of the Document Explorer they were already
+ * inside, dropping them onto the Summary Tables tab. Confusing
+ * because the click looked like a filter ("filter the explorer to
+ * subject docs") and behaved like a tab swap.
+ *
+ * New rule: every class link stays in the explorer. Click a class →
+ * the explorer's class filter applies. Users wanting the rich summary
+ * tables can still get there via the top tab bar's "Summary tables"
+ * entry, which is the correct (singular) discovery surface for that
+ * view.
  */
 import Link from 'next/link';
-import { FileText, Globe } from 'lucide-react';
+import { FileText } from 'lucide-react';
 
 import { formatNumber } from '@/lib/format';
-
-const COMMON_CLASSES = [
-  'subject',
-  'element',
-  'element_epoch',
-  'treatment',
-  'openminds_subject',
-  'probe_location',
-];
 
 export interface ClassCountsListProps {
   datasetId: string;
@@ -47,12 +49,11 @@ export function ClassCountsList({ datasetId, data }: ClassCountsListProps) {
       <ul className="space-y-1">
         {sorted.slice(0, 25).map(([cls, n]) => {
           const pct = (n / total) * 100;
-          const isSummary = COMMON_CLASSES.includes(cls);
-          // Route summary classes to the rich table view; the rest go
-          // through the Raw Documents list with a class filter.
-          const href = isSummary
-            ? `/datasets/${datasetId}/tables/${cls}`
-            : `/datasets/${datasetId}/documents?class=${encodeURIComponent(cls)}`;
+          // Every class stays in the explorer (see file docstring for
+          // why this used to split). The class-filter URL form is the
+          // explorer's stable contract — `?class=<cls>` becomes the
+          // active filter chip.
+          const href = `/datasets/${datasetId}/documents?class=${encodeURIComponent(cls)}`;
           return (
             <li key={cls} className="text-xs">
               <Link
@@ -68,8 +69,7 @@ export function ClassCountsList({ datasetId, data }: ClassCountsListProps) {
                  * rather than getting cut off mid-name. */}
                 <span className="font-mono break-words flex-1">{cls}</span>
                 <span className="text-fg-muted">{formatNumber(n)}</span>
-                {isSummary && <FileText className="h-3 w-3 text-fg-muted" aria-hidden />}
-                {!isSummary && <Globe className="h-3 w-3 text-fg-muted" aria-hidden />}
+                <FileText className="h-3 w-3 text-fg-muted" aria-hidden />
               </Link>
               <div
                 className="mt-0.5 h-1 rounded bg-bg-muted overflow-hidden"
