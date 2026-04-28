@@ -127,7 +127,12 @@ function tutorialSourceFilename(datasetId: string, lang: Lang): string {
 type Availability = 'unknown' | 'available' | 'unavailable';
 
 export function TutorialView({ datasetId }: TutorialViewProps) {
-  const [lang, setLang] = useState<Lang>('matlab');
+  // `requestedLang` is the user's pick; `effectiveLang` (computed
+  // below) folds in the availability state so an unavailable Python
+  // pick silently falls back to MATLAB without firing a setState in
+  // an effect (which React 19's strict `react-hooks/set-state-in-effect`
+  // rule rejects).
+  const [requestedLang, setLang] = useState<Lang>('matlab');
   // Default the MATLAB tutorial to `available` since the gating tab
   // wouldn't have rendered without one. Python starts `unknown` and
   // gets HEAD-probed on mount.
@@ -168,15 +173,16 @@ export function TutorialView({ datasetId }: TutorialViewProps) {
     };
   }, [datasetId]);
 
-  // If the user picks Python while we're still probing, fall back to
-  // MATLAB silently — re-selecting Python after the probe finishes is
-  // a one-click recovery. Without this, picking Python before the
-  // probe lands shows a 403 inside the iframe.
-  useEffect(() => {
-    if (lang === 'python' && pythonAvailable === 'unavailable') {
-      setLang('matlab');
-    }
-  }, [lang, pythonAvailable]);
+  // Derived state: if the user picked Python before the probe finished
+  // and the probe came back unavailable, display MATLAB. The
+  // `requestedLang` state stays as 'python' so a later re-toggle once
+  // the probe resolves is a single click. Computing this in render
+  // (instead of via a setLang in useEffect) is what the React-19
+  // exhaustive-deps + set-state-in-effect rules want.
+  const lang: Lang =
+    requestedLang === 'python' && pythonAvailable === 'unavailable'
+      ? 'matlab'
+      : requestedLang;
 
   const htmlUrl = tutorialHtmlUrl(datasetId, lang);
   const sourceUrl = tutorialSourceUrl(datasetId, lang);
