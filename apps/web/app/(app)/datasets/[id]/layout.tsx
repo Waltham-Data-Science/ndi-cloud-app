@@ -69,8 +69,29 @@ import {
 import { notFound } from 'next/navigation';
 
 import { DatasetDetailChromeGate } from '@/components/app/DatasetDetailChromeGate';
-import { fetchDatasetServerWithStatus } from '@/lib/api/datasets';
 import { env } from '@/lib/env';
+
+/*
+ * HOTFIX (post-PR-#96 production 500): the dataset existence check
+ * MUST live inline in this server component, NOT in `lib/api/datasets`.
+ * That module has `'use client'` at line 1 — every export is therefore
+ * a client-only symbol. The original layout got away with calling
+ * `fetchDatasetServer` from there because it was wrapped in
+ * `prefetchQuery`'s try/catch, which swallowed the resulting
+ * "client-from-server" throw silently. PR #96 lifted the dataset
+ * fetch out of `prefetchQuery` (so we could check the HTTP status
+ * for the bad-id `notFound()` route, audit #10) — which removed the
+ * try/catch belt and the throw started propagating, returning 500
+ * for every dataset detail visit.
+ *
+ * Inlining the fetch here matches the existing `prefetchDetailEndpoint`
+ * pattern below and avoids the client/server module boundary
+ * entirely. The catalog `fetchPublishedDatasets` (used by the
+ * overview page's `generateStaticParams`) has the same latent issue
+ * — its build-time error is surfaced in the build log and silently
+ * fails the prerender (skip → ISR fallback). That's a separate bug;
+ * this hotfix is scoped to unbreaking the runtime 500.
+ */
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -147,6 +168,50 @@ async function prefetchDetailEndpoint(
   }
 }
 
+/**
+ * Inline server-side dataset fetch with status. Mirrors what
+ * `lib/api/datasets.fetchDatasetServerWithStatus` did in the
+ * pre-hotfix codepath, but inlined here so the call doesn't cross
+ * the `'use client'` boundary on `lib/api/datasets.ts`.
+ *
+ * Returns `{ status, data }`:
+ *   - `status >= 200 && < 300`: `data` is the parsed JSON body
+ *   - `status >= 400`: `data` is `null`; caller routes 404 to
+ *     `notFound()` and treats other 4xx/5xx as transient
+ *   - `status === 0`: network/timeout/parse error; caller treats as
+ *     transient (NEVER as 404 — a bad network shouldn't masquerade
+ *     as a missing dataset)
+ *
+ * No zod validation here — the layout just needs to know whether
+ * the dataset exists, and downstream client hooks parse the body
+ * via the same schema in `useDataset` when they read from cache.
+ * Skipping the parse keeps the inline helper minimal and avoids
+ * importing `DatasetRecordSchema` (which lives in the same
+ * `'use client'` file we're routing around).
+ */
+async function fetchDatasetWithStatus(
+  baseUrl: string,
+  id: string,
+): Promise<{ status: number; data: unknown }> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), PREFETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${baseUrl}/api/datasets/${id}`, {
+      headers: { Accept: 'application/json' },
+      signal: controller.signal,
+      cache: 'force-cache',
+      next: { revalidate: 60 },
+    });
+    if (!res.ok) return { status: res.status, data: null };
+    const body = (await res.json()) as unknown;
+    return { status: res.status, data: body };
+  } catch {
+    return { status: 0, data: null };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export default async function DatasetDetailLayout({
   children,
   params,
@@ -176,7 +241,19 @@ export default async function DatasetDetailLayout({
     // keeps it free: the dataset record is the FIRST thing we
     // need anyway, and the queryClient gets pre-populated from the
     // same response so the client island doesn't double-fetch.
-    const datasetResult = await fetchDatasetServerWithStatus(baseUrl, id);
+    //
+    // Outer try/catch belt: even though `fetchDatasetWithStatus`
+    // catches its own errors and returns `{ status: 0 }`, ANY
+    // unexpected throw here would render the global Next.js 500
+    // page instead of the dataset chrome. Belt + suspenders so a
+    // future regression in the helper doesn't bring down every
+    // dataset detail visit.
+    let datasetResult: { status: number; data: unknown };
+    try {
+      datasetResult = await fetchDatasetWithStatus(baseUrl, id);
+    } catch {
+      datasetResult = { status: 0, data: null };
+    }
     if (datasetResult.status === 404) {
       notFound();
     }
