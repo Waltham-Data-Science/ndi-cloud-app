@@ -574,7 +574,10 @@ function DiagramCard({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-bg-surface border border-border-subtle rounded-2xl p-8 max-[640px]:p-5 shadow-md mb-10 last:mb-0">
+    // Shared team-card hover pattern. Resting shadow is `shadow-md`
+    // (matches the visual weight of these step cards), so the hover
+    // lifts to `shadow-lg` for proportional emphasis.
+    <div className="bg-bg-surface border border-border-subtle rounded-2xl p-8 max-[640px]:p-5 shadow-md mb-10 last:mb-0 transition-all duration-(--duration-base) ease-(--ease-out) hover:border-ndi-teal-border hover:-translate-y-0.5 hover:shadow-lg">
       <div className="flex items-center gap-3 mb-2">
         <span className="inline-flex items-center justify-center w-9 h-9 rounded-lg bg-ndi-teal-light text-ndi-teal font-display font-bold text-base">
           {num}

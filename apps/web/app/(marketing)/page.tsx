@@ -303,8 +303,12 @@ export default function HomePage() {
               </p>
             </div>
 
-            {/* Sample dataset card — white surface on the cream band. */}
-            <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-md">
+            {/* Sample dataset card — white surface on the cream band.
+                Hover affordance shared with FairTile/ProvCell — but the
+                resting shadow is already `shadow-md` (this card carries
+                more visual weight to anchor the DOI band), so the hover
+                lifts to `shadow-lg` for a proportional bump. */}
+            <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-md transition-all duration-(--duration-base) ease-(--ease-out) hover:border-ndi-teal-border hover:-translate-y-0.5 hover:shadow-lg">
               <span className="inline-flex items-center gap-1.5 text-[10px] font-bold tracking-wide uppercase text-green-700 mb-3">
                 <span className="inline-block w-1.5 h-1.5 rounded-full bg-green-500" />
                 Published
@@ -496,7 +500,12 @@ function FairTile({
   chips?: ReadonlyArray<string>;
 }) {
   return (
-    <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-sm">
+    // Hover affordance ported from the about-page team-card pattern
+    // (`apps/web/app/(marketing)/about/page.tsx:198`): subtle 2px lift,
+    // shadow bump, teal border tint. Keeps the same custom motion
+    // tokens (`--duration-base` + `--ease-out`) so all marketing-card
+    // hovers share one easing curve.
+    <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-sm transition-all duration-(--duration-base) ease-(--ease-out) hover:border-ndi-teal-border hover:-translate-y-0.5 hover:shadow-md">
       <div
         className="font-display font-extrabold text-3xl text-ndi-teal mb-2 leading-none"
         aria-hidden
@@ -540,7 +549,10 @@ function ProvCell({
   body: string;
 }) {
   return (
-    <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-sm">
+    // Same team-card hover pattern as FairTile above. See FairTile
+    // for the rationale; sharing this affordance across every
+    // homepage card so they all feel consistently reactive.
+    <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-sm transition-all duration-(--duration-base) ease-(--ease-out) hover:border-ndi-teal-border hover:-translate-y-0.5 hover:shadow-md">
       <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-2">
         {kicker}
       </div>
