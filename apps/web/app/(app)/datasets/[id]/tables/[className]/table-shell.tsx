@@ -265,16 +265,21 @@ function StandardTableContent({
   // ndi://412695ff…". Long-term, the synthesizer should resolve
   // Schema-B nested name references on the backend (a Steve task);
   // this is the unblocker today.
+  // Closure reads `query.data`; the React-19 strict exhaustive-deps
+  // rule wants the parent `query` reference rather than the
+  // sub-property — listing `query` keeps the dep stable across
+  // re-fetches that change the data identity.
+  const queryData = query.data;
   const enrichedData = useMemo(() => {
-    if (!query.data) return query.data;
-    if (className !== 'subject') return query.data;
+    if (!queryData) return queryData;
+    if (className !== 'subject') return queryData;
     return {
-      ...query.data,
-      rows: query.data.rows.map((r) =>
+      ...queryData,
+      rows: queryData.rows.map((r) =>
         rewriteStrainNdiRefToOntology(r as Record<string, unknown>),
-      ) as typeof query.data.rows,
+      ) as typeof queryData.rows,
     };
-  }, [query.data, className]);
+  }, [queryData, className]);
 
   // Wire row-click navigation to `/datasets/[id]/documents/[ndiId]`.
   // Any `*DocumentIdentifier` cell value IS the ndiId — the cloud's
