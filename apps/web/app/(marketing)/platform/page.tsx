@@ -270,9 +270,22 @@ export default function PlatformPage() {
               next semester, next decade.
             </p>
 
-            <div className="grid grid-cols-2 max-[840px]:grid-cols-1 gap-5">
+            {/*
+              `items-stretch` (grid default) on the row + `flex flex-col`
+              on each card so the bottom border / footer caption row of
+              both panels lands at the same Y. Pre-fix the WITH-NDI panel
+              had `min-h-[356px]` to fake parity but stopped short of the
+              Legacy panel — visible 2026-04-28 with the Legacy scatter
+              viz at 300px (~516px card total) vs the NDI tree's natural
+              ~360px. The fix: the tree wrapper takes `flex-1` so it
+              fans out to absorb the extra height (the trunk line
+              `top-0 bottom-0` follows), and both footer rows pin to
+              the bottom via `mt-auto`. Now the cards read as a true
+              before/after pair instead of unequal siblings.
+            */}
+            <div className="grid grid-cols-2 max-[840px]:grid-cols-1 gap-5 items-stretch">
               {/* Legacy side */}
-              <div className="bg-red-50 border border-red-200 rounded-xl p-6 relative overflow-hidden">
+              <div className="bg-red-50 border border-red-200 rounded-xl p-6 relative overflow-hidden flex flex-col">
                 <div className="mb-4">
                   <span className="inline-block text-[10px] font-bold tracking-wide uppercase text-red-700 bg-red-100 px-2 py-0.5 rounded-full mb-2">
                     Before
@@ -345,21 +358,20 @@ export default function PlatformPage() {
                     <ScatterNode key={n.label} label={n.label} />
                   ))}
                 </div>
-                <div className="flex justify-between text-xs text-red-700 border-t border-red-200 pt-3">
+                <div className="mt-auto flex justify-between text-xs text-red-700 border-t border-red-200 pt-3">
                   <span>Data gets lost when drives fail or people leave</span>
                   <span>No DOI · No provenance</span>
                 </div>
               </div>
 
-              {/*
-                NDI side. `min-h-[356px]` matches the Legacy panel's
-                visual weight: that panel's scatter viz is 300px tall
-                + p-6 padding (24px top + 24px bottom) + the ~16px
-                footer row, so the right panel needs ~356px to read
-                as paired-equal. Without this, the NDI side reads as
-                an afterthought next to the bigger Legacy block.
-              */}
-              <div className="bg-ndi-teal-light border border-ndi-teal-border rounded-xl p-6 relative overflow-hidden min-h-[356px]">
+              {/* NDI side — same flex-column shape so the footer row pins
+                  to the bottom and the branch tree fans out vertically
+                  (`flex-1` on the tree wrapper + `justify-around` so the
+                  3 branches space evenly through the absorbed height).
+                  The trunk line uses `top-0 bottom-0` and follows the
+                  expanded container, so the visual stays a single
+                  trunk-with-branches even at the new larger height. */}
+              <div className="bg-ndi-teal-light border border-ndi-teal-border rounded-xl p-6 relative overflow-hidden flex flex-col">
                 <div className="mb-4">
                   <span className="inline-block text-[10px] font-bold tracking-wide uppercase text-ndi-teal bg-white/60 px-2 py-0.5 rounded-full mb-2">
                     With NDI
@@ -373,8 +385,12 @@ export default function PlatformPage() {
                   cite in a paper, and share with collaborators.
                 </p>
 
-                {/* Branch tree — 3 branches off a central trunk */}
-                <div className="relative pl-8 mb-6">
+                {/* Branch tree — 3 branches off a central trunk. `flex-1` so
+                    the wrapper absorbs whatever extra height the row provides;
+                    `justify-around` distributes the 3 items vertically so the
+                    trunk-and-branches visual fills the panel instead of
+                    bunching at the top with empty space below. */}
+                <div className="relative pl-8 flex-1 flex flex-col justify-around">
                   <div
                     aria-hidden
                     className="absolute left-2 top-0 bottom-0 w-[2px] bg-ndi-teal"
@@ -395,7 +411,7 @@ export default function PlatformPage() {
                   ].map((b) => (
                     <div
                       key={b.label}
-                      className="relative mb-3 last:mb-0 flex items-center gap-3"
+                      className="relative flex items-center gap-3"
                     >
                       <div
                         aria-hidden
@@ -420,7 +436,7 @@ export default function PlatformPage() {
                   ))}
                 </div>
 
-                <div className="flex justify-between text-xs text-ndi-teal border-t border-ndi-teal-border pt-3">
+                <div className="mt-auto pt-3 flex justify-between text-xs text-ndi-teal border-t border-ndi-teal-border">
                   <span>Backed up and versioned · permanent session IDs</span>
                   <span>Citable with a DOI</span>
                 </div>
