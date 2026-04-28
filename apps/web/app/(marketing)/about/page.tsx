@@ -152,14 +152,24 @@ export default function AboutPage() {
             Built by the people who{' '}
             <em className="not-italic text-brand-blue">wrote the standard.</em>
           </h1>
+          {/*
+            2026-04-28 — pre-launch rewrite (team review feedback). Pre-fix
+            the lede was "Waltham Data Science is a small team of
+            neuroscientists and data engineers..." — front-loaded with team
+            intro despite the team appearing in detail right below, plus a
+            30-word run-on with parenthetical that buried the value. New
+            copy leads with the lab's problem (lost data on student
+            turnover), names the open standard's role, and then lands the
+            commercial pitch — concrete in the same way the home + platform
+            heroes are.
+          */}
           <p className="text-[17px] leading-relaxed text-white/80 max-w-[720px] mx-auto m-0">
-            Waltham Data Science is a small team of neuroscientists and data
-            engineers. We built NDI Cloud because our own labs needed it — the
-            open Neuroscience Data Interface (the spec, NDI-MATLAB, NDI-Python,
-            all developed at the Van Hooser Lab at Brandeis) is a great
-            standard, and standards need infrastructure. The open tools stay
-            open. NDI Cloud is the hosting, the DOI pipeline, and the AI layer
-            that turn the spec into something you can actually run a lab on.
+            Most neuroscience labs lose data the moment a student leaves:
+            scattered drives, ad-hoc filenames, metadata that nobody else can
+            read. The open NDI standard — written at the Van Hooser Lab at
+            Brandeis — fixes the format problem. NDI Cloud is the rest:
+            cloud storage, a DOI pipeline, and LabChat. The spec stays open;
+            we run the infrastructure.
           </p>
         </div>
       </section>
@@ -263,17 +273,45 @@ export default function AboutPage() {
           <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
             A citable tool, with NSF and MathWorks behind it.
           </h2>
+          {/*
+            2026-04-28 — pre-launch dedupe (team review feedback). Pre-fix
+            the paragraph mentioned RRID + NSF + MathWorks AND the boxes
+            below ALSO showed RRID + OSS + NSF + MathWorks — the same
+            facts twice. Reviewer suggested keeping the logo boxes for
+            NSF + MathWorks (since the logos read as a real third-party
+            endorsement) and folding the RRID + GitHub callouts into the
+            paragraph as inline links. That's the new arrangement.
+          */}
           <p className="text-base leading-relaxed text-fg-secondary max-w-[680px] mb-10 m-0">
             NDI is in the Research Resource Identifier registry as{' '}
-            <strong className="font-semibold text-fg-primary">
+            <a
+              href="https://scicrunch.org/resolver/RRID:SCR_023368"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-ndi-teal hover:text-ndi-primary transition-colors no-underline"
+            >
               RRID:SCR_023368
-            </strong>{' '}
-            — meaning a paper can cite the tool itself, not just its papers.
-            Development is funded by NSF I-Corps. MathWorks is an official
-            Connections Partner.
+            </a>
+            {' '}— meaning a paper can cite the tool itself, not just its
+            papers. The code is open source on{' '}
+            <a
+              href="https://github.com/VH-Lab/NDI-matlab"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-semibold text-ndi-teal hover:text-ndi-primary transition-colors no-underline"
+            >
+              GitHub
+            </a>
+            . Development is funded by NSF I-Corps; MathWorks is an
+            official Connections Partner.
           </p>
 
-          <div className="grid grid-cols-4 max-[840px]:grid-cols-2 max-[480px]:grid-cols-1 gap-5">
+          {/* Two logo boxes (was four). The RRID and OSS marks were
+              text-only callouts that duplicated the paragraph above —
+              moved into the paragraph as inline links. NSF + MathWorks
+              keep their logo boxes because the logos themselves are the
+              recognizable trust signal. */}
+          <div className="grid grid-cols-2 max-[480px]:grid-cols-1 gap-5 max-w-[720px]">
             <BadgeItem
               logoSrc="/nsf-logo.svg"
               logoAlt="NSF I-Corps"
@@ -288,19 +326,6 @@ export default function AboutPage() {
               logoHeight={36}
               label="MathWorks Connections Partner"
               sub="Official MATLAB integration"
-            />
-            <BadgeItem
-              mark="RRID"
-              label="SCR_023368"
-              sub="Citable research tool"
-            />
-            <BadgeItem
-              mark="OSS"
-              label="Open source"
-              subLink={{
-                href: 'https://github.com/VH-Lab/NDI-matlab',
-                text: 'GitHub →',
-              }}
             />
           </div>
         </div>

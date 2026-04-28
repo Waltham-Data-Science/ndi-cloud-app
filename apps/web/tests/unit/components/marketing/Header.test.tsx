@@ -96,7 +96,12 @@ describe('Header (anonymous user, desktop)', () => {
   it('renders the desktop nav links (Data Commons + product pages + external Docs)', () => {
     render(<Header />);
     expect(screen.getByRole('link', { name: /data commons/i })).toBeInTheDocument();
-    expect(screen.getByRole('link', { name: /for labs/i })).toBeInTheDocument();
+    // 2026-04-28 — "For Labs" hidden from the nav pre-launch (the
+    // /products/private-cloud page describes the future Data Browser
+    // product, but the working pipeline still runs on Nansen). Page
+    // is still reachable at the URL — see the Header.tsx comment for
+    // the restore plan.
+    expect(screen.queryByRole('link', { name: /for labs/i })).not.toBeInTheDocument();
     expect(screen.getByRole('link', { name: /^labchat$/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /^platform$/i })).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /^about$/i })).toBeInTheDocument();

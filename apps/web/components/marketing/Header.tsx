@@ -68,7 +68,16 @@ const navLinks: NavLink[] = [
   // post-unification it's same-origin /datasets. Same-tab navigation is
   // unchanged because the apex was the goal of the migration.
   { label: 'Data Commons', href: commonsSearchUrl() },
-  { label: 'For Labs', href: '/products/private-cloud' },
+  // 2026-04-28 — "For Labs" (/products/private-cloud) hidden from the
+  // top nav pre-launch (team review feedback). The page describes the
+  // future Data Browser product, but the working pipeline still runs
+  // on Nansen, so the team flagged the page as misleading-by-promise.
+  // The page itself stays reachable at /products/private-cloud (still
+  // works for direct links / search-engine crawls), it's just not
+  // promoted from the marketing nav. The home-page bridge row that
+  // pointed at it is also disabled with a "Coming soon" badge — see
+  // BridgeRow in `app/(marketing)/page.tsx`. Restore this line when
+  // the product is ready to ship.
   { label: 'LabChat', href: '/products/labchat' },
   { label: 'Platform', href: '/platform' },
   { label: 'About', href: '/about' },
