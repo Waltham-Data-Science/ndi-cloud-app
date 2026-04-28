@@ -34,6 +34,35 @@ export function formatDate(iso: string | null | undefined): string {
   });
 }
 
+/**
+ * Date + time variant for surfaces where the precise capture moment
+ * matters (document detail timestamps, etc.). Renders as
+ * `Apr 22, 2026 at 4:33 PM` — the team review feedback's preferred
+ * human-readable form. Returns the same `'—'` / fallback shape as
+ * `formatDate` for missing or unparseable input.
+ *
+ * Locale pinned to en-US for the same SSR/hydration reason as the
+ * helpers above (en-US render is byte-identical on Vercel functions
+ * and any browser). The string `' at '` is hard-coded rather than
+ * relying on Intl.DateTimeFormat's locale-aware separator (`,` in
+ * en-US) so the visual style is consistent.
+ */
+export function formatDateTime(iso: string | null | undefined): string {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const datePart = d.toLocaleDateString(LOCALE, {
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+  });
+  const timePart = d.toLocaleTimeString(LOCALE, {
+    hour: 'numeric',
+    minute: '2-digit',
+  });
+  return `${datePart} at ${timePart}`;
+}
+
 export function truncate(s: string | null | undefined, n = 120): string {
   if (!s) return '';
   return s.length > n ? s.slice(0, n - 1) + '…' : s;

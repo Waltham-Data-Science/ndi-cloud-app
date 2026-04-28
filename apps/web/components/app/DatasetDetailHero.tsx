@@ -196,21 +196,20 @@ export function DatasetDetailHero({ datasetId }: { datasetId: string }) {
                 informational and varies by dataset. */}
             {(() => {
               const facts: ReactNode[] = [];
-              if (data.species) {
-                facts.push(
-                  <HeroFact key="species" label="Species" value={data.species} />,
-                );
-              }
-              if (data.brainRegions) {
-                facts.push(
-                  <HeroFact
-                    key="region"
-                    label="Region"
-                    value={data.brainRegions}
-                    mono
-                  />,
-                );
-              }
+              // 2026-04-28 — Species + Region dropped from the hero
+              // (team review feedback). They were rendering twice on
+              // the dataset detail page: here in the hero (as raw
+              // comma-separated text from the manually-entered
+              // `data.species` / `data.brainRegions` fields) AND in
+              // the Overview tab's `DatasetSummaryCard` (as resolved
+              // ontology pills from `summary.species` /
+              // `summary.brainRegions`). Reviewer asked us to drop
+              // the manually-entered hero copy and keep only the
+              // synthesizer-derived ontology pills, which are
+              // accurate-to-data and clickable. The hero's quick-
+              // glance facts now lead with Documents / Subjects /
+              // Size / License — the genuinely cardinal facts that
+              // don't have a richer surface elsewhere.
               if (data.documentCount != null) {
                 facts.push(
                   <HeroFact

@@ -174,6 +174,10 @@ describe('OntologyTablesView — Phase 6.6 REBUILD-7', () => {
     ).toBeNull();
   });
 
+  // 2026-04-28 — picker tab labels now read deduplicated ontology
+  // prefixes (e.g. `UBERON · PATO`) instead of the first column
+  // names (`region + depth`). Reviewer flagged the column-name
+  // form as misleading. See `uniquePrefixes` in OntologyTablesView.
   it('renders a picker for multiple groups; clicking a tab switches the active table', () => {
     const Wrapper = withGroups(twoGroups);
     render(
@@ -185,16 +189,18 @@ describe('OntologyTablesView — Phase 6.6 REBUILD-7', () => {
     // First group active by default: expect the first group's column "region".
     expect(screen.getAllByText(/region/i).length).toBeGreaterThan(0);
 
-    // Picker shows both group labels (joined first-2-variableNames).
+    // Picker tabs read the ontology prefixes for each group:
+    //   Group 1 ontologyNodes [UBERON:..., PATO:...] → "UBERON · PATO"
+    //   Group 2 ontologyNodes [CHEBI:..., NCIT:...]  → "CHEBI · NCIT"
     expect(
-      screen.getByRole('tab', { name: /region.*depth/i }),
+      screen.getByRole('tab', { name: /UBERON.*PATO/i }),
     ).toBeInTheDocument();
     expect(
-      screen.getByRole('tab', { name: /drug.*dose/i }),
+      screen.getByRole('tab', { name: /CHEBI.*NCIT/i }),
     ).toBeInTheDocument();
 
     // Click the second group's tab.
-    fireEvent.click(screen.getByRole('tab', { name: /drug.*dose/i }));
+    fireEvent.click(screen.getByRole('tab', { name: /CHEBI.*NCIT/i }));
     // The drug column header should now be visible.
     expect(screen.getAllByText(/drug/i).length).toBeGreaterThan(0);
   });

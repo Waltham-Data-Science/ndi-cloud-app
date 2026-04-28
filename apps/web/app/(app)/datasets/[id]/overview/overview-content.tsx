@@ -45,6 +45,7 @@ import { DatasetProvenanceCard } from '@/components/datasets/DatasetProvenanceCa
 import { DatasetSummaryCard } from '@/components/datasets/DatasetSummaryCard';
 import { ErrorState } from '@/components/errors/ErrorState';
 import { CardSkeleton } from '@/components/ui/Skeleton';
+import { CopyButton } from '@/components/ui/CopyButton';
 import { enrichDegradedSummary, isDegraded } from '@/lib/data/summary-fallback';
 
 export function OverviewContent({ datasetId }: { datasetId: string }) {
@@ -89,6 +90,7 @@ export function OverviewContent({ datasetId }: { datasetId: string }) {
     // overview vertically and burying the abstract under the sidecar
     // pills. `md:` keeps abstract + sidecar side-by-side from 768px
     // upward, restoring v2's effective behavior at high-zoom levels.
+    <div className="space-y-4 min-w-0">
     <div className="grid gap-5 md:grid-cols-[1fr_360px] min-w-0">
       {/* ── Main column: details (abstract + authors + pubs + cite) ── */}
       <div className="space-y-4 min-w-0 order-2 md:order-1">
@@ -150,6 +152,26 @@ export function OverviewContent({ datasetId }: { datasetId: string }) {
           <DatasetProvenanceCard provenance={provenance.data} />
         )}
       </aside>
+    </div>
+    {/* 2026-04-28 — Dataset ID footer (team review feedback). The
+        Mongo-shaped UUID is the dataset's permanent identifier (used
+        in URLs and external references) but was previously buried in
+        the URL bar. Surfacing it at the bottom of the Overview tab
+        with a copy button makes it easy to grab for support tickets,
+        cross-referencing in papers, or sharing with collaborators.
+        Mono font + muted styling so it reads as metadata, not a
+        primary affordance. */}
+    <footer className="flex items-center gap-2 pt-3 border-t border-border-subtle text-xs text-fg-muted">
+      <span className="uppercase tracking-wide">Dataset ID</span>
+      <code className="font-mono text-fg-secondary text-[11.5px] select-all break-all">
+        {datasetId}
+      </code>
+      <CopyButton
+        value={datasetId}
+        ariaLabel={`Copy dataset ID ${datasetId}`}
+        className="ml-1"
+      />
+    </footer>
     </div>
   );
 }

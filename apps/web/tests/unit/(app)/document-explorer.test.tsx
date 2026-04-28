@@ -103,7 +103,12 @@ describe('ClassCountsList', () => {
     expect(labels[2]).toBe('a');
   });
 
-  it('caps at 25 classes (sanity bound on long tails)', () => {
+  // 2026-04-28 — `slice(0, 25)` cap removed (team review feedback:
+  // "Not all document classes are displayed in document explorer.
+  // Looks like it cuts off around 20"). The list now renders all
+  // classes; this test pins the new behavior so a future
+  // re-introduction of a silent truncation gets caught.
+  it('renders ALL classes (cap removed for full visibility)', () => {
     const classCounts: Record<string, number> = {};
     for (let i = 0; i < 50; i++) classCounts[`class_${i}`] = 50 - i;
     render(
@@ -112,7 +117,7 @@ describe('ClassCountsList', () => {
         data={{ totalDocuments: 1000, classCounts }}
       />,
     );
-    expect(screen.getAllByRole('link').length).toBe(25);
+    expect(screen.getAllByRole('link').length).toBe(50);
   });
 });
 
