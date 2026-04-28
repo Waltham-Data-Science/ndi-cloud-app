@@ -225,7 +225,33 @@ export async function prefetchDatasetForPage(
   if (datasetResult.status === 400 || datasetResult.status === 404) {
     notFound();
   }
-  queryClient.setQueryData(['dataset', id], datasetResult.data);
+  // ONLY populate the cache on a successful fetch (2xx with data).
+  //
+  // Audit follow-up #25 (post-cutover discovery 2026-04-27): the
+  // tree-shrew dataset (`66140c237dbc358954ddffb9`) has a 2.85 MB
+  // record that the cloud takes ~19s to serialize. Our 1.5s
+  // existence-check timeout fires long before the response lands;
+  // `fetchDatasetWithStatus` returns `{ status: 0, data: null }`.
+  // PRE-fix: we wrote `null` into the cache unconditionally — which
+  // poisoned the client `useDataset` hook (hit cache → returned
+  // `null` → hero fell back to bare-id and never recovered).
+  // POST-fix: skip the write on any non-2xx (or status 0). The
+  // client hook then runs its own fetch with a 60s timeout and
+  // populates the cache itself when the response eventually lands.
+  // For tree shrew specifically the user sees the loading skeleton
+  // (or hero fallback) for ~19s on the first cold visit, then full
+  // hero data; subsequent visits hit the warm Vercel data cache.
+  //
+  // Other failure shapes (5xx, status 0) are also intentionally
+  // SKIPPED — same reasoning: don't poison the cache; let the
+  // client hook decide.
+  if (
+    datasetResult.status >= 200 &&
+    datasetResult.status < 300 &&
+    datasetResult.data != null
+  ) {
+    queryClient.setQueryData(['dataset', id], datasetResult.data);
+  }
 
   // Secondary prefetches in parallel, raced against the group deadline.
   // `prefetchQuery` internally catches errors so a single failure
