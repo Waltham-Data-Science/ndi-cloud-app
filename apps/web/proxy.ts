@@ -1,5 +1,13 @@
 /**
- * Edge Middleware — Phase 5 + Phase 6.7 B2 simplification.
+ * Edge Proxy — Phase 5 + Phase 6.7 B2 simplification.
+ *
+ * Filename note: this used to be `middleware.ts`. Next.js 16 deprecated
+ * the `middleware` file convention in favor of `proxy` (file rename +
+ * exported function rename). Functionally identical — same Edge runtime,
+ * same matcher semantics, same request lifecycle. The historical
+ * "middleware" framing in the comments below is preserved where it
+ * describes the architecture's evolution; the current convention is
+ * `proxy`.
  *
  * Three responsibilities:
  *
@@ -25,7 +33,7 @@
  *
  * **NOT used for cookie migration.** Phase 4 sets `Domain=.ndi-cloud.com`
  * via the FastAPI cookie attrs; Phase 7 forces re-login via
- * SESSION_ENCRYPTION_KEY rotation. Middleware does NOT rewrite or
+ * SESSION_ENCRYPTION_KEY rotation. The proxy does NOT rewrite or
  * invalidate cookies.
  */
 import { NextRequest, NextResponse } from 'next/server';
@@ -207,7 +215,7 @@ const ROUTE_ALIASES: Record<string, string> = {
   '/accountExists': '/account-exists',
 };
 
-export function middleware(req: NextRequest): NextResponse {
+export function proxy(req: NextRequest): NextResponse {
   const path = req.nextUrl.pathname;
 
   // 0. Route slug aliases. Done before everything else so the rest of

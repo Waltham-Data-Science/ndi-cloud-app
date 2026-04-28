@@ -1,0 +1,71 @@
+# .vercelignore — files NOT uploaded to Vercel during deploy.
+#
+# Vercel runs `pnpm install` + `pnpm build` inside its own builder, so
+# anything Next.js needs at build time MUST NOT be excluded here. The
+# scope is intentionally narrow: caches, test artifacts, agent state,
+# audit screenshots, and editor metadata. Source code, configs, types,
+# and Markdown docs all stay (the upload-size delta on docs is trivial
+# and code reviewers / agents read them in-tree).
+#
+# Why exclude tests:
+#   - `next build` only walks the App Router (`app/`) + colocated
+#     components/lib; it never reads `tests/`.
+#   - Vitest unit tests + Playwright e2e specs never run on Vercel —
+#     they run in GitHub Actions CI.
+#   - Trimming the upload speeds up cold builds (Next.js bundle output
+#     is unchanged either way).
+#
+# Be conservative. Anything that COULD be needed at build time stays in.
+
+# ---- Build caches / outputs ----
+# Local-build artifacts; Vercel produces its own .next during deploy.
+.next/
+out/
+*.tsbuildinfo
+.turbo/
+.eslintcache
+
+# ---- Test artifacts ----
+coverage/
+.nyc_output/
+*.lcov
+playwright-report/
+test-results/
+.playwright/
+.lighthouseci/
+
+# ---- Tests (not used at build time on Vercel) ----
+apps/web/tests/
+
+# ---- Local pnpm store mirror ----
+.pnpm-store/
+
+# ---- IDE / OS metadata ----
+.DS_Store
+.idea/
+.vscode/
+*.log
+
+# ---- Local agent / MCP state ----
+.claude/
+.playwright-mcp/
+
+# ---- Audit / verify / walk artifacts at repo root (per .gitignore) ----
+# Mirror the .gitignore patterns so a developer who staged these by
+# accident never uploads them to Vercel.
+audit-*.png
+audit-*.jpg
+audit-*.jpeg
+verify-*.png
+verify-*.jpg
+walk-*.png
+walk-*.jpg
+live-*.png
+live-*.jpg
+
+# ---- Vendor docs / large-form prose ----
+# Markdown docs that ship for in-repo reference (CUTOVER.md, COMPLIANCE.md,
+# AUTH_CONTRACT_AUDIT.md, README.md) MUST stay — Next.js doesn't read them
+# but agents and reviewers do, and the upload-size delta is tiny. Only
+# the docs/reviews subtree is large enough to bother excluding.
+docs/reviews/

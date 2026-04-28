@@ -1,5 +1,10 @@
 /**
- * Edge middleware contracts — Phase 5 + Phase 6.7 B2/O1 simplification.
+ * Edge proxy contracts — Phase 5 + Phase 6.7 B2/O1 simplification.
+ *
+ * Renamed from middleware.test.ts when Next.js 16 deprecated the
+ * `middleware` file convention in favor of `proxy`. Same Edge runtime,
+ * same matcher, same observable behavior — only the export name and
+ * filename changed.
  *
  * The three responsibilities locked in by these tests:
  *   1. Origin enforcement on /api/* mutations (defense-in-depth ahead
@@ -15,7 +20,7 @@
 import { describe, expect, it } from 'vitest';
 import { NextRequest } from 'next/server';
 
-import { middleware } from '@/middleware';
+import { proxy } from '@/proxy';
 
 function makeReq(
   url: string,
@@ -35,7 +40,7 @@ describe('Origin enforcement', () => {
       method: 'POST',
       origin: 'https://evil.com',
     });
-    const res = await middleware(req);
+    const res = await proxy(req);
     expect(res.status).toBe(403);
   });
 
@@ -45,7 +50,7 @@ describe('Origin enforcement', () => {
         method,
         origin: 'https://evil.com',
       });
-      const res = await middleware(req);
+      const res = await proxy(req);
       expect(res.status, `method=${method}`).toBe(403);
     }
   });
@@ -55,7 +60,7 @@ describe('Origin enforcement', () => {
       method: 'POST',
       origin: 'https://ndi-cloud.com',
     });
-    const res = await middleware(req);
+    const res = await proxy(req);
     // 200/204/etc. — middleware passes through to the rewrite/route handler.
     expect(res.status).not.toBe(403);
   });
@@ -65,7 +70,7 @@ describe('Origin enforcement', () => {
       method: 'POST',
       origin: 'https://www.ndi-cloud.com',
     });
-    const res = await middleware(req);
+    const res = await proxy(req);
     expect(res.status).not.toBe(403);
   });
 
@@ -73,7 +78,7 @@ describe('Origin enforcement', () => {
     const req = makeReq('https://ndi-cloud.com/api/auth/login', {
       method: 'POST',
     });
-    const res = await middleware(req);
+    const res = await proxy(req);
     // No Origin → no enforcement (the check only fires when Origin is
     // present, since CORS preflight gates non-simple requests anyway).
     expect(res.status).not.toBe(403);
@@ -84,7 +89,7 @@ describe('Origin enforcement', () => {
       method: 'GET',
       origin: 'https://evil.com',
     });
-    const res = await middleware(req);
+    const res = await proxy(req);
     expect(res.status).not.toBe(403);
   });
 });
@@ -132,7 +137,7 @@ describe('Origin allowlist — production vs preview environments', () => {
         method: 'POST',
         origin: 'https://ndi-cloud-app-web-abc123.vercel.app',
       });
-      const res = await middleware(req);
+      const res = await proxy(req);
       expect(res.status).toBe(403);
     } finally {
       restoreEnv();
@@ -154,7 +159,7 @@ describe('Origin allowlist — production vs preview environments', () => {
         method: 'POST',
         origin: 'https://ndi-cloud-app-web.vercel.app',
       });
-      const res = await middleware(req);
+      const res = await proxy(req);
       expect(res.status).not.toBe(403);
     } finally {
       restoreEnv();
@@ -162,7 +167,7 @@ describe('Origin allowlist — production vs preview environments', () => {
   });
 
   it('production: admits the hardcoded ndi-cloud-app-web.vercel.app alias regardless of env vars', async () => {
-    // Pre-Phase-7 hardcode (see middleware.ts comment). Hardcoded
+    // Pre-Phase-7 hardcode (see proxy.ts comment). Hardcoded
     // because Turbopack was eliminating the env-var-driven branch.
     // Working path until cutover; remove the hardcoded entry at
     // Phase 7 alongside the env-var path.
@@ -177,7 +182,7 @@ describe('Origin allowlist — production vs preview environments', () => {
         method: 'POST',
         origin: 'https://ndi-cloud-app-web.vercel.app',
       });
-      const res = await middleware(req);
+      const res = await proxy(req);
       expect(res.status).not.toBe(403);
     } finally {
       restoreEnv();
@@ -197,7 +202,7 @@ describe('Origin allowlist — production vs preview environments', () => {
         method: 'POST',
         origin: 'https://attacker-some-other-project.vercel.app',
       });
-      const res = await middleware(req);
+      const res = await proxy(req);
       expect(res.status).toBe(403);
     } finally {
       restoreEnv();
@@ -211,7 +216,7 @@ describe('Origin allowlist — production vs preview environments', () => {
         method: 'POST',
         origin: 'https://ndi-cloud.com',
       });
-      const res = await middleware(req);
+      const res = await proxy(req);
       expect(res.status).not.toBe(403);
     } finally {
       restoreEnv();
@@ -226,7 +231,7 @@ describe('Origin allowlist — production vs preview environments', () => {
         method: 'POST',
         origin: `https://${previewUrl}`,
       });
-      const res = await middleware(req);
+      const res = await proxy(req);
       expect(res.status).not.toBe(403);
     } finally {
       restoreEnv();
@@ -241,7 +246,7 @@ describe('Origin allowlist — production vs preview environments', () => {
         method: 'POST',
         origin: `https://${branchUrl}`,
       });
-      const res = await middleware(req);
+      const res = await proxy(req);
       expect(res.status).not.toBe(403);
     } finally {
       restoreEnv();
@@ -259,7 +264,7 @@ describe('Origin allowlist — production vs preview environments', () => {
         // Not VERCEL_URL or VERCEL_BRANCH_URL — should still 403.
         origin: 'https://attacker-project-something.vercel.app',
       });
-      const res = await middleware(req);
+      const res = await proxy(req);
       expect(res.status).toBe(403);
     } finally {
       restoreEnv();
@@ -270,51 +275,51 @@ describe('Origin allowlist — production vs preview environments', () => {
 describe('CSP (Report-Only) — Phase 6.7 B2 static shape', () => {
   it('emits Content-Security-Policy-Report-Only on /api/*', async () => {
     const req = makeReq('https://ndi-cloud.com/api/auth/me');
-    const res = await middleware(req);
+    const res = await proxy(req);
     expect(res.headers.get('content-security-policy-report-only')).toBeTruthy();
   });
 
   it('emits CSP-RO on /my/* (authenticated app routes)', async () => {
     const req = makeReq('https://ndi-cloud.com/my/something');
-    const res = await middleware(req);
+    const res = await proxy(req);
     expect(res.headers.get('content-security-policy-report-only')).toBeTruthy();
   });
 
   it('emits CSP-RO on the catalog at /datasets (O1 widened matcher)', async () => {
     const req = makeReq('https://ndi-cloud.com/datasets');
-    const res = await middleware(req);
+    const res = await proxy(req);
     expect(res.headers.get('content-security-policy-report-only')).toBeTruthy();
   });
 
   it('emits CSP-RO on marketing root / (O1 widened matcher)', async () => {
     const req = makeReq('https://ndi-cloud.com/');
-    const res = await middleware(req);
+    const res = await proxy(req);
     expect(res.headers.get('content-security-policy-report-only')).toBeTruthy();
   });
 
   it('does NOT emit enforced Content-Security-Policy header (24h soak)', async () => {
     const req = makeReq('https://ndi-cloud.com/api/auth/me');
-    const res = await middleware(req);
+    const res = await proxy(req);
     expect(res.headers.get('content-security-policy')).toBeNull();
   });
 
   it('script-src does NOT include nonce-... (B2 dropped the per-request nonce)', async () => {
     const req = makeReq('https://ndi-cloud.com/api/auth/me');
-    const res = await middleware(req);
+    const res = await proxy(req);
     const csp = res.headers.get('content-security-policy-report-only')!;
     expect(csp).not.toMatch(/nonce-/);
   });
 
   it('script-src does NOT include strict-dynamic (B2 dropped it; was broken-on-flip)', async () => {
     const req = makeReq('https://ndi-cloud.com/api/auth/me');
-    const res = await middleware(req);
+    const res = await proxy(req);
     const csp = res.headers.get('content-security-policy-report-only')!;
     expect(csp).not.toMatch(/'strict-dynamic'/);
   });
 
   it('script-src is `self` + GTM/GA only (Vercel Analytics + Speed Insights tags)', async () => {
     const req = makeReq('https://ndi-cloud.com/api/auth/me');
-    const res = await middleware(req);
+    const res = await proxy(req);
     const csp = res.headers.get('content-security-policy-report-only')!;
     expect(csp).toMatch(
       /script-src 'self' https:\/\/www\.googletagmanager\.com https:\/\/www\.google-analytics\.com/,
@@ -325,8 +330,8 @@ describe('CSP (Report-Only) — Phase 6.7 B2 static shape', () => {
     // Exposed via NextResponse.next request-headers contract; the
     // x-nonce path is gone now.
     const req = makeReq('https://ndi-cloud.com/api/auth/me');
-    await middleware(req);
-    // The middleware no longer mutates request headers — the only
+    await proxy(req);
+    // The proxy no longer mutates request headers — the only
     // observable contract from outside is that the response carries the
     // policy header without `nonce-`. Already covered above.
     expect(true).toBe(true); // keep the spec to flag intent.
@@ -336,7 +341,7 @@ describe('CSP (Report-Only) — Phase 6.7 B2 static shape', () => {
 describe('Vary header injection — gated to session-varying paths', () => {
   it('adds Vary: Cookie + Accept-Encoding on /api/* routes', async () => {
     const req = makeReq('https://ndi-cloud.com/api/auth/me');
-    const res = await middleware(req);
+    const res = await proxy(req);
     const vary = res.headers.get('vary');
     expect(vary).toContain('Cookie');
     expect(vary).toContain('Accept-Encoding');
@@ -344,27 +349,27 @@ describe('Vary header injection — gated to session-varying paths', () => {
 
   it('adds Vary on /my/* routes', async () => {
     const req = makeReq('https://ndi-cloud.com/my/something');
-    const res = await middleware(req);
+    const res = await proxy(req);
     expect(res.headers.get('vary')).toContain('Cookie');
   });
 
   it('does NOT add Vary on the anonymous-public catalog /datasets (preserves edge cache)', async () => {
     const req = makeReq('https://ndi-cloud.com/datasets');
-    const res = await middleware(req);
+    const res = await proxy(req);
     const vary = res.headers.get('vary') ?? '';
     expect(vary).not.toContain('Cookie');
   });
 
   it('does NOT add Vary on marketing routes (anonymous-public)', async () => {
     const req = makeReq('https://ndi-cloud.com/');
-    const res = await middleware(req);
+    const res = await proxy(req);
     const vary = res.headers.get('vary') ?? '';
     expect(vary).not.toContain('Cookie');
   });
 
   it('does NOT add Vary on /about (marketing)', async () => {
     const req = makeReq('https://ndi-cloud.com/about');
-    const res = await middleware(req);
+    const res = await proxy(req);
     const vary = res.headers.get('vary') ?? '';
     expect(vary).not.toContain('Cookie');
   });

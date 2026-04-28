@@ -43,7 +43,7 @@ swap. The agent that ran Phases 1-6 stops here. **You** drive Phase 7.
       # Expect: 404
       ```
 
-- [ ] **CSP flipped from Report-Only to enforced** (`middleware.ts`
+- [ ] **CSP flipped from Report-Only to enforced** (`proxy.ts`
       line currently emitting `Content-Security-Policy-Report-Only`
       → flip to `Content-Security-Policy`). Run after a clean 24h
       Report-Only soak with no legitimate-script violations in
@@ -154,12 +154,12 @@ swap. The agent that ran Phases 1-6 stops here. **You** drive Phase 7.
 
    - Delete the `'https://ndi-cloud-app-web.vercel.app'` line +
      `PRE-PHASE-7-CUTOVER` warning block from
-     `apps/web/middleware.ts`'s allowlist Set.
+     `apps/web/proxy.ts`'s allowlist Set.
    - Delete the env-var defense-in-depth path in
      `getAllowedOrigins()` (the
      `if (readEnv('VERCEL_ENV') === 'production' &&
      envFlagOn('ALLOW_PROJECT_PRODUCTION_URL_ORIGIN'))` block).
-   - Update `apps/web/tests/unit/middleware.test.ts`: drop the three
+   - Update `apps/web/tests/unit/proxy.test.ts`: drop the three
      pre-cutover test cases (production-admits-hardcoded-alias,
      production+flag-admits-PROD_URL, production+flag-still-rejects-
      unrelated). Add a regression test pinning that the alias now
