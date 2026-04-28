@@ -130,8 +130,19 @@ export function DocumentDetailShell({
       </section>
 
       {/* ── Body ──────────────────────────────────────────────────── */}
+      {/*
+        2026-04-28 — body widened from `max-w-4xl` (~896px) to the
+        section's full `max-w-[1200px]` so the document's structured
+        view and its dependency graph can sit side-by-side at md+
+        widths. Pre-fix the body was a single column that stacked
+        Properties → DataPanel → Graph → AppearsElsewhere; on a
+        widescreen this left ~30% of the viewport empty and forced a
+        long scroll to see the graph (the unique-to-NDI structural
+        visual). Side-by-side keeps both above the fold on most
+        desktops + makes the page feel materially richer.
+      */}
       <section className="mx-auto max-w-[1200px] px-7 py-7">
-        <div className="space-y-4 max-w-4xl">
+        <div className="space-y-4">
           <Link
             href={`/datasets/${datasetId}/documents`}
             className="inline-flex items-center gap-1 text-[12.5px] text-fg-secondary hover:text-brand-navy transition-colors"
@@ -154,12 +165,33 @@ export function DocumentDetailShell({
 
           {doc.data && (
             <>
-              <DocumentDetailView document={doc.data} datasetId={datasetId} />
+              {/*
+                Properties + Graph two-column band at md+. `items-start`
+                so the columns align top regardless of unequal heights
+                (the graph fans wide for upstream-heavy docs but is a
+                single empty-state card for leaf docs like subjects).
+                `min-w-0` on each column lets long ID strings inside
+                the graph nodes truncate cleanly with `truncate` instead
+                of pushing the column wider. Mobile widths (<md) stack
+                vertically — Properties first, Graph second — so the
+                concrete metadata reads before the relational viz.
+              */}
+              <div className="grid gap-4 md:grid-cols-2 items-start">
+                <div className="min-w-0">
+                  <DocumentDetailView document={doc.data} datasetId={datasetId} />
+                </div>
+                <div className="min-w-0">
+                  <DependencyGraphView
+                    datasetId={datasetId}
+                    documentId={docId}
+                  />
+                </div>
+              </div>
+              {/* DataPanel + AppearsElsewhere stay full-width below.
+                  DataPanel renders a chart / image / video player that
+                  benefits from horizontal room; AppearsElsewhere is a
+                  cross-dataset prompt that's always single-column. */}
               <DataPanel datasetId={datasetId} documentId={docId} />
-              <DependencyGraphView
-                datasetId={datasetId}
-                documentId={docId}
-              />
               <AppearsElsewhere
                 datasetId={datasetId}
                 documentId={docId}
