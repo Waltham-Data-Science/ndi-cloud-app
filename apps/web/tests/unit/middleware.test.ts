@@ -101,6 +101,8 @@ describe('Origin allowlist — production vs preview environments', () => {
     VERCEL_ENV: process.env.VERCEL_ENV,
     VERCEL_URL: process.env.VERCEL_URL,
     VERCEL_BRANCH_URL: process.env.VERCEL_BRANCH_URL,
+    VERCEL_PROJECT_PRODUCTION_URL: process.env.VERCEL_PROJECT_PRODUCTION_URL,
+    ALLOW_PROJECT_PRODUCTION_URL_ORIGIN: process.env.ALLOW_PROJECT_PRODUCTION_URL_ORIGIN,
   };
 
   function setEnv(env: Partial<typeof ORIG_ENV>) {
@@ -117,16 +119,60 @@ describe('Origin allowlist — production vs preview environments', () => {
     }
   }
 
-  it('production: rejects POST from a *.vercel.app preview URL', async () => {
+  it('production: rejects POST from a *.vercel.app preview URL by default', async () => {
     setEnv({
       VERCEL_ENV: 'production',
       VERCEL_URL: 'ndi-cloud-app-web-abc123.vercel.app',
       VERCEL_BRANCH_URL: 'ndi-cloud-app-web-git-main-team.vercel.app',
+      // Pre-cutover allowance NOT set — strict apex-only allowlist.
+      ALLOW_PROJECT_PRODUCTION_URL_ORIGIN: undefined,
     });
     try {
       const req = makeReq('https://ndi-cloud.com/api/auth/login', {
         method: 'POST',
         origin: 'https://ndi-cloud-app-web-abc123.vercel.app',
+      });
+      const res = await middleware(req);
+      expect(res.status).toBe(403);
+    } finally {
+      restoreEnv();
+    }
+  });
+
+  it('production + opt-in flag: admits VERCEL_PROJECT_PRODUCTION_URL Origin', async () => {
+    // Pre-Phase-7 escape hatch (see middleware docstring). With the
+    // env flag set, the project's stable production-Vercel alias is
+    // admitted so end-to-end QA on the new deploy can submit
+    // mutations before cutover repoints ndi-cloud.com at this project.
+    setEnv({
+      VERCEL_ENV: 'production',
+      VERCEL_PROJECT_PRODUCTION_URL: 'ndi-cloud-app-web.vercel.app',
+      ALLOW_PROJECT_PRODUCTION_URL_ORIGIN: 'true',
+    });
+    try {
+      const req = makeReq('https://ndi-cloud.com/api/visualize/distribution', {
+        method: 'POST',
+        origin: 'https://ndi-cloud-app-web.vercel.app',
+      });
+      const res = await middleware(req);
+      expect(res.status).not.toBe(403);
+    } finally {
+      restoreEnv();
+    }
+  });
+
+  it('production + opt-in flag: still rejects an unrelated *.vercel.app Origin', async () => {
+    // The opt-in admits ONLY the project's stable alias. Arbitrary
+    // *.vercel.app (e.g., another project's preview) still 403s.
+    setEnv({
+      VERCEL_ENV: 'production',
+      VERCEL_PROJECT_PRODUCTION_URL: 'ndi-cloud-app-web.vercel.app',
+      ALLOW_PROJECT_PRODUCTION_URL_ORIGIN: 'true',
+    });
+    try {
+      const req = makeReq('https://ndi-cloud.com/api/auth/login', {
+        method: 'POST',
+        origin: 'https://attacker-some-other-project.vercel.app',
       });
       const res = await middleware(req);
       expect(res.status).toBe(403);
