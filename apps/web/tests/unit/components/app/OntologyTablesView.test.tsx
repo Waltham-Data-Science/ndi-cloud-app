@@ -64,7 +64,10 @@ vi.mock('@tanstack/react-virtual', () => ({
   }),
 }));
 
-import { OntologyTablesView } from '@/components/app/OntologyTablesView';
+import {
+  OntologyTablesView,
+  pickGroupLabel,
+} from '@/components/app/OntologyTablesView';
 
 function withGroups(groups: OntologyTablesResponse['groups']) {
   const qc = new QueryClient({
@@ -232,5 +235,122 @@ describe('OntologyTablesView — Phase 6.6 REBUILD-7', () => {
     // First group label: "a + b…" (only 2 of 4 var names rendered).
     const firstTab = screen.getByRole('tab', { name: /a \+ b/i });
     expect(firstTab.textContent).toMatch(/…/);
+  });
+
+  // 2026-04-28 visual-sweep hotfix — when a group has only NDI
+  // sentinel `EMPTY:` ontology nodes (no resolved external ontology
+  // mapping), the picker tab must NOT surface the literal word
+  // "EMPTY". Falls through to the variable-names form, then
+  // `Group N`, then `Untitled group`.
+  it('falls back to variable-names label when every ontology node uses the EMPTY sentinel', () => {
+    const Wrapper = withGroups([
+      {
+        variableNames: ['approach', 'treatment'],
+        names: ['approach', 'treatment'],
+        ontologyNodes: ['EMPTY:0000074', 'EMPTY:0000198'],
+        rowCount: 6160,
+        docIds: [],
+        table: {
+          columns: [
+            { key: 'approach', label: 'approach' },
+            { key: 'treatment', label: 'treatment' },
+          ],
+          rows: [{ approach: 'a', treatment: 't' }],
+        },
+      },
+      {
+        variableNames: ['region', 'depth'],
+        names: ['region', 'depth'],
+        ontologyNodes: ['UBERON:0002301', 'PATO:0001595'],
+        rowCount: 45,
+        docIds: [],
+        table: { columns: [], rows: [] },
+      },
+    ]);
+    render(
+      <Wrapper>
+        <OntologyTablesView datasetId="d1" />
+      </Wrapper>,
+    );
+    // First tab: every ontology node is `EMPTY:*`, so the prefix
+    // pipeline returns []. Fall through → variable names.
+    const firstTab = screen.getByRole('tab', { name: /approach \+ treatment/i });
+    expect(firstTab.textContent).not.toMatch(/EMPTY/);
+    // Second tab is unaffected — real prefixes shine through.
+    expect(
+      screen.getByRole('tab', { name: /UBERON.*PATO/i }),
+    ).toBeInTheDocument();
+    // Belt-and-braces: NO tab anywhere should read literal "EMPTY".
+    const allTabs = screen.getAllByRole('tab');
+    for (const tab of allTabs) {
+      expect(tab.textContent).not.toMatch(/\bEMPTY\b/);
+    }
+  });
+
+  // Belt-and-braces — even when both ontology nodes AND variable
+  // names are empty (or only filled with empty strings), we get a
+  // readable `Group N` label rather than blank space.
+  it('falls back to Group N label when ontology nodes AND variable names are empty', () => {
+    const Wrapper = withGroups([
+      {
+        variableNames: [],
+        names: [],
+        ontologyNodes: [],
+        rowCount: 1,
+        docIds: [],
+        table: { columns: [], rows: [{}] },
+      },
+      {
+        variableNames: ['x', 'y'],
+        names: ['x', 'y'],
+        ontologyNodes: ['UBERON:0002301'],
+        rowCount: 2,
+        docIds: [],
+        table: { columns: [], rows: [] },
+      },
+    ]);
+    render(
+      <Wrapper>
+        <OntologyTablesView datasetId="d1" />
+      </Wrapper>,
+    );
+    // First group: `Group 1` (1-indexed).
+    expect(
+      screen.getByRole('tab', { name: /Group 1/ }),
+    ).toBeInTheDocument();
+  });
+});
+
+// 2026-04-28 — direct unit coverage for the priority cascade in
+// `pickGroupLabel`. The render-level tests above pin the integrated
+// behaviour; these tests pin each individual fallback rule so a
+// future refactor that breaks the priority order will fail loudly.
+describe('pickGroupLabel — fallback priority', () => {
+  it('prefers ontology prefixes when present', () => {
+    expect(pickGroupLabel(['UBERON', 'PATO'], ['region', 'depth'], 0)).toBe(
+      'UBERON · PATO',
+    );
+  });
+
+  it('falls through to first 2 variable names when no ontology prefixes', () => {
+    expect(pickGroupLabel([], ['region', 'depth'], 0)).toBe('region + depth');
+  });
+
+  it('appends ellipsis when more than 2 variable names exist', () => {
+    expect(pickGroupLabel([], ['a', 'b', 'c', 'd'], 0)).toBe('a + b…');
+  });
+
+  it('falls through to Group N (1-indexed) when both lists are empty', () => {
+    expect(pickGroupLabel([], [], 0)).toBe('Group 1');
+    expect(pickGroupLabel([], [], 4)).toBe('Group 5');
+  });
+
+  it('never returns the literal string "EMPTY"', () => {
+    // The bug: prior `uniquePrefixes` returned `["EMPTY"]` for every
+    // sentinel node, then the picker joined and rendered it. With
+    // the filter in place, callers feed `[]` to `pickGroupLabel`,
+    // and the cascade lands somewhere readable.
+    expect(pickGroupLabel([], [], 0)).not.toMatch(/EMPTY/);
+    expect(pickGroupLabel([], ['ok'], 0)).not.toMatch(/EMPTY/);
   });
 });

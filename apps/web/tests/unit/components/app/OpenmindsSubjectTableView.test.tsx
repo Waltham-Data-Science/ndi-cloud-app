@@ -127,7 +127,12 @@ function settledInfiniteQuery(documents: DocumentSummary[]) {
           documents,
           total: documents.length,
           page: 1,
-          pageSize: 500,
+          // Matches PAGE_SIZE in OpenmindsSubjectTableView.tsx (200 is
+          // the backend validator's hard ceiling; ≥500 returns HTTP 400
+          // VALIDATION_ERROR). Bumped from 500 → 200 in the visual-
+          // sweep hotfix so this stub mirrors what the real hook
+          // receives in production.
+          pageSize: 200,
         },
       ],
       pageParams: [1],
@@ -379,5 +384,33 @@ describe('OpenmindsSubjectTableView — rendering', () => {
     expect(matches.length).toBeGreaterThan(0);
     // No table rendered (no column headers).
     expect(screen.queryByText(/Ontology ID/)).toBeNull();
+  });
+
+  // 2026-04-28 visual-sweep hotfix — backend `/api/datasets/:id/documents`
+  // validator caps `pageSize` at <500. Requests with `pageSize=500`
+  // return HTTP 400 VALIDATION_ERROR ("Input should be less..."), which
+  // surfaced as "Request validation failed." on every openminds_subject
+  // summary table. Dropped to 200 (the largest accepted value); this
+  // test pins the page-size argument so a future bump back to 500 (or
+  // any value the validator rejects) breaks loudly in CI rather than
+  // silently in production.
+  it('threads pageSize=200 to useDocumentsInfinite (≤ backend validator cap)', () => {
+    useDocumentsInfiniteMock.mockReturnValue(settledInfiniteQuery([]));
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <OpenmindsSubjectTableView datasetId="d1" />
+      </Wrapper>,
+    );
+    expect(useDocumentsInfiniteMock).toHaveBeenCalled();
+    const [datasetIdArg, classNameArg, pageSizeArg] =
+      useDocumentsInfiniteMock.mock.calls[0]!;
+    expect(datasetIdArg).toBe('d1');
+    expect(classNameArg).toBe('openminds_subject');
+    // The validator rejects ≥500. Anything strictly less than 500 is
+    // accepted; the visual-sweep hotfix lands on exactly 200 (the
+    // largest known-accepted value).
+    expect(pageSizeArg).toBeLessThan(500);
+    expect(pageSizeArg).toBe(200);
   });
 });
