@@ -147,12 +147,24 @@ export default function LabChatPage() {
                 labchat.ndi-cloud.com / vanhooser-lab / threads / feb24-v1
               </div>
             </div>
+            {/*
+              2026-04-28 — placeholder mockup (`labchat-chat.png`)
+              replaced with a real product capture from the Chalasani-
+              lab LabChat instance. Source PNG is 4K Retina (3840×2160)
+              so we keep the intrinsic dimensions and let next/image
+              generate Retina-quality srcsets via `quality={90}`. The
+              `mt-2` shifts the image slightly down inside the dark
+              chrome so the rounded white inner edge lines up with
+              the top corners of the chrome — keeps the macOS-window
+              illusion intact at 1140px display width.
+            */}
             <Image
-              src="/mockups/labchat-chat.png"
-              alt="LabChat answering a research question with cited sources from the Van Hooser lab's papers and datasets"
-              width={1140}
-              height={700}
+              src="/mockups/labchat-conversation.png"
+              alt="LabChat answering a Chalasani-lab question about sonochannels, with structured sections, performance data, and cited notebook sources"
+              width={3840}
+              height={2160}
               priority
+              quality={90}
               className="block w-full h-auto rounded-t-md"
             />
           </div>
@@ -178,7 +190,7 @@ export default function LabChatPage() {
       />
 
       {/* WHAT IT DOES */}
-      <section className="px-7 py-20 bg-bg-canvas">
+      <section className="px-7 py-16 bg-bg-canvas">
         <div className="max-w-[1100px] mx-auto">
           <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
             What it does
@@ -228,7 +240,7 @@ export default function LabChatPage() {
           pills pop. Audit flagged the original target as light-on-light
           (white section + light bubbles) which lost the source's
           intentional theme contrast. */}
-      <section className="px-7 py-20 bg-brand-cream">
+      <section className="px-7 py-16 bg-brand-cream">
         <div className="max-w-[1100px] mx-auto grid grid-cols-2 max-[840px]:grid-cols-1 gap-12 items-start">
           <div>
             <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
@@ -263,100 +275,57 @@ export default function LabChatPage() {
             </ul>
           </div>
 
-          {/* Chat preview — dark "AI terminal" surface. Source
-              `.chatPreview { background: #0d1117 }` with translucent
-              user/AI bubbles. User bubble carries `rgba(23,167,255,0.12)`
-              translucent blue (NOT teal — the brand-blue ties the chat
-              metaphor to the data-citation theme on the rest of the page);
-              AI bubble is barely-visible white at 3% on the dark surface.
-              CitePills + source numbers use brand-blue per source
-              `.citePill { background: var(--brand-blue) }`. */}
+          {/*
+            2026-04-28 — hand-coded chat-preview block (User bubble +
+            AI bubble + hand-typed sources) replaced with a real crop
+            of the Chalasani-lab LabChat sources panel. Why:
+
+              1. The illustrative cohort ("Feb-'24 V1") was synthetic
+                 prop copy. The real screenshot's sources are actual
+                 lab notebooks (Wen Mai Wong, Yanlin Liu, Janki Patel,
+                 Megan Anderson) — concrete provenance beats invented.
+              2. The "Source cards" pattern in the real product is the
+                 differentiator vs ChatGPT — collapsible per-source
+                 cards with notebook badges + author + date. The
+                 hand-coded version was a single inline source list,
+                 which under-sold the product.
+              3. The crop preserves the timing badge ("8878ms · Sources
+                 (5)") at top, so the marketing reader sees both the
+                 retrieval guarantee AND the citation surface in a
+                 single capture.
+
+            Source PNG is 3840×870 (4K-wide crop), `quality={90}` for
+            Retina sharpness on display. The container chrome (rounded
+            corners, soft shadow, faint white inner ring) matches the
+            site's other product captures. The deleted helper components
+            (`CitePill`, `SourceRow`) below the page are kept for now in
+            case a future section reuses the inline-citation style; they
+            no longer have render call-sites.
+          */}
           <div
-            className="rounded-xl p-5 text-white"
+            className="rounded-xl overflow-hidden"
             style={{
-              background: '#0d1117',
-              border: '1px solid rgba(255, 255, 255, 0.08)',
+              background: '#fff',
+              border: '1px solid rgba(0, 0, 0, 0.06)',
+              boxShadow:
+                '0 20px 40px -12px rgba(0, 0, 0, 0.18), 0 0 0 1px rgba(255, 255, 255, 0.4) inset',
             }}
           >
-            {/* User bubble */}
-            <div
-              className="rounded-[10px] p-4 mb-3"
-              style={{
-                background: 'rgba(23, 167, 255, 0.12)',
-                border: '1px solid rgba(23, 167, 255, 0.2)',
-              }}
-            >
-              <div className="text-[10px] font-bold tracking-[0.12em] uppercase text-white/45 mb-1.5">
-                You
-              </div>
-              <div className="text-sm leading-relaxed text-white/90">
-                What stimuli did we use for the Feb-&rsquo;24 V1 cohort, and
-                which sessions passed QC?
-              </div>
-            </div>
-
-            {/* AI bubble */}
-            <div
-              className="rounded-[10px] p-4"
-              style={{
-                background: 'rgba(255, 255, 255, 0.03)',
-                border: '1px solid rgba(255, 255, 255, 0.08)',
-              }}
-            >
-              <div className="text-[10px] font-bold tracking-[0.12em] uppercase text-white/45 mb-1.5">
-                LabChat
-              </div>
-              <div className="text-sm leading-relaxed text-white/90 mb-4">
-                The Feb-&rsquo;24 V1 cohort used two stimulus families
-                <CitePill n={1} />: <strong className="text-white font-semibold">drifting gratings</strong> (4 cardinal
-                directions, 0.04 cpd) and <strong className="text-white font-semibold">natural movies</strong> from{' '}
-                <code
-                  className="font-mono text-[0.88em] px-1.5 py-px rounded"
-                  style={{ background: 'rgba(255, 255, 255, 0.06)' }}
-                >
-                  vanhooser_nat_lib_v3
-                </code>. Of
-                22 sessions, <strong className="text-white font-semibold">17 passed QC</strong>
-                <CitePill n={2} /> (sessions 211–217, 219, 221, 223–232). Raw data
-                is in dataset{' '}
-                <code
-                  className="font-mono text-[0.88em] px-1.5 py-px rounded"
-                  style={{ background: 'rgba(255, 255, 255, 0.06)' }}
-                >
-                  v1_cohort_feb24
-                </code>
-                <CitePill n={3} />.
-              </div>
-              <div
-                className="flex flex-col gap-2 mb-3 pt-3"
-                style={{ borderTop: '1px solid rgba(255, 255, 255, 0.08)' }}
-              >
-                <SourceRow
-                  n={1}
-                  title="Feb-’24 V1 cohort protocol"
-                  sub="protocol.pdf · updated 2024-01-28"
-                />
-                <SourceRow
-                  n={2}
-                  title="QC thresholds for visual cortex recordings"
-                  sub="Ray et al. 2023 · cited 62x"
-                />
-                <SourceRow
-                  n={3}
-                  title="Dataset · v1_cohort_feb24"
-                  sub="NDI Cloud · 22 sessions · 4.8 GB"
-                />
-              </div>
-              <div className="text-[10.5px] tracking-wide text-white/35">
-                3 citations · 2 datasets · 12ms search
-              </div>
-            </div>
+            <Image
+              src="/mockups/labchat-sources.png"
+              alt="LabChat sources panel: 8878ms response time and five collapsible source cards (Confocal vs EPI HEKTAB-NOGC notebook by Wen Mai Wong, Lab meeting by Yanlin Liu, two Janki Patel lab notebooks, Hydrophone-flytrap equipment comparison by Megan Anderson)"
+              width={3840}
+              height={870}
+              quality={90}
+              className="block w-full h-auto"
+              sizes="(min-width: 840px) 50vw, 100vw"
+            />
           </div>
         </div>
       </section>
 
       {/* HOW IT WORKS */}
-      <section className="px-7 py-20 bg-bg-canvas">
+      <section className="px-7 py-16 bg-bg-canvas">
         <div className="max-w-[1100px] mx-auto">
           <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
             How it works
@@ -399,7 +368,7 @@ export default function LabChatPage() {
           subtle z-axis transition into it rather than two adjacent navy
           bands of similar intensity. */}
       <section
-        className="px-7 py-20 text-white"
+        className="px-7 py-16 text-white"
         style={{ background: 'var(--color-bg-depth)' }}
       >
         <div className="max-w-[1100px] mx-auto grid grid-cols-2 max-[840px]:grid-cols-1 gap-12">
@@ -445,7 +414,7 @@ export default function LabChatPage() {
 
       {/* CTA */}
       <section
-        className="relative overflow-hidden px-7 py-20 text-white"
+        className="relative overflow-hidden px-7 py-16 text-white"
         style={{ background: 'var(--grad-depth)' }}
       >
         <div
@@ -536,54 +505,13 @@ function Step({
   );
 }
 
-/**
- * Inline citation pill — superscript number badge in the LabChat AI bubble.
- *
- * Source `.citePill` uses `var(--brand-blue)` (#17a7ff) on white text —
- * the citations carry the same blue accent as the data-discovery hero
- * eyebrow on every other product page. Earlier port used teal which read
- * as a separate "products page" accent and broke the visual through-line.
- * Using inline `style.background` rather than a Tailwind class because
- * the rendered span sits inside dark-bubble translucency where any
- * dimming from the bubble alpha breaks the color contract.
- */
-function CitePill({ n }: { n: number }) {
-  return (
-    <sup
-      className="inline-flex items-center justify-center text-white text-[9px] font-bold rounded px-1 py-px ml-0.5 align-super"
-      style={{ background: 'var(--color-brand-blue)' }}
-    >
-      {n}
-    </sup>
-  );
-}
-
-/**
- * Source-row inside the AI bubble's reference list — numbered circle +
- * title + monospaced subtitle. Inside the dark chat preview surface, so
- * tile bg is white@3%, title is white, sub is white/45 monospace.
- * Source `.srcN { background: var(--brand-blue) }` — circle color matches
- * the inline CitePill so the number visually links.
- */
-function SourceRow({ n, title, sub }: { n: number; title: string; sub: string }) {
-  return (
-    <div
-      className="flex items-start gap-3 px-3 py-2.5 rounded-md text-[12.5px]"
-      style={{ background: 'rgba(255, 255, 255, 0.03)' }}
-    >
-      <div
-        className="shrink-0 w-5 h-5 rounded-full text-white font-bold inline-flex items-center justify-center text-[10px]"
-        style={{ background: 'var(--color-brand-blue)' }}
-      >
-        {n}
-      </div>
-      <div>
-        <div className="text-white font-medium mb-0.5">{title}</div>
-        <div className="font-mono text-[10.5px] text-white/45">{sub}</div>
-      </div>
-    </div>
-  );
-}
+// `CitePill` and `SourceRow` (the inline citation badge + numbered
+// reference row) lived here pre-2026-04-28. They powered the hand-
+// coded chat-preview block in the "Cited answers, every time"
+// section — now replaced by a real product capture
+// (`/mockups/labchat-sources.png`). Removing the helpers since they
+// have no remaining call-sites; the file's other helpers (`CapRow`,
+// `Step`, `SecTile`) are still in use across the page.
 
 function SecTile({
   kicker,

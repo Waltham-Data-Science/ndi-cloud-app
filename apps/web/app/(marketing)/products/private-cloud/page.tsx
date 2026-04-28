@@ -138,15 +138,26 @@ export default function PrivateCloudPage() {
                     <path d="M5 8V5a3 3 0 0 1 6 0v3" />
                   </svg>
                 </span>
-                app.ndi-cloud.com / vanhooser-lab / datasets
+                ndi-cloud.com / data-commons
               </div>
             </div>
+            {/*
+              2026-04-28 — placeholder mockup (`data-browser.png`)
+              replaced with a real production capture of the public
+              Data Commons catalog (`/datasets`). 4K Retina (3840×2160)
+              source so next/image generates Retina-quality srcsets via
+              `quality={90}`. Captured with the FastAPI cron-warmed
+              edge cache so the catalog rendered with all eight
+              published datasets (real titles, real DOIs, real species
+              + document counts) — concrete provenance beats invented.
+            */}
             <Image
-              src="/mockups/data-browser.png"
-              alt="NDI Data Browser listing datasets across a lab workspace with filters by species, probe, and sync status"
-              width={1140}
-              height={700}
+              src="/mockups/data-browser-catalog.png"
+              alt="NDI Data Commons catalog: search, facet filters by species and brain region, and a paged list of published datasets with DOIs, document counts, and sizes"
+              width={3840}
+              height={2160}
               priority
+              quality={90}
               className="block w-full h-auto rounded-t-md"
             />
           </div>
@@ -167,7 +178,7 @@ export default function PrivateCloudPage() {
       {/* CAPABILITIES — white per source `.section` (no explicit bg, inherits
           `.pageMain { background: var(--white) }`). Was bg-bg-canvas
           (cream) in the original port. */}
-      <section className="px-7 py-20 bg-bg-surface">
+      <section className="px-7 py-16 bg-bg-surface">
         <div className="max-w-[1100px] mx-auto">
           <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
             What it does
@@ -238,7 +249,7 @@ export default function PrivateCloudPage() {
           the original port — the cream gives this band visual separation
           from the white capabilities band above and the white session-detail
           split below. */}
-      <section className="px-7 py-20 bg-bg-canvas">
+      <section className="px-7 py-16 bg-bg-canvas">
         <div className="max-w-[1100px] mx-auto">
           <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
             Workflow
@@ -274,7 +285,7 @@ export default function PrivateCloudPage() {
           bg, page-bg-inherited white). Was bg-bg-canvas (cream) in the
           original port; cream → white restores the source's
           cream-workflow → white-session-detail visual rhythm. */}
-      <section className="px-7 py-20 bg-bg-surface">
+      <section className="px-7 py-16 bg-bg-surface">
         <div className="max-w-[1100px] mx-auto grid grid-cols-2 max-[840px]:grid-cols-1 gap-12 items-start">
           <div>
             <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
@@ -353,7 +364,7 @@ export default function PrivateCloudPage() {
           pill-shaped uppercase "You're here" badge. Same pattern as the
           home-page bridge container (#21). */}
       <section
-        className="px-7 py-20 text-white"
+        className="px-7 py-16 text-white"
         style={{ background: 'var(--color-bg-depth)' }}
       >
         <div className="max-w-[1100px] mx-auto">
@@ -400,7 +411,7 @@ export default function PrivateCloudPage() {
 
       {/* CTA */}
       <section
-        className="relative overflow-hidden px-7 py-20 text-white"
+        className="relative overflow-hidden px-7 py-16 text-white"
         style={{ background: 'var(--grad-depth)' }}
       >
         <div
