@@ -27,12 +27,20 @@
  * `ontologyIdentifier` column so the user sees one cell per row
  * regardless of source.
  *
- * Progressive load: backed by `useDocumentsInfinite` with `pageSize=500`
- * so very-large openminds_subject sets (Haley's 9k+ docs at 500/page =
- * 18 round-trips) stream in progressively rather than blocking the
+ * Progressive load: backed by `useDocumentsInfinite` with `pageSize=200`
+ * so very-large openminds_subject sets (Haley's 9k+ docs at 200/page =
+ * 45 round-trips) stream in progressively rather than blocking the
  * whole table on one mega-fetch. A "Loaded N of M" pill renders above
  * the table while pages are still in flight; rows render as each page
  * lands.
+ *
+ * Cap: 200 is the backend's hard ceiling on `pageSize` for
+ * `/api/datasets/:id/documents` — `pageSize=500` returns HTTP 400 with
+ * `{"code":"VALIDATION_ERROR","details":{"errors":[{"loc":["query","pageSize"],"msg":"Input should be less..."}]}}`
+ * (the visual sweep caught this as a broken summary table on every
+ * dataset publishing the openminds_subject grain). 200 is the largest
+ * value the validator accepts, and the streaming load means the round-
+ * trip count is invisible to the user — rows arrive page-by-page.
  *
  * Click-through: `documentIdentifier` is the per-row primary id
  * (matches `doc.ndiId`), and `pickDocId` in `table-shell.tsx` already
@@ -55,7 +63,15 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { useDocumentsInfinite, type DocumentSummary } from '@/lib/api/documents';
 import type { TableResponse } from '@/lib/api/tables';
 
-const PAGE_SIZE = 500;
+/**
+ * Backend cap on `/api/datasets/:id/documents?pageSize=...` is 200
+ * (validator rejects ≥500 with a VALIDATION_ERROR). Keep this in sync
+ * with the FastAPI validator in
+ * `ndi-data-browser-v2/backend/api/documents.py`. If the backend cap
+ * ever moves up, this value can move with it; do NOT exceed the
+ * validator's ceiling or every openminds_subject summary table breaks.
+ */
+const PAGE_SIZE = 200;
 
 /**
  * Auto-fetch trigger: while the first page has landed but more pages

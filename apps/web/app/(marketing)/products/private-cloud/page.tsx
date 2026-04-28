@@ -37,6 +37,23 @@ export const metadata: Metadata = {
 export default function PrivateCloudPage() {
   return (
     <main>
+      {/* Pre-release notice (visual-sweep hotfix 2026-04-28).
+          The For Labs page is hidden from the header/footer nav
+          (correct — product not shipped) and the home-page bridge
+          row says "COMING SOON" beside it (also correct). Direct
+          URL hits, however, were landing on a feature-rich page
+          with no signal that this product isn't yet available.
+          Adding a discrete banner above the hero (still inside the
+          page main content area, NOT above the site header) so
+          anyone who arrives via the canonical URL or a search
+          result understands today's published flow runs through
+          Nansen and the Data Browser is the planned shape. Token
+          treatment matches the codebase's notice style — same
+          `bg-amber-50 ring-1 ring-amber-200 text-amber-800` family
+          used by ErrorState, UseThisDataModal, and the chart-blob
+          fallback empty states. */}
+      <ComingSoonBanner />
+
       {/* HERO */}
       <section
         className="relative overflow-hidden text-white px-7 pt-20 pb-12"
@@ -454,6 +471,50 @@ export default function PrivateCloudPage() {
         </div>
       </section>
     </main>
+  );
+}
+
+/**
+ * Pre-release notice band rendered at the very top of the For Labs
+ * page main content (BELOW the site header, ABOVE the hero band).
+ * Visual-sweep hotfix 2026-04-28 — direct hits on
+ * `/products/private-cloud` were landing on a feature-rich pitch with
+ * no signal that the product isn't shipped yet; a discrete in-page
+ * banner closes that gap without requiring nav-level changes.
+ *
+ * Token treatment intentionally matches the codebase's existing
+ * notice family (`bg-amber-50 ring-1 ring-amber-200 text-amber-800`)
+ * — same as ErrorState, UseThisDataModal's dissonance note, and the
+ * chart-blob fallback empty states — so it reads as part of the same
+ * design system rather than a one-off.
+ *
+ * Exported so the unit test can render it in isolation; the page
+ * itself uses it inline above the hero.
+ */
+export function ComingSoonBanner() {
+  return (
+    <div
+      role="note"
+      aria-label="Pre-release notice"
+      data-testid="for-labs-coming-soon-banner"
+      className="bg-amber-50 ring-1 ring-amber-200 text-amber-900"
+    >
+      <div className="max-w-[1100px] mx-auto px-7 py-2.5 text-sm leading-relaxed">
+        <span className="font-semibold mr-1">Coming soon —</span>
+        this product is in development. The Data Browser experience
+        described below is the planned shape; today our published
+        flow runs through{' '}
+        <a
+          href="https://nansen.kavlifoundation.org"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="underline underline-offset-2 hover:text-amber-950 focus-visible:outline-none focus-visible:text-amber-950"
+        >
+          Nansen
+        </a>
+        .
+      </div>
+    </div>
   );
 }
 

@@ -120,13 +120,20 @@ function OntologyGroupPicker({
         // resolved ontology prefixes (only NDI-internal mappings),
         // we fall back to the previous "first 2 column names" form
         // so the user still gets something to click.
+        //
+        // 2026-04-28 visual-sweep hotfix — `uniquePrefixes` now
+        // filters out the `EMPTY` sentinel prefix. NDI uses
+        // `EMPTY:0000xxx` IDs as a placeholder for groups that have
+        // no resolved external ontology mapping (treatments,
+        // approaches, custom strain types). When every node in a
+        // group used the EMPTY sentinel, the picker tab read
+        // literally "EMPTY 6,160" — not useful. Falling through to
+        // the variable-names label keeps the tab readable. If
+        // variable names are also empty, fall through to a
+        // 1-indexed `Group N` label, then `Untitled group` as a
+        // last resort.
         const ontologyPrefixes = uniquePrefixes(g.ontologyNodes);
-        const label =
-          ontologyPrefixes.length > 0
-            ? ontologyPrefixes.join(' · ')
-            : `${g.variableNames.slice(0, 2).join(' + ')}${
-                g.variableNames.length > 2 ? '…' : ''
-              }`;
+        const label = pickGroupLabel(ontologyPrefixes, g.variableNames, i);
         // Stable key per group so reorders (new dataset load) don't
         // defeat React reconciliation.
         const key = g.variableNames.join('|');
@@ -187,6 +194,14 @@ function buildColumnOntology(
  *
  * Returns `[]` when no ontology nodes are annotated (the group
  * picker then falls back to the variable-name label).
+ *
+ * 2026-04-28 visual-sweep hotfix — the `EMPTY` sentinel prefix is
+ * filtered out. NDI uses `EMPTY:0000xxx` IDs as a placeholder for
+ * groups that have no resolved external ontology mapping (treatments,
+ * approaches, custom strain types). Surfacing literal "EMPTY" as a
+ * tab label is misleading and unreadable; if every node in a group
+ * uses the EMPTY sentinel, this returns `[]` and the picker falls
+ * through to the variable-names label.
  */
 function uniquePrefixes(
   ontologyNodes: ReadonlyArray<string | null>,
@@ -199,8 +214,53 @@ function uniquePrefixes(
     if (colonIdx <= 0) continue;
     const prefix = node.slice(0, colonIdx).trim();
     if (!prefix || seen.has(prefix)) continue;
+    // EMPTY is an NDI internal sentinel meaning "no real ontology
+    // mapping for this column"; treating it as a real prefix would
+    // surface the literal word "EMPTY" as a tab label. Skip it so
+    // the picker falls through to a readable fallback.
+    if (prefix === 'EMPTY') continue;
     seen.add(prefix);
     out.push(prefix);
   }
   return out;
+}
+
+/**
+ * Pick a per-tab label for an ontology group. Priority (visual-sweep
+ * hotfix 2026-04-28):
+ *
+ *   1. Deduplicated ontology prefixes joined with ` · ` (e.g.
+ *      `UBERON · PATO`) — the most descriptive label and the form a
+ *      reviewer asked for in PR #128.
+ *   2. The first 1-2 entries from `variableNames` joined by ` + ` —
+ *      the pre-PR-#128 form. Less informative than the ontology
+ *      prefixes but still readable.
+ *   3. `Group N` (1-indexed, e.g. `Group 1`) when variable names are
+ *      also missing.
+ *   4. `Untitled group` as a last resort.
+ *
+ * Exported for unit-test coverage. The callers feed the same
+ * `uniquePrefixes`-filtered list of ontology prefixes (no `EMPTY`
+ * sentinel) so the priority cascade can never bottom out at a
+ * literal "EMPTY" string.
+ */
+export function pickGroupLabel(
+  ontologyPrefixes: ReadonlyArray<string>,
+  variableNames: ReadonlyArray<string>,
+  groupIndex: number,
+): string {
+  if (ontologyPrefixes.length > 0) {
+    return ontologyPrefixes.join(' · ');
+  }
+  const firstTwoVars = variableNames
+    .slice(0, 2)
+    .filter((v) => typeof v === 'string' && v.length > 0);
+  if (firstTwoVars.length > 0) {
+    const ellipsis = variableNames.length > 2 ? '…' : '';
+    return `${firstTwoVars.join(' + ')}${ellipsis}`;
+  }
+  if (groupIndex >= 0) {
+    return `Group ${groupIndex + 1}`;
+  }
+  return 'Untitled group';
 }
