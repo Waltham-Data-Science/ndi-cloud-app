@@ -14,13 +14,30 @@ rendering, and edge-cached delivery via Vercel.
 
 ## Migration status
 
-Currently on **Phase 1 (Bootstrap)**. Full plan:
-- High-level: see Audri's plan file at `/Users/audribhowmick/.claude/plans/sharded-puzzling-dragonfly.md`
-- Architectural rationale: `Waltham-Data-Science/ndi-data-browser-v2/docs/plans/cross-repo-unification-2026-04-24.md`
-- Audit work this preserves/extends: `Waltham-Data-Science/ndi-data-browser-v2/docs/reviews/Audit_2026-04-23.md`
+**Phase 6.7 complete; awaiting Phase 7 atomic domain swap.** The codebase is feature-complete for the unified deploy; what remains is the cutover ceremony itself (DNS swap + session-key rotation + CSP enforce flip after soak).
 
-Phases that have landed:
-- (none yet — Phase 1 in PR review)
+Phases that have landed (chronological, by lead PR):
+
+- Phase 1 — Bootstrap (Next.js 15 + pnpm + CI hygiene)
+- Phase 2 — Marketing site port (home, about, platform, security, products) + auth flows expanded (forgot-password, account-verification, reset-forgotten-password as explicit pages)
+- Phase 3 — Catalog + dataset detail (Overview, Summary tables, Pivot stub, Document Explorer, Document Detail with dependency graph + AppearsElsewhere)
+- Phase 4 — Auth contract: HttpOnly `Domain=.ndi-cloud.com` cookie + CSRF double-submit (no localStorage tokens)
+- Phase 5 — Vercel Analytics + Speed Insights wiring; Edge middleware Origin enforcement on `/api/*` mutations
+- Phase 6.5 — Data browser leaf component ports (PivotView, QueryBuilder, FacetPanel, DataPanel for binary blobs, ontology popovers)
+- Phase 6.6 — REBUILD-8 chrome gate for document-detail drilldown (chrome hidden via `data-dataset-chrome` selectors + inline `<style>` pre-paint)
+- Phase 6.7 A1–A11 — bundle ratchet, `generateMetadata` per-dataset titles, RSC prefetch, edge cache, ISR+SSG for top-20 datasets
+- Phase 6.7 audit batches A–G (PRs #94–#100) — 24-finding frontend polish: instant route-shell paint, degraded-data UX, error/empty-state polish, auth-flow polish, nav consistency, narrow-width responsive, hygiene/a11y
+- PR #101–#102 — dataset-detail 500 hotfix + bad-id 400 routing + tighter existence-check timeout
+- PR #103 — `useLinkStatus` pending pill for catalog-card click feedback
+- PR #104 — architectural fix: existence check moved layout→page so `loading.tsx` Suspense fires + `notFound()` resolves dataset-scoped `not-found.tsx`
+- PR #105 — cache-poisoning hotfix: don't write `null` to TanStack Query cache when prefetch times out (caught during pre-cutover audit; tree-shrew dataset was rendering bare-id)
+
+Reference plans:
+- High-level: see Audri's plan file at `/Users/audribhowmick/.claude/plans/sharded-puzzling-dragonfly.md`
+- Pre-cutover audit (this session): `/Users/audribhowmick/.claude/plans/atomic-sniffing-island.md`
+- Architectural rationale: `ndi-data-browser-v2/docs/plans/cross-repo-unification-2026-04-24.md`
+- v2 audit preserved: `ndi-data-browser-v2/docs/reviews/Audit_2026-04-23.md`
+- Frontend polish audit: `apps/web/docs/reviews/Audit_2026-04-27_frontend_polish.md` (23/24 SHIPPED, 1 deferred-by-design as of `main` post-PR-#100)
 
 ## Stack
 
