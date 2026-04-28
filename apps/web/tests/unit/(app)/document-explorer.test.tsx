@@ -59,7 +59,13 @@ afterEach(() => {
 // ─── ClassCountsList ────────────────────────────────────────────────────
 
 describe('ClassCountsList', () => {
-  it('routes summary classes to /tables/[className] and others to /documents?class=', () => {
+  it('routes EVERY class to /documents?class= (stays in the explorer)', () => {
+    // 2026-04-28 — pre-fix this split summary classes (subject /
+    // element / element_epoch / treatment / openminds_subject /
+    // probe_location) to /tables/[className]. That yanked users out
+    // of the explorer they were already in. The fix routes every
+    // class to the explorer's class-filter URL form so clicks behave
+    // like filters, not tab swaps.
     render(
       <ClassCountsList
         datasetId="d1"
@@ -70,7 +76,9 @@ describe('ClassCountsList', () => {
       />,
     );
     const subjectLink = screen.getByRole('link', { name: /subject/i });
-    expect(subjectLink.getAttribute('href')).toBe('/datasets/d1/tables/subject');
+    expect(subjectLink.getAttribute('href')).toBe(
+      '/datasets/d1/documents?class=subject',
+    );
     const customLink = screen.getByRole('link', { name: /custom_class/i });
     expect(customLink.getAttribute('href')).toBe(
       '/datasets/d1/documents?class=custom_class',
