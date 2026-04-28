@@ -73,6 +73,70 @@ export function silvermanBandwidth(values: number[]): number {
 }
 
 // ---------------------------------------------------------------------------
+// Histogram binning (Histogram chart)
+// ---------------------------------------------------------------------------
+
+export interface HistogramBin {
+  /** Lower edge of the bin (inclusive). */
+  x0: number;
+  /** Upper edge of the bin (exclusive, except for the rightmost bin which is
+   *  inclusive on both sides so the max value lands somewhere). */
+  x1: number;
+  /** Number of values that fell into this bin. */
+  count: number;
+}
+
+/**
+ * Histogram binning. Returns equal-width bins spanning [min, max] of the
+ * input values, with a count per bin.
+ *
+ * - `binCount` is optional. When omitted, falls back to a Sturges-style
+ *   estimate (`ceil(log2(n) + 1)`) clamped to [10, 50] — matching what
+ *   d3.bin's default thresholder uses for "reasonable" bar counts on
+ *   small-to-medium samples.
+ * - Empty input → `[]`. Single distinct value → one synthetic bin of
+ *   width 1 around the value (so the rendered bar has a non-zero base).
+ * - The rightmost bin is inclusive on its upper edge so the max value
+ *   doesn't fall off the end (standard histogram convention).
+ *
+ * Pure function — no React, no DOM. Tested in `tests/unit/lib/viewer/
+ * math.test.ts` alongside `kernelDensity` / `silvermanBandwidth`.
+ */
+export function histogramBins(
+  values: ReadonlyArray<number>,
+  binCount?: number,
+): HistogramBin[] {
+  const finite = values.filter((v) => Number.isFinite(v));
+  if (finite.length === 0) return [];
+  const min = d3Array.min(finite) ?? 0;
+  const max = d3Array.max(finite) ?? 0;
+  if (min === max) {
+    // Degenerate: all values identical. Render a single bar of width 1
+    // centered on the value so the histogram doesn't collapse to zero
+    // width.
+    return [{ x0: min - 0.5, x1: min + 0.5, count: finite.length }];
+  }
+  const nBins =
+    binCount && binCount > 0
+      ? Math.floor(binCount)
+      : Math.min(50, Math.max(10, Math.ceil(Math.log2(finite.length) + 1)));
+  const step = (max - min) / nBins;
+  const bins: HistogramBin[] = Array.from({ length: nBins }, (_, i) => ({
+    x0: min + i * step,
+    x1: min + (i + 1) * step,
+    count: 0,
+  }));
+  for (const v of finite) {
+    let idx = Math.floor((v - min) / step);
+    // Clamp the rightmost edge into the last bin (inclusive on upper edge).
+    if (idx >= nBins) idx = nBins - 1;
+    if (idx < 0) idx = 0;
+    bins[idx]!.count++;
+  }
+  return bins;
+}
+
+// ---------------------------------------------------------------------------
 // Column classification (QuickPlot)
 // ---------------------------------------------------------------------------
 

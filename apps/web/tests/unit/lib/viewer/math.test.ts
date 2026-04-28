@@ -19,6 +19,7 @@ import {
   classifyColumns,
   coerceNumber,
   detectSweeps,
+  histogramBins,
   kernelDensity,
   silvermanBandwidth,
 } from '@/lib/viewer/math';
@@ -301,5 +302,58 @@ describe('detectSweeps (uPlot timeseries)', () => {
     // 2 sweeps of length ≥ 6 → detected.
     expect(result).not.toBeNull();
     expect(result!.sweeps).toHaveLength(2);
+  });
+});
+
+describe('histogramBins (Histogram chart)', () => {
+  // Equal-width binning over [min, max]. Counts must sum to the input
+  // size and the rightmost bin must include the max value.
+
+  it('returns [] for empty input', () => {
+    expect(histogramBins([])).toEqual([]);
+  });
+
+  it('drops non-finite values from the count', () => {
+    const bins = histogramBins([1, 2, 3, NaN, Infinity, -Infinity]);
+    const total = bins.reduce((s, b) => s + b.count, 0);
+    expect(total).toBe(3);
+  });
+
+  it('produces a single synthetic bin when all values are identical', () => {
+    const bins = histogramBins([7, 7, 7, 7]);
+    expect(bins).toHaveLength(1);
+    expect(bins[0]!.x0).toBe(6.5);
+    expect(bins[0]!.x1).toBe(7.5);
+    expect(bins[0]!.count).toBe(4);
+  });
+
+  it('counts sum to input length for a typical sample', () => {
+    const values = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10];
+    const bins = histogramBins(values, 5);
+    const total = bins.reduce((s, b) => s + b.count, 0);
+    expect(total).toBe(values.length);
+    expect(bins).toHaveLength(5);
+  });
+
+  it('respects an explicit binCount override', () => {
+    const bins = histogramBins([1, 2, 3, 4, 5, 6, 7, 8, 9, 10], 3);
+    expect(bins).toHaveLength(3);
+  });
+
+  it('places the max value into the rightmost bin (inclusive upper edge)', () => {
+    // Without the inclusive-upper-edge clamp, max would fall into a
+    // non-existent bin index and get dropped.
+    const bins = histogramBins([0, 5, 10], 2);
+    const total = bins.reduce((s, b) => s + b.count, 0);
+    expect(total).toBe(3);
+    // Max landed in the last bin.
+    expect(bins[bins.length - 1]!.count).toBeGreaterThanOrEqual(1);
+  });
+
+  it('uses Sturges-style estimate when binCount is omitted (clamped to [10, 50])', () => {
+    // n=100 → ceil(log2(100) + 1) = 8 → clamp up to 10.
+    const bins = histogramBins(Array.from({ length: 100 }, (_, i) => i));
+    expect(bins.length).toBeGreaterThanOrEqual(10);
+    expect(bins.length).toBeLessThanOrEqual(50);
   });
 });
