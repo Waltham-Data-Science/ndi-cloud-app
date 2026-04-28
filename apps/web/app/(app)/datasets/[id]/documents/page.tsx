@@ -9,6 +9,9 @@
  * via the REBUILD-8 chrome-gate (`DatasetDetailChromeGate`).
  */
 import type { Metadata } from 'next';
+import { HydrationBoundary } from '@tanstack/react-query';
+
+import { prefetchDatasetForPage } from '@/lib/api/datasets-prefetch';
 
 import { DocumentsShell } from './documents-shell';
 
@@ -23,5 +26,11 @@ export const metadata: Metadata = {
 
 export default async function DocumentsPage({ params }: PageProps) {
   const { id } = await params;
-  return <DocumentsShell datasetId={id} />;
+  // Existence check + prefetch — see lib/api/datasets-prefetch.ts.
+  const dehydratedState = await prefetchDatasetForPage(id);
+  return (
+    <HydrationBoundary state={dehydratedState}>
+      <DocumentsShell datasetId={id} />
+    </HydrationBoundary>
+  );
 }

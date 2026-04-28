@@ -28,6 +28,9 @@
  * the minimum-effort path the audit explicitly recommended.
  */
 import type { Metadata } from 'next';
+import { HydrationBoundary } from '@tanstack/react-query';
+
+import { prefetchDatasetForPage } from '@/lib/api/datasets-prefetch';
 
 import { DocumentDetailShell } from './document-detail-shell';
 
@@ -42,8 +45,14 @@ export const metadata: Metadata = {
 
 export default async function DocumentDetailPage({ params }: PageProps) {
   const { id, docId } = await params;
+  // Existence check + prefetch — see lib/api/datasets-prefetch.ts.
+  // Note: this page hides the dataset chrome via the inline <style>
+  // below, but the dataset existence check still applies so a bad id
+  // (typo, deleted dataset) routes to the dataset-scoped not-found
+  // instead of rendering a half-broken document detail page.
+  const dehydratedState = await prefetchDatasetForPage(id);
   return (
-    <>
+    <HydrationBoundary state={dehydratedState}>
       {/* R2: hide chrome before paint to suppress the hydration flash.
           The chrome elements unmount post-hydration; this style stops
           the brief visible flicker on slower machines (Salk's older
@@ -65,6 +74,6 @@ export default async function DocumentDetailPage({ params }: PageProps) {
         }}
       />
       <DocumentDetailShell datasetId={id} docId={docId} />
-    </>
+    </HydrationBoundary>
   );
 }

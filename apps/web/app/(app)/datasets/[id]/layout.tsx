@@ -1,5 +1,5 @@
 /**
- * Dataset detail layout — Phase 3b + REBUILD-8 chrome gate.
+ * Dataset detail layout — chrome-only since Bug-1 architectural fix.
  *
  * Wraps every `/datasets/[id]/{overview,tables,pivot,documents}` route
  * with a shared hero band + the from-scratch a11y tab bar (audit #65).
@@ -7,7 +7,7 @@
  * aria-selected), NOT state-controlled — that's the structural fix
  * for the audit.
  *
- * Phase 6.6 REBUILD-8: chrome rendering now goes through
+ * Phase 6.6 REBUILD-8: chrome rendering goes through
  * `<DatasetDetailChromeGate>`, which conditionally hides the hero +
  * tab bar + constrained-width section on the document-detail URL
  * (`/datasets/[id]/documents/[docId]`). Source had document detail
@@ -15,44 +15,48 @@
  * client-side pathname check rather than a layout sibling, but the
  * UX is identical — document detail drops the dataset chrome entirely.
  *
- * **RSC prefetch** (Batch B): server-side prefetches the dataset
- * record so the hero (which calls `useDataset(id)` on the client)
- * hydrates instantly instead of firing its own client-side fetch on
- * mount. Every tab benefits — overview, tables, documents, pivot —
- * because they all share this layout's chrome.
+ * # Why this layout has NO awaits
  *
- * Per-leaf prefetch (summary/provenance/table/etc.) lives in each
- * leaf page; the cache is shared by query key so the layout's
- * dataset prefetch + the leaf's specialized prefetches compose into
- * a fully-warmed TanStack Query cache by the time the client island
- * mounts. No on-mount fetch waterfall.
+ * Previous versions awaited `fetchDatasetWithStatus` here to gate the
+ * route on dataset existence (calling `notFound()` on 4xx). That had
+ * two production bugs:
  *
- * **No `generateMetadata` here.** Phase 6.7 A2 (PR #75) tried to
- * recover the source SPA's `useDocumentTitle` per-route title by
- * adding a layout-level `generateMetadata` that fetched the dataset
- * name. Two production failures resulted:
+ *   1. `loading.tsx` never paints. Next.js's `loading.tsx` is the
+ *      Suspense fallback for the PAGE, not the LAYOUT — a layout-level
+ *      `await` blocks the page from even starting to render. Catalog
+ *      clicks on slow datasets (Sophie, Jess Haley) appeared to freeze
+ *      for 5-9s with no visual feedback. PR #103 (`useLinkStatus`
+ *      pending pill) papered over the symptom; this layout refactor
+ *      fixes the root cause by moving the awaits to the page (where
+ *      Suspense actually fires).
  *
- *   1. v1 used `cookies()` to forward auth — that opted the route
- *      into dynamic rendering and conflicted with the Overview
- *      page's `generateStaticParams` (top-20 prerender). 500.
- *   2. v2 dropped `cookies()` — but Next.js 16.2 still threw
- *      `InvariantError: The manifests singleton was not initialized`
- *      whenever the layout's async `generateMetadata` tried to fetch
- *      while the child page had `generateStaticParams`. Same 500.
+ *   2. `notFound()` from a layout doesn't pick up the sibling
+ *      `not-found.tsx`. It bubbles up to the parent's not-found,
+ *      which means dataset-scoped 404s rendered the GLOBAL
+ *      `app/not-found.tsx` instead of the dataset-scoped one (visible
+ *      in `verify-06-bad-id-fixed-but-shows-global-not-found.png`).
  *
- * NB: data prefetch (below) is NOT generateMetadata — it's a regular
- * server-side render pathway. Doesn't trigger the InvariantError.
+ * Both fixes live in `lib/api/datasets-prefetch.ts`'s
+ * `prefetchDatasetForPage(id)`, called from each page's top:
  *
- * Per-dataset titles are now set at the LEAF overview page
- * (`overview/page.tsx`) — the safer composition. The fetch is inlined
- * (no shared helper) to dodge the turbopack runtime error that
- * crashed the previous attempt to extract a
- * `lib/api/datasets-server.ts` module. Sibling tabs (tables/
- * documents/pivot) keep generic "Tables · NDI Cloud" titles; the
- * dataset name appears only on the canonical Overview URL since
- * that's the link people share.
+ *   - `[id]/overview/page.tsx`
+ *   - `[id]/tables/[className]/page.tsx`
+ *   - `[id]/documents/page.tsx`
+ *   - `[id]/pivot/[grain]/page.tsx`
+ *   - `[id]/documents/[docId]/page.tsx`
  *
- * A2 audit follow-up #67 — CLOSED.
+ * The redirect-only pages (`[id]/page.tsx`, `[id]/tables/page.tsx`)
+ * skip the helper since they immediately `redirect()` to a leaf that
+ * does the check.
+ *
+ * # No `generateMetadata` here either
+ *
+ * Phase 6.7 A2 (PR #75) tried to recover per-route titles via a
+ * layout-level `generateMetadata` that fetched the dataset name. Two
+ * production failures resulted (cookies-opt-into-dynamic conflict
+ * with child `generateStaticParams`, and Next 16.2 InvariantError on
+ * the manifests singleton). Per-dataset titles now live on the LEAF
+ * `overview/page.tsx`'s `generateMetadata` — safer composition.
  *
  * Tabs as nested routes:
  *   `tables/page.tsx`         → server redirect to ./subject
@@ -61,286 +65,24 @@
  *   `documents/page.tsx`              → DocumentExplorer (under chrome)
  *   `documents/[docId]/page.tsx`      → standalone (chrome hidden)
  */
-import {
-  HydrationBoundary,
-  QueryClient,
-  dehydrate,
-} from '@tanstack/react-query';
-import { notFound } from 'next/navigation';
-
 import { DatasetDetailChromeGate } from '@/components/app/DatasetDetailChromeGate';
-import { env } from '@/lib/env';
-
-/*
- * HOTFIX (post-PR-#96 production 500): the dataset existence check
- * MUST live inline in this server component, NOT in `lib/api/datasets`.
- * That module has `'use client'` at line 1 — every export is therefore
- * a client-only symbol. The original layout got away with calling
- * `fetchDatasetServer` from there because it was wrapped in
- * `prefetchQuery`'s try/catch, which swallowed the resulting
- * "client-from-server" throw silently. PR #96 lifted the dataset
- * fetch out of `prefetchQuery` (so we could check the HTTP status
- * for the bad-id `notFound()` route, audit #10) — which removed the
- * try/catch belt and the throw started propagating, returning 500
- * for every dataset detail visit.
- *
- * Inlining the fetch here matches the existing `prefetchDetailEndpoint`
- * pattern below and avoids the client/server module boundary
- * entirely. The catalog `fetchPublishedDatasets` (used by the
- * overview page's `generateStaticParams`) has the same latent issue
- * — its build-time error is surfaced in the build log and silently
- * fails the prerender (skip → ISR fallback). That's a separate bug;
- * this hotfix is scoped to unbreaking the runtime 500.
- */
 
 interface LayoutProps {
   children: React.ReactNode;
   params: Promise<{ id: string }>;
 }
 
-/**
- * Per-prefetch hard ceiling. 8s is generous enough that warm Railway
- * responses (which take ~0.1-0.5s when the upstream cache is hot, see
- * smoke-test timings against the real backend) always make it into
- * the dehydrated state, but tight enough that a cold endpoint can't
- * stall the layout render past a single TCP round-trip + a couple
- * seconds of ndiquery work. Cold endpoints fall through to the
- * client-side hook (60s timeout, zero retries) which surfaces a
- * proper error state with a Retry button instead of a layout that
- * blocks the entire page render.
- */
-const PREFETCH_TIMEOUT_MS = 8_000;
-
-/**
- * Group-level deadline. `Promise.all` waits for the slowest prefetch
- * — even if 3 of 4 resolve in 100ms, the layout blocks until the
- * slow one does. Race the whole group against this deadline so the
- * layout always renders within a tight, predictable budget. Whatever
- * landed in the queryClient by deadline gets dehydrated; the rest
- * fall through to client-side fetches.
- *
- * 3s sized against cold-but-not-pathological responses (typical
- * Railway warm summary = 0.1s, cold summary on small/medium datasets
- * = 1-3s — captured in the queryClient before deadline).
- */
-const PREFETCH_GROUP_DEADLINE_MS = 3_000;
-
-/**
- * Anonymous-public detail endpoints we prefetch on the server. Each
- * goes through `INTERNAL_API_URL` (bypassing the Vercel edge → Railway
- * double-hop) and writes into the shared QueryClient under the same
- * key the client-side hook uses, so the client island reads from the
- * hydrated cache instead of firing its own fetch on mount.
- *
- * Cookies are NOT forwarded — anonymous-public projection only. Per-
- * user authed details fall through to the client-side fetch path
- * which carries cookies via `apiFetch`'s `credentials: include`.
- */
-const DETAIL_PREFETCHES = [
-  { suffix: '/summary', queryKey: 'summary' as const },
-  { suffix: '/provenance', queryKey: 'provenance' as const },
-  { suffix: '/class-counts', queryKey: 'class-counts' as const },
-] as const;
-
-async function prefetchDetailEndpoint(
-  baseUrl: string,
-  id: string,
-  suffix: string,
-): Promise<unknown | null> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), PREFETCH_TIMEOUT_MS);
-  try {
-    const res = await fetch(`${baseUrl}/api/datasets/${id}${suffix}`, {
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
-      // Co-locate with the leaf page's `revalidate: 60` so the same
-      // dataset visited within the revalidate window dedupes to one
-      // upstream call per Vercel function invocation.
-      cache: 'force-cache',
-      next: { revalidate: 60 },
-    });
-    if (!res.ok) return null;
-    return (await res.json()) as unknown;
-  } catch {
-    return null;
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/**
- * Inline server-side dataset fetch with status. Mirrors what
- * `lib/api/datasets.fetchDatasetServerWithStatus` did in the
- * pre-hotfix codepath, but inlined here so the call doesn't cross
- * the `'use client'` boundary on `lib/api/datasets.ts`.
- *
- * Returns `{ status, data }`:
- *   - `status >= 200 && < 300`: `data` is the parsed JSON body
- *   - `status >= 400`: `data` is `null`; caller routes 404 to
- *     `notFound()` and treats other 4xx/5xx as transient
- *   - `status === 0`: network/timeout/parse error; caller treats as
- *     transient (NEVER as 404 — a bad network shouldn't masquerade
- *     as a missing dataset)
- *
- * No zod validation here — the layout just needs to know whether
- * the dataset exists, and downstream client hooks parse the body
- * via the same schema in `useDataset` when they read from cache.
- * Skipping the parse keeps the inline helper minimal and avoids
- * importing `DatasetRecordSchema` (which lives in the same
- * `'use client'` file we're routing around).
- */
-/**
- * Tighter timeout for the existence-check fetch than the secondary
- * prefetches. The dataset record is the FIRST thing the layout
- * blocks on — its latency is the lower bound on every dataset
- * detail click-to-paint. The previous 8s ceiling matched the
- * other prefetches but produced a 9.3s click freeze on Sophie
- * (verified visually on production: catalog stayed shown for
- * 9.3s before the URL changed). 1.5s is tight enough to bound
- * the freeze AND generous enough to capture the warm-cache case
- * (Reikersdorfer ~300ms, even Sophie's getDataset is ~2.5s on
- * cold cache — but we'd rather bail and let the client hook
- * fetch than block the chrome on a slow getDataset).
- *
- * On timeout, the existence check returns `{ status: 0 }` — the
- * caller treats that as transient and proceeds normally. The bad-
- * id check (audit #10) only fires on a fast 4xx response; a slow
- * cloud doesn't masquerade as a missing dataset.
- *
- * Underlying issue tracked: loading.tsx still doesn't paint during
- * this 1.5s window because Next.js's loading.tsx is the Suspense
- * fallback for the PAGE, not the LAYOUT — a layout-level await
- * blocks the page from even starting to render. Proper fix
- * requires moving the existence check + data prefetches OUT of
- * the layout entirely (into pages or middleware). Out of scope
- * for this hotfix.
- */
-const EXISTENCE_CHECK_TIMEOUT_MS = 1_500;
-
-async function fetchDatasetWithStatus(
-  baseUrl: string,
-  id: string,
-): Promise<{ status: number; data: unknown }> {
-  const controller = new AbortController();
-  const timer = setTimeout(
-    () => controller.abort(),
-    EXISTENCE_CHECK_TIMEOUT_MS,
-  );
-  try {
-    const res = await fetch(`${baseUrl}/api/datasets/${id}`, {
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
-      cache: 'force-cache',
-      next: { revalidate: 60 },
-    });
-    if (!res.ok) return { status: res.status, data: null };
-    const body = (await res.json()) as unknown;
-    return { status: res.status, data: body };
-  } catch {
-    return { status: 0, data: null };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 export default async function DatasetDetailLayout({
   children,
   params,
 }: LayoutProps) {
+  // `params` is awaited because Next.js requires it; the await
+  // resolves synchronously (params is known the moment the route
+  // matches), so this layout does NOT block on data — `loading.tsx`
+  // fires the moment the page below starts to suspend.
   const { id } = await params;
-  const queryClient = new QueryClient();
-
-  if (env.INTERNAL_API_URL) {
-    const baseUrl = env.INTERNAL_API_URL;
-
-    // Audit 2026-04-27 #10 — explicit 404 routing. Pre-fix, a bad
-    // `[id]` (legacy deeplink, typo, deleted dataset) rendered the
-    // hero band with the bare id as h1, the full tab bar, AND an
-    // inline error in the body — visually suggesting the dataset
-    // exists but failed to load. Cleanest fix is a server-side
-    // status check at the layer that owns the chrome: when the
-    // dataset endpoint returns a clean 404, throw via
-    // `notFound()` so Next.js renders the closest `not-found.tsx`
-    // (sibling to this file) WITHOUT mounting the chrome.
-    //
-    // Status `0` (network blip / timeout / unparseable) is treated
-    // as transient — we DON'T 404-route on it, because a bad
-    // network shouldn't masquerade as a missing dataset. The client
-    // hook downstream surfaces a Retry button for those cases.
-    //
-    // Folding this check into the prefetch (vs a separate HEAD)
-    // keeps it free: the dataset record is the FIRST thing we
-    // need anyway, and the queryClient gets pre-populated from the
-    // same response so the client island doesn't double-fetch.
-    //
-    // Outer try/catch belt: even though `fetchDatasetWithStatus`
-    // catches its own errors and returns `{ status: 0 }`, ANY
-    // unexpected throw here would render the global Next.js 500
-    // page instead of the dataset chrome. Belt + suspenders so a
-    // future regression in the helper doesn't bring down every
-    // dataset detail visit.
-    let datasetResult: { status: number; data: unknown };
-    try {
-      datasetResult = await fetchDatasetWithStatus(baseUrl, id);
-    } catch {
-      datasetResult = { status: 0, data: null };
-    }
-    // Audit 2026-04-27 #10 — route bad ids to the dataset-scoped
-    // not-found page. The cloud distinguishes:
-    //   - 404: id is Mongo-ObjectId-shaped but doesn't exist
-    //   - 400: id isn't a valid identifier shape (validation
-    //     rejected pre-Mongo-lookup)
-    // Visually verified on production: visiting
-    // `/datasets/nonexistent-id-test/overview` (a non-Mongo-shaped
-    // id) returned the 400 path and rendered the dataset chrome
-    // with the bare id as h1 — the exact UX the audit was
-    // supposed to fix. Treating both 4xx as not-found is the
-    // user-facing correct behavior.
-    //
-    // Other failures (500/502/503/504, status 0): NOT treated as
-    // not-found. A bad network or upstream blip shouldn't
-    // masquerade as a missing dataset; the client hook downstream
-    // surfaces a Retry button for those cases.
-    if (datasetResult.status === 400 || datasetResult.status === 404) {
-      notFound();
-    }
-    queryClient.setQueryData(['dataset', id], datasetResult.data);
-
-    // Fire the secondary prefetches in parallel. Each prefetchQuery
-    // internally catches errors so a single failure (e.g. /summary
-    // 504 on a large dataset) doesn't propagate. The group is then
-    // RACED against PREFETCH_GROUP_DEADLINE_MS so the layout never
-    // blocks page render past that ceiling — whatever's in the
-    // queryClient when the race resolves gets dehydrated;
-    // client-side hooks fill in the rest with their own (60s-
-    // timeout, zero-retry) fetches.
-    //
-    // We don't `await` individual prefetches outside the race —
-    // `prefetchQuery` writes to the queryClient as soon as the
-    // queryFn resolves, so even prefetches that finish AFTER the
-    // race deadline still populate the cache for any client renders
-    // that happen on the same QueryClient instance (none here, since
-    // the QueryClient is request-scoped and dehydrated immediately
-    // after the race; this is just a defensive note).
-    const prefetchAll = Promise.all(
-      DETAIL_PREFETCHES.map(({ suffix, queryKey }) =>
-        queryClient.prefetchQuery({
-          queryKey: ['dataset', id, queryKey],
-          queryFn: () => prefetchDetailEndpoint(baseUrl, id, suffix),
-        }),
-      ),
-    );
-    const deadline = new Promise<void>((resolve) =>
-      setTimeout(resolve, PREFETCH_GROUP_DEADLINE_MS),
-    );
-    await Promise.race([prefetchAll, deadline]);
-  }
 
   return (
-    <HydrationBoundary state={dehydrate(queryClient)}>
-      <DatasetDetailChromeGate datasetId={id}>
-        {children}
-      </DatasetDetailChromeGate>
-    </HydrationBoundary>
+    <DatasetDetailChromeGate datasetId={id}>{children}</DatasetDetailChromeGate>
   );
 }

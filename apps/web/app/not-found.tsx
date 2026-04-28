@@ -2,7 +2,6 @@ import Link from 'next/link';
 import type { Metadata } from 'next';
 
 import { Footer } from '@/components/marketing/Footer';
-import { Header } from '@/components/marketing/Header';
 
 /**
  * Custom 404 page (Next 16 file convention).
@@ -13,17 +12,28 @@ import { Header } from '@/components/marketing/Header';
  * dark depth-gradient hero from the source repo, two CTAs (home + Data
  * Commons, both same-origin post-unification), and the standard Footer.
  *
- * Audit 2026-04-27 #9 — the original port omitted the Header here
- * because Next 16 mounts root `not-found.tsx` OUTSIDE any route group
- * layout, so the (marketing) chrome wasn't inherited automatically.
- * The audit caught that the user landing on a typo'd URL had NO way
- * to navigate back to the rest of the site except the in-page CTA
- * buttons or the Footer's column links — no top-of-page nav, no logo
- * to click, and the Header's session-aware "Log in" / "My workspace"
- * affordance was missing. Importing `<Header />` directly (vs moving
- * the file into the route group, which would change the URL routing
- * semantics for `notFound()` from non-grouped paths) restores parity
- * with every other page on the site.
+ * # Why no `<Header />` import here
+ *
+ * Audit 2026-04-27 #9 originally added `<Header />` because the audit
+ * believed Next 16 mounts root `not-found.tsx` OUTSIDE any route
+ * group layout. Empirical verification (production screenshot
+ * `verify-06-bad-id-fixed-but-shows-global-not-found.png`) showed
+ * the OPPOSITE: when `notFound()` is triggered from inside a route
+ * group (e.g. the (app) group's dataset detail layout), Next.js
+ * renders this global 404 INSIDE the (app) group's chrome — which
+ * already provides its own `<Header />`. Importing `<Header />`
+ * here produced a duplicate.
+ *
+ * Removing it from the global not-found leaves the route group's
+ * Header intact for the common case (a 404 inside a matched route
+ * group). After Bug 1 (architectural fix), dataset-bad-id 404s now
+ * route to the dataset-scoped `[id]/not-found.tsx` instead — so this
+ * file primarily handles truly-unmatched URLs. For those, the
+ * marketing/app group layouts above still render their `<Header />`.
+ *
+ * The Footer stays since it's purely presentational (no auth-aware
+ * affordances) and provides additional navigation paths for users
+ * who landed on a broken URL.
  */
 export const metadata: Metadata = {
   title: 'Page not found',
@@ -33,7 +43,6 @@ export const metadata: Metadata = {
 export default function NotFound() {
   return (
     <>
-      <Header />
       <main
         className="relative overflow-hidden flex items-center justify-center text-white px-7 py-20 min-h-[calc(100vh-320px)]"
         style={{ background: 'var(--grad-depth)' }}

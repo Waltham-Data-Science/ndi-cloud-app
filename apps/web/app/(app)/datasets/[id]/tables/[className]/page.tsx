@@ -16,6 +16,9 @@
  * because the user already sees the dataset name in the hero.
  */
 import type { Metadata } from 'next';
+import { HydrationBoundary } from '@tanstack/react-query';
+
+import { prefetchDatasetForPage } from '@/lib/api/datasets-prefetch';
 
 import { TableShell } from './table-shell';
 
@@ -29,5 +32,11 @@ export const metadata: Metadata = {
 
 export default async function TableTabPage({ params }: PageProps) {
   const { id, className } = await params;
-  return <TableShell datasetId={id} className={className} />;
+  // Existence check + prefetch — see lib/api/datasets-prefetch.ts.
+  const dehydratedState = await prefetchDatasetForPage(id);
+  return (
+    <HydrationBoundary state={dehydratedState}>
+      <TableShell datasetId={id} className={className} />
+    </HydrationBoundary>
+  );
 }
