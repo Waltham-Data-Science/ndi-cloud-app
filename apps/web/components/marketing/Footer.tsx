@@ -64,7 +64,6 @@ export function Footer() {
           >
             Documentation
           </FooterLink>
-          <FooterLink href="/about#sfn">SfN 2025 · San Diego</FooterLink>
         </FooterColumn>
       </div>
 
