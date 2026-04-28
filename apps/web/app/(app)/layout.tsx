@@ -11,7 +11,7 @@ import { Header } from '@/components/marketing/Header';
  * delta from marketing is conceptual: this group's pages may be
  * authenticated, but the auth gate runs client-side inside each
  * authenticated page (see `/my` and `/my-account` for the pattern).
- * The Edge Middleware (`apps/web/middleware.ts`) is intentionally
+ * The Edge Proxy (`apps/web/proxy.ts`) is intentionally
  * scoped to Origin enforcement + CSP — it does not perform cookie-
  * based 302s on auth-protected routes (would warrant its own PR + e2e
  * spec; see `/my/page.tsx` header for the rationale).

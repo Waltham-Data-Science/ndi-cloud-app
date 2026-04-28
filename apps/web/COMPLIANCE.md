@@ -68,7 +68,7 @@ content, but every authenticated request still terminates in
 | `ndi-cloud-node` → DocumentDB / Cognito / S3 | TLS 1.2+ | AWS internal — `us-east-1` VPC, AWS-managed certs. |
 
 No plaintext hop. CSP `upgrade-insecure-requests` pinned in both the
-Vercel HTML CSP (`middleware.ts`) and the FastAPI JSON CSP
+Vercel HTML CSP (`proxy.ts`) and the FastAPI JSON CSP
 (`backend/middleware/security_headers.py`) — see
 `Waltham-Data-Science/ndi-data-browser-v2/docs/adr/014-dual-csp-architecture.md`
 for why we have both.

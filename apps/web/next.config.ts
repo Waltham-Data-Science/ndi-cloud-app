@@ -1,3 +1,5 @@
+import path from 'node:path';
+
 import type { NextConfig } from 'next';
 
 // Side-effect import: validates process.env at config-load time.
@@ -7,6 +9,30 @@ import './lib/env';
 const config: NextConfig = {
   reactStrictMode: true,
   poweredByHeader: false,
+
+  /*
+   * Pin Turbopack's workspace root to the monorepo root (two dirs up
+   * from `apps/web/`). Without this, Turbopack's auto-detection walks
+   * upward looking for the nearest `pnpm-workspace.yaml` / lockfile;
+   * when a developer has the repo checked out under a parent that
+   * also has a workspace anchor (e.g. a sibling git worktree, or a
+   * monorepo-of-monorepos layout), Next.js prints:
+   *
+   *     ⚠ Warning: Next.js inferred your workspace root, but it may
+   *     not be correct. We detected multiple lockfiles ...
+   *
+   * On Vercel deploys this never reproduced (only one tree exists in
+   * the build container), but local `pnpm build` runs from inside a
+   * worktree surface the warning every time. Setting `turbopack.root`
+   * makes the resolution deterministic across environments.
+   *
+   * `path.join(__dirname, '..', '..')` resolves to the directory that
+   * contains `pnpm-workspace.yaml` + the root `package.json`. Verified
+   * with `next build` post-fix: warning gone, route table identical.
+   */
+  turbopack: {
+    root: path.join(__dirname, '..', '..'),
+  },
   images: {
     formats: ['image/avif', 'image/webp'],
     remotePatterns: [

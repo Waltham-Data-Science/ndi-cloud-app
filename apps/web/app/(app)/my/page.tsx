@@ -7,10 +7,10 @@
  *
  * Auth gate is client-side: when `useSession()` resolves to `user=null`
  * the client routes to `/login?returnTo=/my` (matches the my-account
- * pattern shipped in Phase 2b). A server-side Edge-Middleware 302
+ * pattern shipped in Phase 2b). A server-side Edge-Proxy 302
  * (`Vary: Cookie` + auth-cookie inspection) is a possible future
  * optimization to remove the brief auth flash, but the current
- * middleware (`apps/web/middleware.ts`) is intentionally scoped to
+ * proxy (`apps/web/proxy.ts`) is intentionally scoped to
  * Origin enforcement + CSP — adding cookie-driven 302s would expand
  * the matcher's blast radius and warrants its own PR + e2e coverage.
  */
