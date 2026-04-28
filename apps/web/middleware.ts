@@ -282,6 +282,15 @@ const CSP_POLICY = [
   `connect-src 'self' ${RAILWAY_API} https://www.google-analytics.com https://vitals.vercel-insights.com`,
   "font-src 'self' data:",
   "frame-ancestors 'none'",
+  // 2026-04-28 — `frame-src` added for the dataset tutorials S3 bucket.
+  // The Tutorials tab on selected datasets loads pre-rendered MATLAB
+  // Live Script HTMLs from `ndi-cloud-tutorials.s3.us-east-2.amazonaws.com`
+  // inside an iframe. With CSP currently in Report-Only mode, the iframe
+  // works without this directive, but Phase 7 flips Report-Only to
+  // enforced — at that point a missing `frame-src` falls back to
+  // `default-src 'self'`, and the iframe blocks. Allowlist the bucket
+  // explicitly so the cutover doesn't break the Tutorials tab.
+  "frame-src 'self' https://ndi-cloud-tutorials.s3.us-east-2.amazonaws.com",
   "base-uri 'self'",
   "form-action 'self'",
 ].join('; ');
