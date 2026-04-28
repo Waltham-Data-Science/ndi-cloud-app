@@ -3,35 +3,16 @@
 import { useMemo } from 'react';
 import * as d3Array from 'd3-array';
 import * as d3Scale from 'd3-scale';
-import * as d3Shape from 'd3-shape';
 
-import { kernelDensity, silvermanBandwidth } from '@/lib/viewer/math';
+import type { ViolinGroup } from './ViolinPlot';
 
-export interface ViolinGroup {
-  name: string;
-  values: number[];
-  count: number;
-  mean: number;
-  median: number;
-  std: number;
-  min: number;
-  max: number;
-  q1: number;
-  q3: number;
-}
-
-interface ViolinPlotProps {
+interface BoxPlotProps {
   groups: ViolinGroup[];
   yLabel: string;
   xLabel: string;
   width?: number;
   height?: number;
 }
-
-// `kernelDensity` and `silvermanBandwidth` extracted to
-// `apps/web/lib/viewer/math.ts` (CQ3) so the math primitives can be
-// unit-tested in isolation. The chart's behavior is unchanged — this
-// is a pure refactor.
 
 const COLORS = [
   '#0284c7',
@@ -44,19 +25,23 @@ const COLORS = [
 ];
 const MARGIN = { top: 20, right: 30, bottom: 50, left: 70 };
 
-/** Violin + box + jitter plot — ported from v1. Deterministic jitter
- * (hashed from index) so re-renders don't reshuffle point positions. */
-export function ViolinPlot({
+/** Box + whiskers plot. Sibling of `ViolinPlot` — reads the same
+ *  `groups[]` payload from `/api/visualize/distribution` (q1, median, q3,
+ *  min, max + raw `values`) but renders the standard Tukey boxplot
+ *  rather than the kernel-density violin. Use when n is too small for
+ *  KDE to be meaningful (n < ~10 per group) or when the user wants the
+ *  cleaner aggregate view. */
+export function BoxPlot({
   groups,
   yLabel,
   xLabel,
   width = 600,
   height = 400,
-}: ViolinPlotProps) {
+}: BoxPlotProps) {
   const innerW = width - MARGIN.left - MARGIN.right;
   const innerH = height - MARGIN.top - MARGIN.bottom;
 
-  const { xScale, yScale, violins } = useMemo(() => {
+  const { xScale, yScale } = useMemo(() => {
     const allValues = groups.flatMap((g) => g.values);
     const yMin = d3Array.min(allValues) ?? 0;
     const yMax = d3Array.max(allValues) ?? 1;
@@ -70,46 +55,23 @@ export function ViolinPlot({
       .scaleBand()
       .domain(groups.map((g) => g.name))
       .range([0, innerW])
-      .padding(0.2);
+      .padding(0.3);
 
-    const violins = groups.map((group) => {
-      if (group.values.length < 2) {
-        return { group, pathLeft: '', pathRight: '', densityMax: 0 };
-      }
-      const bw = silvermanBandwidth(group.values);
-      const density = kernelDensity(group.values, bw, [yMin - yPad, yMax + yPad]);
-      const densityMax = d3Array.max(density, (d) => d[1]) ?? 1;
-      const halfWidth = (xScale.bandwidth() / 2) * 0.9;
-      const areaLeft = d3Shape
-        .area<[number, number]>()
-        .x0((d) => -((d[1] / densityMax) * halfWidth))
-        .x1(() => 0)
-        .y((d) => yScale(d[0]))
-        .curve(d3Shape.curveBasis)(density);
-      const areaRight = d3Shape
-        .area<[number, number]>()
-        .x0(() => 0)
-        .x1((d) => (d[1] / densityMax) * halfWidth)
-        .y((d) => yScale(d[0]))
-        .curve(d3Shape.curveBasis)(density);
-      return { group, pathLeft: areaLeft ?? '', pathRight: areaRight ?? '', densityMax };
-    });
-
-    return { xScale, yScale, violins };
+    return { xScale, yScale };
   }, [groups, innerW, innerH]);
 
   const yTicks = yScale.ticks(6);
 
   return (
-    <div className="overflow-x-auto" data-testid="violin-plot-svg-wrap">
+    <div className="overflow-x-auto" data-testid="box-plot-svg-wrap">
       <svg
         width={width}
         height={height}
         className="font-mono text-[10px] text-gray-700"
-        data-testid="violin-plot-svg"
+        data-testid="box-plot-svg"
       >
         <g transform={`translate(${MARGIN.left},${MARGIN.top})`}>
-          {/* Grid */}
+          {/* Y-axis grid + ticks */}
           {yTicks.map((tick) => (
             <line
               key={tick}
@@ -141,45 +103,66 @@ export function ViolinPlot({
           </text>
           <line x1={0} x2={innerW} y1={innerH} y2={innerH} stroke="currentColor" strokeOpacity={0.2} />
 
-          {violins.map(({ group, pathLeft, pathRight }, i) => {
+          {groups.map((group, i) => {
             const cx = (xScale(group.name) ?? 0) + xScale.bandwidth() / 2;
             const color = COLORS[i % COLORS.length];
+            const halfW = (xScale.bandwidth() / 2) * 0.7;
             return (
               <g key={group.name} transform={`translate(${cx},0)`}>
-                {pathLeft && (
-                  <path d={pathLeft} fill={color} fillOpacity={0.25} stroke={color} strokeWidth={1} />
-                )}
-                {pathRight && (
-                  <path d={pathRight} fill={color} fillOpacity={0.25} stroke={color} strokeWidth={1} />
-                )}
-                <rect
-                  x={-4}
-                  y={yScale(group.q3)}
-                  width={8}
-                  height={Math.max(1, yScale(group.q1) - yScale(group.q3))}
-                  fill={color}
-                  fillOpacity={0.5}
-                  rx={1}
+                {/* Whiskers (min - q1) and (q3 - max) */}
+                <line
+                  x1={0}
+                  x2={0}
+                  y1={yScale(group.min)}
+                  y2={yScale(group.q1)}
+                  stroke={color}
+                  strokeWidth={1}
                 />
                 <line
-                  x1={-6}
-                  x2={6}
+                  x1={0}
+                  x2={0}
+                  y1={yScale(group.q3)}
+                  y2={yScale(group.max)}
+                  stroke={color}
+                  strokeWidth={1}
+                />
+                {/* Whisker caps */}
+                <line
+                  x1={-halfW / 2}
+                  x2={halfW / 2}
+                  y1={yScale(group.min)}
+                  y2={yScale(group.min)}
+                  stroke={color}
+                  strokeWidth={1}
+                />
+                <line
+                  x1={-halfW / 2}
+                  x2={halfW / 2}
+                  y1={yScale(group.max)}
+                  y2={yScale(group.max)}
+                  stroke={color}
+                  strokeWidth={1}
+                />
+                {/* IQR box */}
+                <rect
+                  x={-halfW}
+                  y={yScale(group.q3)}
+                  width={halfW * 2}
+                  height={Math.max(1, yScale(group.q1) - yScale(group.q3))}
+                  fill={color}
+                  fillOpacity={0.25}
+                  stroke={color}
+                  strokeWidth={1}
+                />
+                {/* Median line */}
+                <line
+                  x1={-halfW}
+                  x2={halfW}
                   y1={yScale(group.median)}
                   y2={yScale(group.median)}
-                  stroke="white"
+                  stroke={color}
                   strokeWidth={2}
                 />
-                {group.values.length <= 100 &&
-                  group.values.map((v, j) => (
-                    <circle
-                      key={j}
-                      cx={_hashJitter(group.name, j)}
-                      cy={yScale(v)}
-                      r={1.5}
-                      fill={color}
-                      fillOpacity={0.5}
-                    />
-                  ))}
                 <text y={innerH + 16} textAnchor="middle" fill="currentColor" fillOpacity={0.7}>
                   {group.name.length > 12 ? group.name.slice(0, 12) + '…' : group.name}
                 </text>
@@ -209,16 +192,4 @@ export function ViolinPlot({
       </svg>
     </div>
   );
-}
-
-/** Deterministic hash-based jitter (±6px). Stable across re-renders. */
-function _hashJitter(key: string, i: number): number {
-  const s = `${key}_${i}`;
-  let h = 0;
-  for (let c = 0; c < s.length; c++) {
-    h = (h * 31 + s.charCodeAt(c)) | 0;
-  }
-  // Map to [-6, 6].
-  const norm = ((h % 2000) + 2000) % 2000;
-  return (norm / 1000 - 1) * 6;
 }
