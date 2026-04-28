@@ -95,10 +95,10 @@ export default function PlatformPage() {
             <em className="not-italic text-brand-blue">three views.</em>
           </h1>
           <p className="text-[17px] leading-relaxed text-white/80 max-w-[720px] mb-8 m-0">
-            The Data Commons, Data Browser, and LabChat all read from the same
-            underlying NDI data model — so a dataset looks the same whether
-            you&rsquo;re browsing it in public, working on it privately, or
-            asking LabChat questions about it.
+            The Data Commons, the Data Browser, and LabChat all read from the
+            same NDI data model. A dataset looks the same in public, in your
+            private workspace, and in a LabChat answer — because it&rsquo;s the
+            same dataset, not three copies.
           </p>
           {/* Hero CTA row standardised to `MarketingButton` lg. The
               previous inline `px-6 py-3 text-base` matched source `.btnPrimaryLg`
@@ -171,9 +171,10 @@ export default function PlatformPage() {
               Your data flows through one graph.
             </h3>
             <p className="text-base leading-relaxed text-fg-secondary mb-8 m-0">
-              Raw sessions from the rig, analysis running on your workstation,
-              datasets published to the public commons — all the same underlying
-              model. One identity, one permission system, one provenance chain.
+              Raw sessions from the rig, analysis on your workstation, datasets
+              published to the public commons — same model from end to end. One
+              identity. One permission system. One provenance chain that follows
+              the data wherever it goes.
             </p>
 
             {/* 3-column flow: Your lab → NDI Cloud → The world */}
@@ -254,9 +255,10 @@ export default function PlatformPage() {
               The difference, in one picture.
             </h3>
             <p className="text-base leading-relaxed text-fg-secondary mb-8 m-0">
-              Many labs run on a patchwork of external drives, shared folders,
-              and whoever-knew-where-it-was. NDI replaces that with a single
-              store where every session is an addressable object.
+              Most labs run on a patchwork of external drives, shared folders,
+              and whichever-laptop-the-grad-student-took-home. NDI replaces that
+              with one store where every session is an addressable object —
+              citable, downloadable, and still there next semester.
             </p>
 
             <div className="grid grid-cols-2 max-[840px]:grid-cols-1 gap-5">
@@ -416,9 +418,10 @@ export default function PlatformPage() {
               Four layers, built on open standards.
             </h3>
             <p className="text-base leading-relaxed text-fg-secondary mb-8 m-0">
-              NDI Cloud is built on an open spec: the NDI data model. Storage,
-              the workspace apps, the commons, and LabChat are all layers on
-              top — not a closed product, but a stack you can inspect.
+              NDI Cloud is built on the NDI data model — an open spec, not a
+              closed product. Storage, the workspace apps, the Commons, and
+              LabChat are all layers on top. Every layer is inspectable. The
+              data model is the contract; everything above it is implementation.
             </p>
 
             <div className="flex flex-col gap-2">
@@ -504,11 +507,12 @@ export default function PlatformPage() {
             Get started
           </div>
           <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight leading-[1.2] mb-3 m-0">
-            Move your lab&rsquo;s data to NDI.
+            Evaluating NDI for your lab?
           </h2>
           <p className="text-base leading-relaxed text-white/80 mb-8 m-0">
-            We&rsquo;ll help you upload your first sessions and publish your first
-            dataset.
+            We&rsquo;ll walk you through the architecture, answer questions on
+            storage, security, or SDK fit, and — if it&rsquo;s a match — help
+            you get your first sessions uploaded.
           </p>
           <div className="flex gap-4 justify-center items-center flex-wrap">
             <MarketingButton

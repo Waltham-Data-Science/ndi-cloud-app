@@ -146,11 +146,12 @@ export default function AboutPage() {
           </h1>
           <p className="text-[17px] leading-relaxed text-white/80 max-w-[720px] mx-auto m-0">
             Waltham Data Science is a small team of neuroscientists and data
-            engineers. We built NDI Cloud because our own labs needed reliable
-            infrastructure for the open Neuroscience Data Interface — the spec,
-            NDI-MATLAB, and NDI-Python, all developed at the Van Hooser Lab at
-            Brandeis. The open tools stay open. NDI Cloud adds the hosting, DOI
-            pipeline, and AI layer for labs that want them.
+            engineers. We built NDI Cloud because our own labs needed it — the
+            open Neuroscience Data Interface (the spec, NDI-MATLAB, NDI-Python,
+            all developed at the Van Hooser Lab at Brandeis) is a great
+            standard, and standards need infrastructure. The open tools stay
+            open. NDI Cloud is the hosting, the DOI pipeline, and the AI layer
+            that turn the spec into something you can actually run a lab on.
           </p>
         </div>
       </section>
@@ -177,12 +178,12 @@ export default function AboutPage() {
             The team
           </div>
           <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
-            {teamMembers.length} people across Brandeis, London, and the open NDI community.
+            {teamMembers.length} people, two continents, one data model.
           </h2>
           <p className="text-base leading-relaxed text-fg-secondary max-w-[680px] mb-12 m-0">
-            A compact team across Brandeis, Royal Veterinary College London, and
-            the open neuroscience community. Everyone here has either written
-            code for NDI, run experiments on it, or both.
+            Brandeis, the Royal Veterinary College London, and the open
+            neuroscience community. Everyone here has either written code for
+            NDI, run experiments on it, or both.
           </p>
 
           <div className="grid grid-cols-3 max-[840px]:grid-cols-2 max-[480px]:grid-cols-1 gap-6">
@@ -252,13 +253,16 @@ export default function AboutPage() {
             Backed by &amp; built on
           </div>
           <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
-            A citable research tool, with grant and industry backing.
+            A citable tool, with NSF and MathWorks behind it.
           </h2>
           <p className="text-base leading-relaxed text-fg-secondary max-w-[680px] mb-10 m-0">
-            NDI is formally registered in the Research Resource Identifier
-            registry (RRID:SCR_023368) — meaning papers can cite the tool itself,
-            not just its papers. Development is funded through NSF I-Corps and
-            partnered with MathWorks as an official Connections Partner.
+            NDI is in the Research Resource Identifier registry as{' '}
+            <strong className="font-semibold text-fg-primary">
+              RRID:SCR_023368
+            </strong>{' '}
+            — meaning a paper can cite the tool itself, not just its papers.
+            Development is funded by NSF I-Corps. MathWorks is an official
+            Connections Partner.
           </p>
 
           <div className="grid grid-cols-4 max-[840px]:grid-cols-2 max-[480px]:grid-cols-1 gap-5">
@@ -363,11 +367,12 @@ export default function AboutPage() {
         />
         <div className="relative max-w-[800px] mx-auto text-center">
           <h2 className="text-[1.75rem] font-bold tracking-tight leading-[1.2] mb-3 m-0">
-            Work with us.
+            We do this with labs, not for them.
           </h2>
           <p className="text-base leading-relaxed text-white/75 mb-8 m-0">
-            We help labs move their data to NDI Cloud, publish their first
-            datasets, and deploy LabChat on their lab&rsquo;s corpus.
+            Bringing your data to NDI is a project, not a sign-up. We help with
+            the upload, the metadata, the first published DOI, and the LabChat
+            deploy. Talk to us before you start.
           </p>
           <div className="flex gap-3 justify-center flex-wrap">
             <Link

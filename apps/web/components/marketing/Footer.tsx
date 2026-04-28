@@ -24,7 +24,8 @@ export function Footer() {
             className="block h-[22px] w-auto mb-3.5 brightness-0 invert"
           />
           <p className="text-[13px] max-w-[300px] leading-[1.5] text-white/50 m-0">
-            Data infrastructure, DOI publishing, and AI tools for neuroscience labs.
+            Data infrastructure, DOI publishing, and lab-grounded AI — for
+            neuroscience.
           </p>
         </div>
 

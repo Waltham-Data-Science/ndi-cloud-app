@@ -158,8 +158,8 @@ export default function HomePage() {
                 to be visually identical inside this clamp range. */}
             <p className="text-[19px] leading-relaxed text-white/80 max-w-[760px] mx-auto mb-8 m-0">
               A public, FAIR-compliant search across every dataset published on
-              NDI Cloud. Filter by species, region, probe, year. Every entry
-              carries a Crossref-registered DOI and openMINDS metadata.
+              NDI Cloud. Filter by species, region, probe, or year — every entry
+              carries a Crossref DOI and openMINDS metadata. No login.
             </p>
 
             <HomeSearchForm />
@@ -233,28 +233,32 @@ export default function HomePage() {
               Findable, Accessible, Interoperable, Reusable.
             </h2>
             <p className="text-base leading-relaxed text-fg-secondary max-w-[680px] mb-12 m-0">
-              Every dataset on NDI Commons satisfies all four FAIR principles —
-              not compliance work we layer on top, but the way NDI is built.
+              Every dataset on NDI Commons is FAIR by construction — not because
+              we added a compliance layer, but because the data model was built
+              that way.
             </p>
 
             <div className="grid grid-cols-4 max-[840px]:grid-cols-2 max-[480px]:grid-cols-1 gap-5">
               <FairTile letter="F" title="Findable">
-                Crossref-registered DOI plus openMINDS metadata on every published
-                dataset — indexed by major search engines.
+                A Crossref DOI and openMINDS metadata on every published dataset.
+                Indexed where researchers already search.
               </FairTile>
               <FairTile letter="A" title="Accessible">
-                Open HTTP + NDI Python API. No login for public datasets;
-                rate-limited fairly.
+                Public datasets download over plain HTTP or through the NDI
+                Python API. No login. Rate limits are generous.
               </FairTile>
-              <FairTile letter="I" title="Interoperable">
-                openMINDS metadata with real ontology IDs (NCBI Taxonomy, UBERON,
-                PATO, WBStrain) for species, region, strain, and sex. Read
-                directly from NDI-MATLAB or NDI-Python — no format conversion
-                needed.
+              <FairTile
+                letter="I"
+                title="Interoperable"
+                chips={['NCBITaxon', 'UBERON', 'PATO', 'WBStrain']}
+              >
+                Real ontology IDs for species, region, strain, and sex — not
+                free-text. Read straight into NDI-MATLAB or NDI-Python without
+                conversion.
               </FairTile>
               <FairTile letter="R" title="Reusable">
-                CC-BY / CC0 license per release. Full provenance chain from raw
-                session to cohort.
+                CC-BY or CC0 on every release. Full provenance from raw session
+                to cohort — no broken links, no detached files.
               </FairTile>
             </div>
           </div>
@@ -274,13 +278,14 @@ export default function HomePage() {
                 Every dataset cites cleanly
               </div>
               <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
-                A DOI, a landing page, and a citation — always.
+                A DOI, a landing page, a citation. Same as a journal.
               </h2>
               <p className="text-base leading-relaxed text-fg-secondary mb-5 m-0">
-                Published datasets get a Crossref-registered DOI under the NDI
-                Cloud <code className="font-mono text-sm">10.63884</code> prefix.
-                The DOI resolves to a permanent landing page with full metadata,
-                BibTeX, and a stable download.
+                When you publish, you get a Crossref DOI under the NDI Cloud
+                prefix <code className="font-mono text-sm">10.63884</code>, a
+                permanent landing page, and a BibTeX block ready to drop into
+                the methods section. Researchers cite the dataset. The dataset
+                stays where the citation points.
               </p>
               <p className="text-sm font-mono text-ndi-teal m-0">
                 → <span className="underline">doi.org/10.48324/ndi.ds.94a2f08</span>
@@ -336,17 +341,17 @@ export default function HomePage() {
               <ProvCell
                 kicker="For readers"
                 title="Search and download"
-                body="Faceted search over species, region, probe, year. Direct download or browse via the NDI Python API."
+                body="Search by species, region, probe, or year. Download direct, or browse from a notebook with the NDI Python API."
               />
               <ProvCell
                 kicker="For reviewers"
                 title="Cite in papers"
-                body="BibTeX/RIS export on every landing page. DOIs resolve immediately — your references don't rot."
+                body="BibTeX and RIS on every landing page. DOIs resolve immediately, and they keep resolving — references that don't rot mid-review."
               />
               <ProvCell
                 kicker="For labs"
                 title="Get discovered"
-                body="Published datasets are indexed by Crossref and appear in search results — your work shows up where researchers are already looking."
+                body="Published datasets show up in Crossref, Google Scholar, and openMINDS search — where researchers already look. Citations and download counts come back to your Data Browser."
               />
             </div>
           </div>
@@ -370,9 +375,10 @@ export default function HomePage() {
               Three tools. One graph.
             </h2>
             <p className="text-base leading-relaxed text-fg-secondary max-w-[680px] mb-10 m-0">
-              The Commons is the public face. NDI Cloud also includes a private
-              workspace for your lab&rsquo;s data and an AI assistant that
-              answers from your own papers and datasets.
+              The Commons is what the public sees. Behind it: a private
+              workspace for your lab&rsquo;s working data, and an AI assistant
+              that answers from your papers and your datasets — not the open
+              web.
             </p>
 
             <div className="bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
@@ -426,8 +432,9 @@ export default function HomePage() {
               Publish once. Get cited.
             </h2>
             <p className="text-base leading-relaxed text-white/80 mb-8 m-0">
-              Labs on NDI Cloud can publish a dataset, get a DOI, and start
-              collecting citations — all from one workspace.
+              Upload your sessions, fill in the metadata, click publish. Your
+              dataset gets a Crossref DOI, a landing page, and a place in the
+              Commons — from the same workspace your lab already uses.
             </p>
             {/* CTA buttons standardised to `MarketingButton` `lg`. Was
                 hand-rolled `text-base px-6 py-2.5` inline classes —
@@ -463,10 +470,19 @@ function FairTile({
   letter,
   title,
   children,
+  chips,
 }: {
   letter: string;
   title: string;
   children: React.ReactNode;
+  /**
+   * Optional inline chip row rendered beneath the body. Used by the
+   * "Interoperable" tile to surface the four ontology names
+   * (NCBITaxon · UBERON · PATO · WBStrain) without inflating the body
+   * paragraph with parenthetical acronyms — editorial-pass voice rule
+   * "one acronym per sentence, max."
+   */
+  chips?: ReadonlyArray<string>;
 }) {
   return (
     <div className="bg-bg-surface border border-border-subtle rounded-xl p-6 shadow-sm">
@@ -478,6 +494,18 @@ function FairTile({
       </div>
       <h4 className="text-base font-bold text-fg-primary mb-2 m-0">{title}</h4>
       <p className="text-sm leading-relaxed text-fg-secondary m-0">{children}</p>
+      {chips && chips.length > 0 && (
+        <div className="mt-3 flex flex-wrap gap-1.5">
+          {chips.map((c) => (
+            <span
+              key={c}
+              className="inline-flex items-center text-[10px] font-mono text-fg-muted bg-bg-muted px-1.5 py-0.5 rounded"
+            >
+              {c}
+            </span>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

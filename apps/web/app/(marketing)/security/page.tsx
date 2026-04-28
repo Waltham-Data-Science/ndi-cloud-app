@@ -77,10 +77,11 @@ export default function SecurityPage() {
             HIPAA-aware by <em className="not-italic text-brand-blue">design.</em>
           </h1>
           <p className="text-[17px] leading-relaxed text-white/80 max-w-[720px] mx-auto m-0">
-            Neuroscience data is sensitive. Session metadata, subject IDs, and
-            notebook entries can carry PHI by accident. NDI Cloud is built on AWS
-            with per-tenant isolation, encryption at rest and in transit, and an
-            audit log that never captures payload bodies.
+            Neuroscience data is sensitive. Subject IDs, session notes, and
+            notebook entries can carry PHI without anyone meaning them to. NDI
+            Cloud is built on AWS with per-tenant isolation, encryption at rest
+            and in transit, and audit logs that record what happened — never
+            what was inside the request.
           </p>
         </div>
       </section>
@@ -113,10 +114,10 @@ export default function SecurityPage() {
             Four pillars.
           </h2>
           <p className="text-base leading-relaxed text-fg-secondary max-w-[680px] mb-12 m-0">
-            Every layer — application, API, database, object storage — enforces
-            the same tenant boundaries. Admins can&apos;t accidentally read
-            across labs, logs can&apos;t accidentally capture PHI, and keys
-            rotate on schedule.
+            Every layer enforces the same tenant boundary — application, API,
+            database, object storage. An admin can&apos;t read across labs by
+            accident. A log can&apos;t capture PHI by accident. Keys rotate on
+            a schedule, not on a remember-to.
           </p>
 
           <div className="grid grid-cols-2 max-[720px]:grid-cols-1 gap-5">
@@ -223,12 +224,11 @@ export default function SecurityPage() {
         />
         <div className="relative max-w-[800px] mx-auto text-center">
           <h2 className="text-[1.75rem] font-bold tracking-tight leading-[1.2] mb-3 m-0">
-            Questions about our security?
+            For your IRB, your CISO, or your compliance team.
           </h2>
           <p className="text-base leading-relaxed text-white/75 mb-8 m-0">
-            We&rsquo;re happy to walk through our architecture, share our
-            compliance posture, or provide documentation for your IRB or
-            compliance team.
+            We share architecture diagrams, compliance documentation, and HIPAA
+            boundary maps under NDA. Most institutional reviews close in a week.
           </p>
           <div className="flex gap-3 justify-center flex-wrap">
             <MarketingButton
