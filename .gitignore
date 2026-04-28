@@ -58,6 +58,8 @@ test-results/
 /verify-*.jpg
 /walk-*.png
 /walk-*.jpg
+/live-*.png
+/live-*.jpg
 /[0-9][0-9]-*.png
 /[0-9][0-9]-*.jpg
 /[0-9][0-9]-*.yml
