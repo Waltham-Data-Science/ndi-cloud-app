@@ -144,7 +144,7 @@ export default function LabChatPage() {
                     <path d="M5 8V5a3 3 0 0 1 6 0v3" />
                   </svg>
                 </span>
-                labchat.ndi-cloud.com / vanhooser-lab / threads / feb24-v1
+                labchat.ndi-cloud.com / chalasani-lab / threads / sonochannels
               </div>
             </div>
             {/*
@@ -294,13 +294,14 @@ export default function LabChatPage() {
                  retrieval guarantee AND the citation surface in a
                  single capture.
 
-            Source PNG is 3840×870 (4K-wide crop), `quality={90}` for
-            Retina sharpness on display. The container chrome (rounded
-            corners, soft shadow, faint white inner ring) matches the
-            site's other product captures. The deleted helper components
-            (`CitePill`, `SourceRow`) below the page are kept for now in
-            case a future section reuses the inline-citation style; they
-            no longer have render call-sites.
+            Source PNG is 1892×821 (user-tightened crop — drops the
+            "8878ms" timing badge, hugs the source cards more closely).
+            Aspect ratio 2.30 fits the half-column layout naturally;
+            the previous 3840×870 (ratio 4.41) was too wide for the
+            slot and rendered as a thin slice with tiny cards. Display
+            stays sharp at Retina via `quality={90}` and the source's
+            native pixel density (1892 cover ~2x the display width at
+            the 50vw breakpoint).
           */}
           <div
             className="rounded-xl overflow-hidden"
@@ -313,9 +314,9 @@ export default function LabChatPage() {
           >
             <Image
               src="/mockups/labchat-sources.png"
-              alt="LabChat sources panel: 8878ms response time and five collapsible source cards (Confocal vs EPI HEKTAB-NOGC notebook by Wen Mai Wong, Lab meeting by Yanlin Liu, two Janki Patel lab notebooks, Hydrophone-flytrap equipment comparison by Megan Anderson)"
-              width={3840}
-              height={870}
+              alt="LabChat sources panel: five collapsible source cards (Confocal vs EPI HEKTAB-NOGC notebook by Wen Mai Wong, Lab meeting by Yanlin Liu, two Janki Patel lab notebooks, Hydrophone-flytrap equipment comparison by Megan Anderson) with notebook badges, authors, and dates"
+              width={1892}
+              height={821}
               quality={90}
               className="block w-full h-auto"
               sizes="(min-width: 840px) 50vw, 100vw"
