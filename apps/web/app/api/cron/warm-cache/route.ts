@@ -61,12 +61,21 @@ const GLOBAL_WARM_TARGETS = [
  * exceeding the client's apiFetch timeout and looking like a stuck
  * skeleton even after the request eventually returns.
  *
+ * The 2026-04-28 live audit found a second hang surface: the per-class
+ * summary tables (`/tables/subject`, `/tables/element`) on datasets
+ * with thousands of subjects (e.g. C. elegans long-term-memory at
+ * 5,314 subjects) timed out at >60s on cold cache and never returned
+ * within the apiFetch ceiling. Subjects + elements are the two most-
+ * common Tables tab landings (subject is the default sub-tab; element
+ * carries probe / stimulus rows). Adding them to the warm list closes
+ * the gap for first viewers.
+ *
  * Strategy: every cron tick, fetch the catalog's first page, take its
  * top-N dataset ids, and ping each per-dataset endpoint. The catalog
  * already orders by traffic + recency, so the top-N approximation is
  * the correct attention budget. N=10 keeps total cron fan-out at
- * 2 + (10×3) = 32 requests per tick, well within the 5-minute budget
- * even if each takes ~5s warm.
+ * 2 + (10×5) = 52 requests per tick, well within the 5-minute budget
+ * even if each takes ~5-15s warm.
  *
  * Each per-dataset endpoint goes through the corresponding edge-
  * cached route handler in `apps/web/app/api/datasets/[id]/...`. The
@@ -77,6 +86,8 @@ const PER_DATASET_SUFFIXES = [
   '/summary',
   '/provenance',
   '/class-counts',
+  '/tables/subject',
+  '/tables/element',
 ] as const;
 
 interface WarmResult {
