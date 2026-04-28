@@ -318,25 +318,22 @@ describe('SummaryTableView — B6a canonical column defaults (subject grain)', (
     expect(within(tableEl).getByText('CRF-Cre, OTR-IRES-Cre')).toBeInTheDocument();
   });
 
-  // 2026-04-28 — dynamic treatment columns are now hidden-by-default
-  // on the subject grain (team review feedback: treatments shown not
-  // attached to a specific subject are misleading; backend's
-  // `_row_subject` doesn't currently emit per-subject treatment
-  // joins, but a parallel path broadcasts treatment values onto
-  // every subject row). The column stays discoverable through the
-  // column-picker — tests below pin both behaviors:
-  //  (a) the discovered column does NOT appear in the visible
-  //      header row
-  //  (b) the column IS still present in the column-toggle picker
-  //      so power users can re-enable it
-  it('hides the discovered dynamic treatment column from the default visible headers (subject grain)', () => {
+  // 2026-04-28 — dynamic treatment columns are visible-by-default
+  // again. PR #129 set `visible: false` as a safety measure for the
+  // broadcast-treatment bug; the per-subject join in
+  // `table-shell.tsx::joinTreatmentsToSubjects` (this PR) replaces
+  // that with a real frontend join so the columns can come back
+  // visible with correct per-subject values. This test pins the
+  // visible-by-default contract: when the data already carries a
+  // dynamic treatment column, it appears in the header row.
+  it('shows the discovered dynamic treatment column in the default visible headers (subject grain)', () => {
     render(withProviders(<SummaryTableView data={francesconiSubjectTable} tableType="subject" />));
     const tableEl = document.querySelector('table');
     if (!tableEl) throw new Error('no table rendered');
     const headers = visibleHeaders(tableEl as HTMLElement);
     expect(
       headers.some((h) => h.includes('Optogenetic Tetanus Stimulation Target Location')),
-    ).toBe(false);
+    ).toBe(true);
   });
 });
 

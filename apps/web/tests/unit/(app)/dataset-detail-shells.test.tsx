@@ -219,6 +219,123 @@ describe('TableShell', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('joins treatments to subjects per-row without broadcasting (replaces PR #129 hide-by-default)', async () => {
+    // 2026-04-28 — Per-subject treatment join. PR #129 hid the
+    // discovered dynamic treatment columns by default to avoid the
+    // broadcast bug (every subject showing the same treatment
+    // values); this PR replaces that with a real per-subject join
+    // keyed off `subjectDocumentIdentifier`. Contract pinned by this
+    // test:
+    //  (a) row count stays at N (NOT N × treatments)
+    //  (b) subject 1 carries its own treatment value, subject 2
+    //      carries its own
+    //  (c) subject 3 (no matching treatment) has empty treatment
+    //      cells, NOT broadcast values
+    //
+    // TableShell + StandardTableContent register multiple useQuery
+    // hooks in the same render pass (`useClassCounts`,
+    // `useSummaryTable(subject)`, `useSummaryTable(treatment)`).
+    // TanStack Query may schedule those queryFns concurrently, so
+    // chained `mockResolvedValueOnce` calls do NOT reliably map to
+    // a specific endpoint. Dispatch by URL pattern instead.
+    mockedApiFetch.mockImplementation((url: string) => {
+      if (url.includes('/class-counts')) {
+        return Promise.resolve({
+          datasetId: 'd1',
+          totalDocuments: 99,
+          classCounts: { subject: 3, treatment: 2 },
+        });
+      }
+      if (url.includes('/tables/subject')) {
+        return Promise.resolve({
+          columns: [
+            { key: 'subjectDocumentIdentifier', label: 'Subject Doc ID' },
+            { key: 'subjectLocalIdentifier', label: 'Local Identifier' },
+          ],
+          rows: [
+            { subjectDocumentIdentifier: 'sub-1', subjectLocalIdentifier: 'A@lab' },
+            { subjectDocumentIdentifier: 'sub-2', subjectLocalIdentifier: 'B@lab' },
+            { subjectDocumentIdentifier: 'sub-3', subjectLocalIdentifier: 'C@lab' },
+          ],
+        });
+      }
+      if (url.includes('/tables/treatment')) {
+        return Promise.resolve({
+          columns: [
+            { key: 'treatmentName', label: 'Treatment' },
+            { key: 'treatmentOntology', label: 'Treatment Ontology' },
+            { key: 'numericValue', label: 'Numeric Value' },
+            { key: 'stringValue', label: 'String Value' },
+            { key: 'subjectDocumentIdentifier', label: 'Subject Doc ID' },
+          ],
+          rows: [
+            {
+              treatmentName: 'Optogenetic Tetanus Stimulation Target Location',
+              treatmentOntology: 'EMPTY:0000074',
+              numericValue: [],
+              stringValue: 'UBERON:0001930',
+              subjectDocumentIdentifier: 'sub-1',
+            },
+            {
+              treatmentName: 'Optogenetic Tetanus Stimulation Target Location',
+              treatmentOntology: 'EMPTY:0000074',
+              numericValue: [],
+              stringValue: 'UBERON:0002034',
+              subjectDocumentIdentifier: 'sub-2',
+            },
+          ],
+        });
+      }
+      // Any other URL leaves the query pending — no test should hit
+      // this branch, but a never-resolving promise is the safe default.
+      return new Promise(() => {});
+    });
+
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <TableShell datasetId="d1" className="subject" />
+      </Wrapper>,
+    );
+
+    // Wait for both fetches to settle and the join to apply — the
+    // dynamic column header appears once treatment data lands.
+    await waitFor(() => {
+      const headerCells = Array.from(document.querySelectorAll('thead th'));
+      const labels = headerCells.map(
+        (th) => th.querySelector('button span')?.textContent?.trim() ?? '',
+      );
+      expect(
+        labels.some((l) => l.includes('Optogenetic Tetanus Stimulation Target Location')),
+      ).toBe(true);
+    });
+
+    // (a) Row count: exactly 3 subject rows, NOT 3 × 2 treatments.
+    const bodyRows = document.querySelectorAll('tbody tr');
+    expect(bodyRows.length).toBe(3);
+
+    // (b) Per-subject treatment values: sub-1 → UBERON:0001930,
+    //     sub-2 → UBERON:0002034. Test by locating the row that
+    //     contains the subject's local id, then asserting the cell
+    //     text within that row.
+    const sub1Row = screen.getByText('A@lab').closest('tr');
+    expect(sub1Row).not.toBeNull();
+    expect(sub1Row?.textContent).toContain('UBERON:0001930');
+    expect(sub1Row?.textContent).not.toContain('UBERON:0002034');
+
+    const sub2Row = screen.getByText('B@lab').closest('tr');
+    expect(sub2Row).not.toBeNull();
+    expect(sub2Row?.textContent).toContain('UBERON:0002034');
+    expect(sub2Row?.textContent).not.toContain('UBERON:0001930');
+
+    // (c) sub-3 has NO matching treatment — its row must NOT carry
+    //     either of the broadcast values.
+    const sub3Row = screen.getByText('C@lab').closest('tr');
+    expect(sub3Row).not.toBeNull();
+    expect(sub3Row?.textContent).not.toContain('UBERON:0001930');
+    expect(sub3Row?.textContent).not.toContain('UBERON:0002034');
+  });
+
   it('clicking a subject row navigates to the document detail page', async () => {
     // Smoke-test feedback (post-Phase-6.7): summary-tables rows were
     // not clickable in the cloud-app port even though the data-browser
