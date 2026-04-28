@@ -1,6 +1,8 @@
 /**
- * Phase 3b shell smoke tests — TableShell, PivotShell, DocumentsShell,
+ * Phase 3b shell smoke tests — TableShell, DocumentsShell,
  * DocumentDetailShell, OverviewContent.
+ *
+ * 2026-04-28: PivotShell removed alongside the pivot route deletion.
  *
  * These are minimum-viable shells (the data-browser content components
  * port in a follow-up). The tests exercise the structural branches:
@@ -31,11 +33,10 @@ vi.mock('@/lib/api/client', async (importOriginal) => {
   };
 });
 
-// Phase 6.5b/6.5c: PivotShell mounts the real `<PivotView>` and
-// DocumentsShell mounts the real `<DocumentExplorer>`. Both call
-// `useRouter()`; DocumentExplorer also calls `useSearchParams()` and
-// `usePathname()` for filter/page URL state. Mock all three so the
-// rendering tests stay focused on shell-level contracts.
+// Phase 6.5c: DocumentsShell mounts the real `<DocumentExplorer>`,
+// which calls `useRouter()`, `useSearchParams()` and `usePathname()`
+// for filter/page URL state. Mock all three so the rendering tests
+// stay focused on shell-level contracts.
 //
 // `routerPushMock` is hoisted to module scope so per-test assertions
 // (e.g., the onRowClick navigation test below) can read what URL the
@@ -57,8 +58,7 @@ vi.mock('next/navigation', () => ({
 // VirtualizedTable wraps `@tanstack/react-virtual.useVirtualizer`,
 // which under jsdom returns zero items because the scroll container
 // has 0 height — so onRowClick never fires from a click test. Mock to
-// materialize every row, matching the same pattern used by the
-// PivotView test.
+// materialize every row.
 vi.mock('@tanstack/react-virtual', () => ({
   useVirtualizer: ({ count, estimateSize }: { count: number; estimateSize: () => number }) => {
     const size = estimateSize();
@@ -79,7 +79,6 @@ vi.mock('@tanstack/react-virtual', () => ({
 
 import { apiFetch } from '@/lib/api/client';
 import { TableShell } from '@/app/(app)/datasets/[id]/tables/[className]/table-shell';
-import { PivotShell } from '@/app/(app)/datasets/[id]/pivot/[grain]/pivot-shell';
 import { DocumentsShell } from '@/app/(app)/datasets/[id]/documents/documents-shell';
 import { DocumentDetailShell } from '@/app/(app)/datasets/[id]/documents/[docId]/document-detail-shell';
 import { OverviewContent } from '@/app/(app)/datasets/[id]/overview/overview-content';
@@ -262,28 +261,6 @@ describe('TableShell', () => {
     // Reference `container` so eslint doesn't flag the destructure as
     // unused — also serves as a smoke-check the render mounted.
     expect(container.querySelector('table')).not.toBeNull();
-  });
-});
-
-describe('PivotShell', () => {
-  // Phase 6.5b turned this from a placeholder into a real PivotView
-  // mount. The sub-nav is still rendered unconditionally, but PivotView
-  // calls `useDatasetSummary` + `useDatasetPivot` which both require a
-  // `QueryClientProvider` ancestor. Mock leaves them pending so this
-  // test stays focused on the nav contract.
-  it('renders the grain sub-nav with active aria-current', () => {
-    mockedApiFetch.mockReturnValue(new Promise(() => {}));
-    const Wrapper = withClient();
-    render(
-      <Wrapper>
-        <PivotShell datasetId="d1" grain="session" />
-      </Wrapper>,
-    );
-    const sessionLink = screen.getByRole('link', { name: 'Per session' });
-    expect(sessionLink.getAttribute('aria-current')).toBe('page');
-    const subjectLink = screen.getByRole('link', { name: 'Per subject' });
-    expect(subjectLink.getAttribute('aria-current')).toBeNull();
-    expect(subjectLink.getAttribute('href')).toBe('/datasets/d1/pivot/subject');
   });
 });
 

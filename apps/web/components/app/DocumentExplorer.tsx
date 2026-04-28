@@ -35,9 +35,7 @@
  */
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { useEffect, useMemo, useRef, useState } from 'react';
-
-import { cn } from '@/lib/cn';
+import { useEffect, useMemo, useRef } from 'react';
 
 import { useClassCounts } from '@/lib/api/datasets';
 import { useDocumentsInfinite } from '@/lib/api/documents';
@@ -163,20 +161,27 @@ export function DocumentExplorer({ datasetId }: { datasetId: string }) {
   // `min-w-0` on grid children so the 1fr track can shrink below its
   // min-content and the inner table's `overflow-x-auto` wrapper actually
   // scrolls horizontally instead of forcing the whole page wider.
+  //
+  // 2026-04-28 — breakpoint dropped from `lg:` (1024px) to `md:`
+  // (768px) to match v2's effective behavior at high-zoom levels.
+  // At 200% Safari zoom on a 32" 4K (CSS viewport ~960-1080px),
+  // `lg:` was just barely missing the threshold and stacking the
+  // sidebar, ruining the explorer experience. `md:` keeps the
+  // side-by-side layout from 768px upward; tablets and narrower
+  // mobile widths still stack as before.
   return (
-    <div className="grid gap-4 lg:grid-cols-[260px_1fr]">
+    <div className="grid gap-4 md:grid-cols-[260px_1fr]">
       <DocumentClassesAside
         datasetId={datasetId}
         counts={counts}
         activeClass={cls}
       />
-      {/* Document table — 2nd grid cell at lg+, stacks BELOW aside
-          on narrower viewports. Pre-fix the aside stacked above the
-          table, forcing the user to scroll past the entire class-
-          counts list (which on a 100-class dataset can fill a screen)
-          before seeing any document. The aside above is now
-          collapsed-by-default at <lg widths so the user lands on
-          the table immediately. */}
+      {/* Document table — 2nd grid cell at md+, stacks BELOW aside on
+          mobile widths. The collapsible-toggle pattern that previously
+          hid the sidebar at <lg widths was reverted in 2026-04-28
+          (matched v2 behavior — sidebar is always rendered in the
+          grid). At narrow widths the aside falls under the document
+          table cleanly because of the `order-` ordering below. */}
 
       <section className="min-w-0">
         <Card>
@@ -356,45 +361,27 @@ export function DocumentExplorer({ datasetId }: { datasetId: string }) {
 function DocumentClassesAside({
   datasetId,
   counts,
-  activeClass,
 }: {
   datasetId: string;
   counts: ReturnType<typeof useClassCounts>;
   activeClass: string | null;
 }) {
-  // Open if user has explicitly toggled OR a class filter is active
-  // (so re-opening reveals the chosen class). Closed-by-default at
-  // narrow widths.
-  const [openOnNarrow, setOpenOnNarrow] = useState(false);
-  const showOnNarrow = openOnNarrow || !!activeClass;
-
+  // 2026-04-28 — collapsible-on-narrow pattern dropped (matches v2).
+  // The pre-fix toggle hid the aside at <lg widths and surfaced a
+  // "Show class filter" button above the table. Two issues:
+  //   1. At 200% Safari zoom on 32" 4K (CSS viewport ~960-1080px),
+  //      the aside silently disappeared because the threshold wasn't
+  //      met, masquerading as a regression vs. v2.
+  //   2. The toggle introduced state that v2 didn't have, adding
+  //      cognitive overhead for no UX win on the affected widths.
+  // The aside is now always rendered. Below `md:` it stacks under
+  // the document table (natural grid flow), above `md:` it sits in
+  // the left column.
   return (
     <>
-      <div className="lg:hidden">
-        <Button
-          variant="secondary"
-          size="sm"
-          onClick={() => setOpenOnNarrow((v) => !v)}
-          className="w-full justify-center"
-          aria-expanded={showOnNarrow}
-          aria-controls="document-classes-aside"
-        >
-          {showOnNarrow ? 'Hide class filter' : 'Show class filter'}
-          {activeClass && (
-            <span className="ml-2 font-mono text-[11px] text-fg-muted">
-              ({activeClass})
-            </span>
-          )}
-        </Button>
-      </div>
       <aside
         id="document-classes-aside"
-        className={cn(
-          'min-w-0',
-          // lg+: always visible. Below: respects state.
-          'lg:block',
-          showOnNarrow ? 'block' : 'hidden lg:block',
-        )}
+        className="min-w-0"
       >
         <Card>
           <CardHeader>

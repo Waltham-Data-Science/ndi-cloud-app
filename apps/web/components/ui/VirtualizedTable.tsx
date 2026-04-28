@@ -28,7 +28,7 @@
  *   - `className`: override the scroll container classes.
  *   - `getRowClassName`: per-row class augmentation.
  *   - `renderHeaderCell` / `renderCell`: override header/cell wrapper
- *     markup (e.g. PivotView wants denser `px-2 py-1`).
+ *     markup (e.g. denser `px-2 py-1` variants).
  */
 import { useRef, type ReactNode } from 'react';
 import {

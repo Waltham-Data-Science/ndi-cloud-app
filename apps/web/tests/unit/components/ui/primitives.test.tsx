@@ -136,10 +136,13 @@ describe('Skeleton family', () => {
 });
 
 describe('Tabs', () => {
+  // Generic <Tabs> primitive smoke — `documents` is a stand-in third
+  // tab to exercise arrow-key wrap-around. Not specific to the dataset
+  // tab bar (that's covered in dataset-tabs.test.tsx).
   const TABS = [
     { id: 'overview', label: 'Overview' },
     { id: 'tables', label: 'Tables' },
-    { id: 'pivot', label: 'Pivot' },
+    { id: 'documents', label: 'Documents' },
   ] as const;
 
   it('renders all tabs and marks the active one with aria-selected', () => {
@@ -170,6 +173,6 @@ describe('Tabs', () => {
     render(<Tabs tabs={[...TABS]} active="overview" onSelect={onSelect} />);
     const overview = screen.getByRole('tab', { name: 'Overview' });
     fireEvent.keyDown(overview, { key: 'ArrowLeft' });
-    expect(onSelect).toHaveBeenCalledWith('pivot');
+    expect(onSelect).toHaveBeenCalledWith('documents');
   });
 });

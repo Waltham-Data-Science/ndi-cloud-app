@@ -155,11 +155,22 @@ export default function HomePage() {
             {/* Hero lede — 19px / 1.55 per source `HomeCommons.module.scss .lede`.
                 Was 17px in the previous port; bumped 2px to match source.
                 The `leading-relaxed` (~1.625) is close enough to source 1.55
-                to be visually identical inside this clamp range. */}
+                to be visually identical inside this clamp range.
+
+                2026-04-28 — copy refresh. Pre-fix lede framed the Commons
+                as a search engine ("a public FAIR-compliant search…");
+                user feedback was that the search angle was already
+                conveyed by the form below, and the lede should instead
+                describe what the Commons actually IS — the publishing
+                and discovery layer underneath. New copy keeps the
+                concrete affordances (DOI, openMINDS, ontology filters,
+                no login) but leads with the infrastructure-and-
+                publishing framing. */}
             <p className="text-[19px] leading-relaxed text-white/80 max-w-[760px] mx-auto mb-8 m-0">
-              A public, FAIR-compliant search across every dataset published on
-              NDI Cloud. Filter by species, region, probe, or year — every entry
-              carries a Crossref DOI and openMINDS metadata. No login.
+              The data infrastructure for FAIR neuroscience publishing —
+              every dataset carries a Crossref DOI, openMINDS metadata, and
+              ontology-grade species, region, and probe filters. Public
+              access, no login.
             </p>
 
             <HomeSearchForm />
@@ -224,7 +235,7 @@ export default function HomePage() {
              The site body bg is cream (--color-bg-canvas) so this section has
              to opt in to white explicitly. Audit found the original target
              read as cream because the section bg was set to cream too. */}
-        <section className="px-7 py-20 bg-bg-surface">
+        <section className="px-7 py-16 bg-bg-surface">
           <div className="max-w-[1100px] mx-auto">
             <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
               FAIR by default
@@ -271,7 +282,7 @@ export default function HomePage() {
              apart from the white FAIR section above and the white Who-Uses-It
              section below; the white card reads as a "sample DOI landing
              page" excerpt floating on the cream wash. */}
-        <section className="px-7 py-20 bg-bg-canvas">
+        <section className="px-7 py-16 bg-bg-canvas">
           <div className="max-w-[1100px] mx-auto grid grid-cols-2 max-[840px]:grid-cols-1 gap-12 items-start">
             <div>
               <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
@@ -323,7 +334,7 @@ export default function HomePage() {
              site-wide; this section opts in to white explicitly so it reads
              as a continuation of the FAIR white surface, not another cream
              wash. */}
-        <section className="px-7 py-20 bg-bg-surface">
+        <section className="px-7 py-16 bg-bg-surface">
           <div className="max-w-[1100px] mx-auto">
             <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
               Who uses it
@@ -366,7 +377,7 @@ export default function HomePage() {
              first — restored via Tailwind's `first:border-t-0`. The active
              "You're here" row gets a cream wash and the arrow morphs into a
              pill-shaped uppercase badge on `--ndi-teal-light`. */}
-        <section className="px-7 py-20 bg-bg-muted">
+        <section className="px-7 py-16 bg-bg-muted">
           <div className="max-w-[1100px] mx-auto">
             <div className="text-xs font-bold tracking-eyebrow uppercase text-ndi-teal mb-3">
               One data model
@@ -415,7 +426,7 @@ export default function HomePage() {
 
         {/* CTA BAND */}
         <section
-          className="relative overflow-hidden px-7 py-20 text-white"
+          className="relative overflow-hidden px-7 py-16 text-white"
           style={{ background: 'var(--grad-depth)' }}
         >
           <div
