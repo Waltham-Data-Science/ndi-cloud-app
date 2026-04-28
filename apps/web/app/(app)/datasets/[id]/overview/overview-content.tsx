@@ -36,6 +36,7 @@
 import { useMemo } from 'react';
 
 import {
+  useClassCounts,
   useDataset,
   useDatasetProvenance,
   useDatasetSummary,
@@ -52,6 +53,11 @@ export function OverviewContent({ datasetId }: { datasetId: string }) {
   const ds = useDataset(datasetId);
   const summary = useDatasetSummary(datasetId);
   const provenance = useDatasetProvenance(datasetId);
+  // 2026-04-28 — class counts pulled in here so we can correct the
+  // synthesizer's +1 sessions count on datasets that publish only the
+  // `session_in_a_dataset` wrapper class (one per dataset). See
+  // `displaySummary` memo below for the correction logic.
+  const classCounts = useClassCounts(datasetId);
 
   // Smoke-test feedback: the sidecar appeared empty when summary or
   // provenance errored, because `isLoading` (TanStack Query 5) is
@@ -78,10 +84,43 @@ export function OverviewContent({ datasetId }: { datasetId: string }) {
   // underlying issue for operators.
   const displaySummary = useMemo(() => {
     if (!summary.data) return undefined;
-    if (!isDegraded(summary.data)) return summary.data;
-    if (!ds.data) return summary.data;
-    return enrichDegradedSummary(summary.data, ds.data);
-  }, [summary.data, ds.data]);
+    let s = summary.data;
+    if (isDegraded(s) && ds.data) {
+      s = enrichDegradedSummary(s, ds.data);
+    }
+    // 2026-04-28 — correct +1 session count (team review feedback).
+    // Reviewer flagged "an extra session being counted per dataset
+    // (at least for Bhar and Haley)." Backend's
+    // `dataset_summary_service._counts_from_raw` does
+    // `sessions = class_counts.get("session") OR class_counts.get("session_in_a_dataset")`.
+    // For datasets that publish only `session_in_a_dataset` (the
+    // per-dataset wrapper doc — one per dataset), the OR-fallback
+    // returns the wrapper count which is "real recordings + 1 wrapper".
+    // The correct read from the same `/class-counts` payload that
+    // drives the explorer's class list is:
+    //   - prefer `classCounts.session` (the actual recording sessions)
+    //   - else if `session_in_a_dataset` matches the synthesizer's
+    //     reported count, the synthesizer fell back to the wrapper —
+    //     subtract 1 to remove the wrapper from the user-facing total
+    // Pure fix on the read side; no backend change required.
+    const cc = classCounts.data?.classCounts;
+    if (cc) {
+      const realSession = cc.session;
+      const wrapper = cc.session_in_a_dataset;
+      if (typeof realSession === 'number') {
+        s = { ...s, counts: { ...s.counts, sessions: realSession } };
+      } else if (
+        typeof wrapper === 'number' &&
+        s.counts.sessions === wrapper
+      ) {
+        s = {
+          ...s,
+          counts: { ...s.counts, sessions: Math.max(0, wrapper - 1) },
+        };
+      }
+    }
+    return s;
+  }, [summary.data, ds.data, classCounts.data]);
 
   return (
     // 2026-04-28 — breakpoint dropped from `lg:` (1024px) to `md:`

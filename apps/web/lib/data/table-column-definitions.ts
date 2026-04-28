@@ -536,7 +536,25 @@ export function resolveDefaultColumns(
     ...hidden.map((c) => c.id),
   ]);
 
-  const dynamic = includeDynamic ? discoverDynamicColumns(rows, knownIds) : [];
+  // 2026-04-28 — dynamic treatment columns hidden-by-default on the
+  // subject grain (team review feedback). Reviewer flagged "Treatments
+  // shown not attached to the subject don't have much meaning." The
+  // backend's `_row_subject` projection doesn't emit treatment data,
+  // but a parallel enrichment path broadcasts the dataset's treatment
+  // values onto EVERY subject row regardless of `depends_on.subject_id`.
+  // Result: every subject shows the same treatment fields, which is
+  // confusing and incorrect. Setting `visible: false` keeps the
+  // columns discoverable through the column-picker (so power users
+  // and a future per-row-join can re-enable them) without showing
+  // misleading values by default. Long-term, the backend should join
+  // treatments by subject_id in `_row_subject` (Steve task); the
+  // hide-by-default is the unblocker.
+  const dynamic = includeDynamic
+    ? discoverDynamicColumns(rows, knownIds).map((c) => ({
+        ...c,
+        visible: false,
+      }))
+    : [];
   for (const c of dynamic) knownIds.add(c.id);
 
   // Passthrough for any other row keys we haven't classified — keeps the
