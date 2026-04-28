@@ -28,12 +28,14 @@
  * best-effort enhancement, never a page-blocker.
  */
 import type { Metadata } from 'next';
+import { HydrationBoundary } from '@tanstack/react-query';
 
 import { OverviewContent } from './overview-content';
 import {
   fetchPublishedDatasets,
   type DatasetListResponse,
 } from '@/lib/api/datasets';
+import { prefetchDatasetForPage } from '@/lib/api/datasets-prefetch';
 import { env } from '@/lib/env';
 import { cleanDatasetName } from '@/lib/format';
 
@@ -144,5 +146,14 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function DatasetOverviewPage({ params }: PageProps) {
   const { id } = await params;
-  return <OverviewContent datasetId={id} />;
+  // Existence check + prefetch lives here (not in the parent layout)
+  // so loading.tsx can fire while we await, AND so notFound() picks
+  // up the sibling `[id]/not-found.tsx` instead of the global one.
+  // See `lib/api/datasets-prefetch.ts` for the full rationale.
+  const dehydratedState = await prefetchDatasetForPage(id);
+  return (
+    <HydrationBoundary state={dehydratedState}>
+      <OverviewContent datasetId={id} />
+    </HydrationBoundary>
+  );
 }

@@ -13,17 +13,31 @@ import { Header } from '@/components/marketing/Header';
  * dark depth-gradient hero from the source repo, two CTAs (home + Data
  * Commons, both same-origin post-unification), and the standard Footer.
  *
- * Audit 2026-04-27 #9 — the original port omitted the Header here
- * because Next 16 mounts root `not-found.tsx` OUTSIDE any route group
- * layout, so the (marketing) chrome wasn't inherited automatically.
- * The audit caught that the user landing on a typo'd URL had NO way
- * to navigate back to the rest of the site except the in-page CTA
- * buttons or the Footer's column links — no top-of-page nav, no logo
- * to click, and the Header's session-aware "Log in" / "My workspace"
- * affordance was missing. Importing `<Header />` directly (vs moving
- * the file into the route group, which would change the URL routing
- * semantics for `notFound()` from non-grouped paths) restores parity
- * with every other page on the site.
+ * # Why this file imports `<Header />` directly
+ *
+ * Audit 2026-04-27 #9 added `<Header />` here because Next.js does NOT
+ * mount route group layouts for URL-miss cases (e.g. `/qwerty`,
+ * `/my/wrong-subroute`). Empirically verified post-Bug-1: production
+ * `/qwerty` and `/my/wrong-subroute` both render the global
+ * `app/not-found.tsx` directly inside the root `app/layout.tsx`
+ * WITHOUT entering any route group's layout — one nav element, one
+ * main, no group chrome. Without the Header import here, those URL-
+ * miss pages would have no top navigation at all.
+ *
+ * The earlier "duplicate Header on /datasets/bad-id" symptom (visible
+ * in `verify-06-bad-id-fixed-but-shows-global-not-found.png`) had a
+ * different cause: `notFound()` thrown from INSIDE a layout
+ * (`[id]/layout.tsx`) bubbled up, but the parent `(app)/layout.tsx`
+ * had already rendered successfully — so Next.js stacked the (app)
+ * layout's Header on top of this global not-found's Header. That's
+ * fixed in Bug 1 by moving `notFound()` from the layout to the page,
+ * which routes the dataset-bad-id case to the dataset-scoped
+ * `[id]/not-found.tsx` (no Header import there) — leaving exactly
+ * one Header from the (app) layout above.
+ *
+ * Net result: every 404 path gets exactly one Header, sourced from
+ * either the route group's layout (in-group 404s) or this file
+ * (URL-miss 404s).
  */
 export const metadata: Metadata = {
   title: 'Page not found',

@@ -8,6 +8,9 @@
  * tables surface, not its own top-level concept).
  */
 import type { Metadata } from 'next';
+import { HydrationBoundary } from '@tanstack/react-query';
+
+import { prefetchDatasetForPage } from '@/lib/api/datasets-prefetch';
 
 import { PivotShell } from './pivot-shell';
 
@@ -22,5 +25,11 @@ export const metadata: Metadata = {
 
 export default async function PivotPage({ params }: PageProps) {
   const { id, grain } = await params;
-  return <PivotShell datasetId={id} grain={grain} />;
+  // Existence check + prefetch — see lib/api/datasets-prefetch.ts.
+  const dehydratedState = await prefetchDatasetForPage(id);
+  return (
+    <HydrationBoundary state={dehydratedState}>
+      <PivotShell datasetId={id} grain={grain} />
+    </HydrationBoundary>
+  );
 }
