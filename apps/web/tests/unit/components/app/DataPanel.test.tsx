@@ -164,6 +164,80 @@ describe('DataPanel — Phase 6.6 REBUILD-10', () => {
     expect(screen.getByText(/Fit curve/i)).toBeInTheDocument();
   });
 
+  it('renders a friendly empty state when /data/image returns BINARY_DECODE_FAILED', async () => {
+    // Pre-fix DataPanel rendered `null` in the body when the binary
+    // fetch failed, leaving an empty Image card under the header.
+    // Visible on production 2026-04-28 on Bhar's C. elegans
+    // imageStacks where PIL can't decode the dataset's raw uint8
+    // frame stacks. Now the body shows "Inline preview not supported
+    // for this image's file format. The raw file is still downloadable
+    // from the Files section above."
+    const { ApiError } = await import('@/lib/api/errors');
+    const decodeErr = new ApiError(502, {
+      code: 'BINARY_DECODE_FAILED',
+      message: 'Could not read the binary data for this document.',
+      recovery: 'contact_support',
+      requestId: 'test-rid-123',
+    });
+
+    // Branch on URL: kind detection resolves, image fetch rejects.
+    // Lets TanStack Query take its normal error path so the test
+    // exercises the real isError/error wiring (vs hand-seeding a
+    // QueryState which TanStack 5 doesn't expose for write).
+    apiFetchMock.mockImplementation((url: string) => {
+      if (url.endsWith('/data/type')) {
+        return Promise.resolve({ kind: 'image' });
+      }
+      if (url.endsWith('/data/image')) {
+        return Promise.reject(decodeErr);
+      }
+      return Promise.reject(new Error(`unexpected url ${url}`));
+    });
+
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <DataPanel datasetId="d1" documentId="doc-1" />
+      </Wrapper>,
+    );
+    // Friendly factual copy, not a red alarm.
+    expect(await screen.findByText(/preview not supported/i)).toBeInTheDocument();
+    expect(screen.getByText(/Files section above/i)).toBeInTheDocument();
+  });
+
+  it('renders a generic error when a binary fetch fails with a non-decode error', async () => {
+    // Anything other than BINARY_DECODE_FAILED → generic "Couldn't
+    // load" inline alert with the requestId so support tickets carry
+    // the diagnostic detail.
+    const { ApiError } = await import('@/lib/api/errors');
+    const oopsErr = new ApiError(500, {
+      code: 'INTERNAL',
+      message: 'Something exploded.',
+      recovery: 'retry',
+      requestId: 'test-rid-456',
+    });
+
+    apiFetchMock.mockImplementation((url: string) => {
+      if (url.endsWith('/data/type')) {
+        return Promise.resolve({ kind: 'timeseries' });
+      }
+      if (url.endsWith('/data/timeseries')) {
+        return Promise.reject(oopsErr);
+      }
+      return Promise.reject(new Error(`unexpected url ${url}`));
+    });
+
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <DataPanel datasetId="d1" documentId="doc-1" />
+      </Wrapper>,
+    );
+    expect(await screen.findByText(/Couldn.t load the timeseries preview/i)).toBeInTheDocument();
+    expect(screen.getByText(/Something exploded\./)).toBeInTheDocument();
+    expect(screen.getByText(/test-rid-456/)).toBeInTheDocument();
+  });
+
   it('renders the Timeseries card label including the format suffix', () => {
     const Wrapper = withClient((qc) => {
       qc.setQueryData<{ kind: BinaryKind }>(
