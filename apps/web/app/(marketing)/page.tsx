@@ -403,11 +403,15 @@ export default function HomePage() {
                 desc="Public search across every published NDI dataset. DOI landing pages, openMINDS metadata, NIH DMSP ready."
                 active
               />
+              {/* 2026-04-28 — Data Browser row marked Coming Soon (team
+                  review feedback). The page at /products/private-cloud
+                  still exists but is hidden from the top nav until the
+                  product matches the pitch — see Header.tsx comment. */}
               <BridgeRow
                 num="02"
                 title="NDI Data Browser"
                 desc="The private workspace for your lab. Upload sessions from MATLAB or Python, track sync status, publish with a Crossref DOI."
-                href="/products/private-cloud"
+                comingSoon
               />
               <BridgeRow
                 num="03"
@@ -568,25 +572,38 @@ function BridgeRow({
   desc,
   href,
   active,
+  comingSoon,
 }: {
   num: string;
   title: string;
   desc: string;
   href?: string;
   active?: boolean;
+  /**
+   * Pre-launch placeholder state. Renders without a link wrap, dims
+   * the row slightly, and replaces the right-side arrow with a small
+   * "Coming soon" badge. Used for products that are visible in the
+   * marketing pitch but not yet ready to click into. Mutually
+   * exclusive with `active` — a row can be the current page OR a
+   * coming-soon teaser, not both.
+   */
+  comingSoon?: boolean;
 }) {
   // Single-row layout inside the unified bridge container. No own border
   // (the parent provides the outer card); a top divider on every row except
   // the first via `first:border-t-0`. Source uses a 56px / 1fr / auto grid
   // — preserved here so the `01/02/03` mono index column lines up across
   // rows regardless of title length. Active row gets a cream wash + the
-  // arrow becomes a pill-shaped uppercase "You're here" badge.
+  // arrow becomes a pill-shaped uppercase "You're here" badge. Coming-soon
+  // row dims the body and shows a "Coming soon" badge, no link.
   const inner = (
     <div
       className={`grid grid-cols-[56px_1fr_auto] max-[640px]:grid-cols-[44px_1fr_auto] gap-6 max-[640px]:gap-4 items-center px-8 py-7 max-[640px]:px-5 max-[640px]:py-5 border-t first:border-t-0 border-border-subtle transition-colors duration-(--duration-base) ease-(--ease-out) ${
         active
           ? 'bg-brand-cream cursor-default'
-          : 'bg-transparent hover:bg-bg-muted'
+          : comingSoon
+            ? 'bg-transparent cursor-default opacity-75'
+            : 'bg-transparent hover:bg-bg-muted'
       }`}
     >
       <div className="font-mono text-[0.9rem] font-semibold tracking-[0.06em] text-ndi-teal">
@@ -602,15 +619,17 @@ function BridgeRow({
         className={
           active
             ? 'inline-flex items-center bg-ndi-teal-light text-ndi-teal text-[11px] font-semibold tracking-[0.12em] uppercase px-2.5 py-1 rounded-pill whitespace-nowrap'
-            : 'font-mono text-[0.9rem] text-fg-muted whitespace-nowrap transition-transform duration-(--duration-base) ease-(--ease-out)'
+            : comingSoon
+              ? 'inline-flex items-center bg-bg-muted text-fg-muted text-[11px] font-semibold tracking-[0.12em] uppercase px-2.5 py-1 rounded-pill whitespace-nowrap'
+              : 'font-mono text-[0.9rem] text-fg-muted whitespace-nowrap transition-transform duration-(--duration-base) ease-(--ease-out)'
         }
       >
-        {active ? "You're here" : '→'}
+        {active ? "You're here" : comingSoon ? 'Coming soon' : '→'}
       </span>
     </div>
   );
 
-  if (active || !href) return inner;
+  if (active || comingSoon || !href) return inner;
   return (
     <Link
       href={href}

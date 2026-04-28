@@ -135,23 +135,29 @@ export default function PlatformPage() {
             </a>
           </div>
 
-          {/* Trust stats */}
+          {/* Trust stats —
+              2026-04-28 restructure (team review feedback). Pre-fix the
+              row read as `4 / 13 / SCR_023368` with sub-labels — the
+              hard numbers undersold NDI's actual claim ("any DAQ, any
+              ontology", since the spec is open and extensible) and the
+              third cell shoved an RRID into a marketing hero where it
+              wasn't earning its place. New version drops the numbers,
+              uses parallel "Open to any X" framing for the first two,
+              and frames the citation as the natural third claim. The
+              RRID stays — it just lives in the third metric's body
+              where readers who care about it can find it. */}
           <div className="grid grid-cols-3 max-[720px]:grid-cols-1 gap-6 max-w-[900px]">
             <TrustMetric
-              n="4"
-              label="DAQ systems"
-              sub="Intan · Blackrock · Spike2 · SpikeGadgets"
+              label="Open to any DAQ"
+              sub="Intan · Blackrock · Spike2 · SpikeGadgets — and your next one"
             />
             <TrustMetric
-              n="13"
-              label="Ontologies"
-              sub="NCBITaxon · RRID · PubChem · OLS"
+              label="Open to any ontology"
+              sub="NCBITaxon · UBERON · PATO · RRID · OLS — and your lab&rsquo;s"
             />
             <TrustMetric
-              n="SCR_023368"
-              label="RRID · Citable tool"
-              sub="MATLAB · Python · Web"
-              numSmall
+              label="Citable as a tool"
+              sub="RRID:SCR_023368 — drop it in your methods section"
             />
           </div>
         </div>
@@ -571,34 +577,28 @@ export default function PlatformPage() {
 /* ─────────── helper sub-components (inlined, no separate files) ─────────── */
 
 function TrustMetric({
-  n,
   label,
   sub,
-  numSmall,
 }: {
-  n: string;
   label: string;
   sub: string;
-  numSmall?: boolean;
 }) {
-  // The third metric ("SCR_023368") renders as small mono instead of a
-  // big numeral, but the row reads as broken if its label + sub start
-  // higher than the other two columns'. Pin the number container to the
-  // big-numeral height (`h-12` ≈ text-5xl leading-none) and bottom-align
-  // the content so all three columns share the same baseline. Result:
-  // labels + subs across the three columns all start at the same Y and
-  // the row reads as a single trust band rather than three loose tiles.
+  // 2026-04-28 simplified (team review feedback). Pre-fix the metric
+  // had three tiers — a big numeral (`n`), a label, and a sub — with
+  // a `numSmall` flag for the awkward `SCR_023368` cell that didn't
+  // fit the numeral mold. Reviewer flagged the numbers as undersell
+  // (NDI is open + extensible — `4 DAQ systems` reads like a ceiling,
+  // not a floor) and the RRID-as-trust-metric as not earning its
+  // place in a marketing hero. Restructure: drop the numeral tier,
+  // promote `label` to the bold display line, keep `sub` as the
+  // descriptive evidence below. All three cells now use one shape;
+  // no more `numSmall` baseline-alignment hack.
   return (
     <div>
-      <div
-        className={`font-display font-extrabold text-brand-blue-3 leading-none mb-2 h-12 flex items-end ${
-          numSmall ? 'text-2xl tracking-tight font-mono' : 'text-5xl'
-        }`}
-      >
-        {n}
+      <div className="font-display font-bold text-2xl text-white mb-2 leading-tight">
+        {label}
       </div>
-      <div className="text-sm font-semibold text-white mb-1">{label}</div>
-      <div className="text-xs text-white/60">{sub}</div>
+      <div className="text-sm text-white/70">{sub}</div>
     </div>
   );
 }

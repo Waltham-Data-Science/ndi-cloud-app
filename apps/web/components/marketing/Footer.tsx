@@ -32,7 +32,9 @@ export function Footer() {
         {/* Products */}
         <FooterColumn title="Products">
           <FooterLink href="/">NDI Cloud overview</FooterLink>
-          <FooterLink href="/products/private-cloud">For Labs</FooterLink>
+          {/* 2026-04-28 — "For Labs" removed from the footer pre-launch
+              alongside its top-nav hide (see Header.tsx). Restore when
+              the Data Browser product is ready to ship. */}
           <FooterLink href={commonsSearchUrl()}>Data Commons</FooterLink>
           <FooterLink href="/products/labchat">LabChat</FooterLink>
           <FooterLink href="/platform">How NDI works</FooterLink>
