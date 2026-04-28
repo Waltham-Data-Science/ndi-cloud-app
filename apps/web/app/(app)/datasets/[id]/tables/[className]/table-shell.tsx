@@ -51,6 +51,7 @@ import { Card, CardBody } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { SummaryTableView } from '@/components/app/SummaryTableView';
 import { OntologyTablesView } from '@/components/app/OntologyTablesView';
+import { OpenmindsSubjectTableView } from '@/components/app/OpenmindsSubjectTableView';
 
 // 2026-04-28 — `Ontology` tab renamed to `Mappings` (team review
 // feedback). The previous label described the data type; the new
@@ -168,17 +169,25 @@ export function TableShell({
 
 /**
  * Dispatch component — picks the right fetch+render branch for the
- * active class. The `ontology` class has a different response shape
- * (`{groups: OntologyTableGroup[]}`) so it routes to a dedicated
- * `<OntologyTablesView>` (which calls its own `useOntologyTables`
- * hook). All other classes (including `combined`, same envelope as
+ * active class. Two non-standard classes have dedicated branches:
+ *
+ *   - `ontology` — different response shape
+ *     (`{groups: OntologyTableGroup[]}`); routes to `<OntologyTablesView>`
+ *     which calls `useOntologyTables`.
+ *   - `openminds_subject` — backend's `_project_for_class` has no
+ *     branch for this class, so the standard summary-table endpoint
+ *     returns a near-empty 2-column projection. Routes to
+ *     `<OpenmindsSubjectTableView>` which fetches the documents
+ *     endpoint instead and projects rows on the frontend.
+ *
+ * All other classes (including `combined`, same envelope as
  * `subject`/`element`/etc., just a different URL) use the standard
  * `<StandardTableContent>` below, which calls `useSummaryTable`.
  *
- * Splitting the two branches into separate components keeps both
- * subtrees compliant with React hooks rules — each function calls its
- * own hooks unconditionally, and the dispatcher just routes between
- * them by class.
+ * Splitting branches into separate components keeps each subtree
+ * compliant with React hooks rules — each function calls its own
+ * hooks unconditionally, and the dispatcher just routes between them
+ * by class.
  */
 function TableContent({
   datasetId,
@@ -189,6 +198,9 @@ function TableContent({
 }) {
   if (className === 'ontology') {
     return <OntologyTablesView datasetId={datasetId} />;
+  }
+  if (className === 'openminds_subject') {
+    return <OpenmindsSubjectTableView datasetId={datasetId} />;
   }
   return <StandardTableContent datasetId={datasetId} className={className} />;
 }

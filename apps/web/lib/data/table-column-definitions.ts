@@ -217,6 +217,52 @@ const definitions: Record<string, ColumnTooltip> = {
     label: 'Subject Doc ID',
     description: 'Subject receiving this treatment.',
   },
+
+  // ─── openminds_subject table ────────────────────────────────────────────
+  // Frontend-only projection (see `OpenmindsSubjectTableView`); backend's
+  // `_project_for_class` has no branch for this class. Each row carries a
+  // single OpenMINDS terminology entry (`Species` / `Strain` /
+  // `BiologicalSex` / `GeneticStrainType`). Polymorphic dispatch on
+  // `openminds_type` populates the `ontologyIdentifier` column from
+  // either Schema A (`preferredOntologyIdentifier`, e.g. NCBITaxon) or
+  // Schema B (`ontologyIdentifier`, e.g. WBStrain).
+  openminds_subject_documentIdentifier: {
+    label: 'Doc ID',
+    description: 'NDI document identifier (ndiId) for this OpenMINDS entry.',
+  },
+  openminds_subject_subjectDocumentIdentifier: {
+    label: 'Subject Doc ID',
+    description:
+      'Identifier of the subject this OpenMINDS entry describes (from depends_on.subject_id).',
+  },
+  openminds_subject_type: {
+    label: 'Type',
+    description:
+      'OpenMINDS controlled-terminology type discriminator (Species, Strain, BiologicalSex, GeneticStrainType).',
+  },
+  openminds_subject_name: {
+    label: 'Name',
+    description:
+      'Human-readable label for the entry (e.g. "Caenorhabditis elegans", "N2", "female").',
+  },
+  openminds_subject_ontologyIdentifier: {
+    label: 'Ontology ID',
+    description:
+      'Ontology term ID for this entry — Schema A (preferredOntologyIdentifier) for Species/BiologicalSex/GeneticStrainType (NCBITaxon, PATO, …) and Schema B (ontologyIdentifier) for Strain (WBStrain, RRID).',
+  },
+  openminds_subject_matlabType: {
+    label: 'MATLAB Type',
+    description:
+      'OpenMINDS-MATLAB class name (e.g. openminds.controlledterms.Species, openminds.core.research.Strain).',
+  },
+  openminds_subject_description: {
+    label: 'Description',
+    description: 'Free-text description of the entry (when provided).',
+  },
+  openminds_subject_synonym: {
+    label: 'Synonym',
+    description: 'Alternative term/synonym for this entry (when provided).',
+  },
 };
 
 /** Combined table uses a grab-bag of keys; aliases keep tooltips working. */
@@ -411,6 +457,29 @@ export const EPOCH_DEFAULT_COLUMNS: readonly ColumnDefault[] = [
 ] as const;
 
 /**
+ * OpenMINDS-subject default columns — frontend-only projection (see
+ * `OpenmindsSubjectTableView`). The backend has no `openminds_subject`
+ * branch in `_project_for_class`, so the standard summary endpoint
+ * returns a near-empty 2-column projection; we instead fetch the
+ * documents endpoint and project rows in the shape below.
+ *
+ * Column order matches `OpenmindsSubjectTableView.COLUMN_ORDER` —
+ * change one, change the other. All 8 columns visible by default;
+ * `SummaryTableView`'s auto-hide-empty pass hides any with no values
+ * (e.g. `synonym` is rare; `description` may be empty).
+ */
+export const OPENMINDS_SUBJECT_DEFAULT_COLUMNS: readonly ColumnDefault[] = [
+  { id: 'documentIdentifier', header: 'Doc ID', accessor: 'documentIdentifier', visible: true },
+  { id: 'subjectDocumentIdentifier', header: 'Subject Doc ID', accessor: 'subjectDocumentIdentifier', visible: true },
+  { id: 'type', header: 'Type', accessor: 'type', visible: true },
+  { id: 'name', header: 'Name', accessor: 'name', visible: true },
+  { id: 'ontologyIdentifier', header: 'Ontology ID', accessor: 'ontologyIdentifier', visible: true },
+  { id: 'matlabType', header: 'MATLAB Type', accessor: 'matlabType', visible: true },
+  { id: 'description', header: 'Description', accessor: 'description', visible: true },
+  { id: 'synonym', header: 'Synonym', accessor: 'synonym', visible: true },
+] as const;
+
+/**
  * Column keys that are available from the backend but **hidden by default**
  * for the subject grain. Still exposed via the column-toggle picker.
  *
@@ -526,6 +595,9 @@ export function resolveDefaultColumns(
       break;
     case 'element_epoch':
       defaults = EPOCH_DEFAULT_COLUMNS;
+      break;
+    case 'openminds_subject':
+      defaults = OPENMINDS_SUBJECT_DEFAULT_COLUMNS;
       break;
     default:
       return [];
