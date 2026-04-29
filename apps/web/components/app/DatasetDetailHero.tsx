@@ -176,6 +176,15 @@ export function DatasetDetailHero({ datasetId }: { datasetId: string }) {
                 */}
                 {(data.uploadedAt || data.createdAt) && (
                   <span
+                    // Round-3 team review: with long author lists
+                    // (e.g. Francesconi has 9 contributors), the line
+                    // wrapped between "Published" and the date,
+                    // leaving the date awkwardly alone on its own
+                    // visual row. `whitespace-nowrap` keeps the prefix
+                    // + date glued together so wrapping happens at
+                    // word boundaries between authors / DOI instead
+                    // of mid-token.
+                    className="whitespace-nowrap"
                     title={
                       data.uploadedAt
                         ? 'Date this dataset was uploaded to NDI (uploadedAt)'

@@ -45,7 +45,7 @@ import {
   humanizeWarning,
   type DegradedFields,
 } from '@/lib/data/summary-degradation';
-import { formatBytes } from '@/lib/format';
+import { formatBytes, formatDate } from '@/lib/format';
 import type {
   DatasetSummary,
   OntologyTerm,
@@ -307,11 +307,24 @@ function ScaleSection({
   dateRange: DatasetSummary['dateRange'];
   totalSizeBytes: number | null;
 }) {
+  // 2026-04-29 (round 3) — team review: the Scale section's Date range
+  // was rendering raw ISO timestamps (e.g.
+  // `2026-03-19T20:29:21.206Z → 2026-04-24T18:14:20.806Z`), which is
+  // unreadable. Format both endpoints through `formatDate` so the
+  // widget reads like `Mar 19, 2026 → Apr 24, 2026`. Distinguishing
+  // marker for unparseable values: `formatDate` returns the original
+  // string when `new Date(...)` is NaN, so any future legacy non-ISO
+  // payload falls back to a string rather than rendering "Invalid
+  // Date". When earliest === latest, render a single date (no
+  // collapsing arrow on a 1-day window).
   const range = useMemo(() => {
     const { earliest, latest } = dateRange;
     if (!earliest && !latest) return '—';
-    if (earliest && latest && earliest === latest) return earliest;
-    const parts = [earliest ?? '?', latest ?? '?'];
+    if (earliest && latest && earliest === latest) return formatDate(earliest);
+    const parts = [
+      earliest ? formatDate(earliest) : '?',
+      latest ? formatDate(latest) : '?',
+    ];
     return parts.join(' → ');
   }, [dateRange]);
   return (
