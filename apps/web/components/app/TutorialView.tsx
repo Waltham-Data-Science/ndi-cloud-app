@@ -2,80 +2,86 @@
 
 /**
  * TutorialView — iframe-rendered MATLAB Live Script + Python Notebook
- * tutorials for selected datasets.
+ * tutorials for any dataset whose tutorial files exist in the public
+ * tutorials S3 bucket.
  *
  * # Background
  *
- * Two of NDI's published datasets currently ship companion tutorials —
- * step-by-step walkthroughs of how to load + analyze the dataset using
- * NDI-MATLAB or NDI-Python:
- *
- *   - 67f723d574f5f79c6062389d (Fear-Potentiated Startle / Elevated
- *     Plus Maze, Dabrowska Lab)
- *   - 682e7772cdf3f24938176fac (C. elegans behavior + E. coli
- *     fluorescence, Chalasani Lab)
- *
- * The tutorials are pre-rendered to static HTML by MATLAB's Live Script
- * publisher (.mlx → .html) and Jupyter's nbconvert (.ipynb → .html),
- * then uploaded to a public S3 bucket
+ * NDI's published tutorials are step-by-step walkthroughs of how to
+ * load + analyze a dataset using NDI-MATLAB or NDI-Python. Each is
+ * pre-rendered to static HTML — MATLAB's Live Script publisher
+ * (.mlx → .html) and Jupyter's nbconvert (.ipynb → .html) — then
+ * uploaded to a public S3 bucket
  * (`ndi-cloud-tutorials.s3.us-east-2.amazonaws.com`). The HTML files
- * are large (5.78 MB and 2.20 MB for the two MATLAB tutorials) and
- * carry inline matplotlib/MATLAB plots, so we serve them straight from
- * S3 rather than porting their assets into this Next.js app's bundle.
+ * are large (5.78 MB and 2.20 MB for the two known MATLAB tutorials)
+ * and carry inline matplotlib/MATLAB plots, so we serve them straight
+ * from S3 rather than porting their assets into this Next.js app's
+ * bundle.
+ *
+ * # Discovery model
+ *
+ * PR #130 hardcoded a two-dataset allowlist. Subsequent PR (this one)
+ * replaces that with `useTutorialAvailability` — a HEAD probe against
+ * the bucket. Any dataset the data team uploads a `tutorial_<id>.mlx`
+ * or `tutorial_<id>.ipynb` for now lights up here automatically. The
+ * tab in `DatasetTabs.tsx` consumes the same hook (cached per dataset
+ * id) so a single probe covers both surfaces.
  *
  * # The component's job
  *
  *   1. Render a MATLAB ↔ Python language toggle (segmented control).
- *      Defaults to MATLAB; the Python option auto-disables if its file
- *      hasn't been uploaded yet (HEAD probe — Python tutorials may lag
- *      MATLAB ones).
+ *      Each language pill is enabled iff that file's HEAD probe
+ *      returned 200; the other is disabled with a "Coming soon"
+ *      affordance.
  *   2. Render an iframe pointing at the matching S3 URL.
  *   3. Sandbox the iframe (`allow-scripts allow-same-origin allow-popups`)
  *      since the rendered tutorials use inline scripts for LaTeX
  *      rendering + the MATLAB Live Script's "copy" button. We deliberately
  *      omit `allow-top-navigation` and `allow-forms` — neither is needed
  *      and dropping them limits the trust we extend to S3 content.
- *   4. Provide download links for the source `.mlx` (MATLAB) and `.py`
- *      / `.ipynb` (Python) files alongside the HTML render — researchers
+ *   4. Provide download links for the source `.mlx` (MATLAB) and
+ *      `.ipynb` (Python) files alongside the HTML render — researchers
  *      who want to re-run the tutorial in their own environment.
- *
- * # Why the file gating logic lives here, not at the tab level
- *
- * The tab in `DatasetTabs.tsx` gates by dataset ID — both target
- * datasets always show the tab. Inside the tab, this component
- * dynamically detects which language tutorials are actually available
- * (by HEAD-probing each S3 URL) so the toggle reflects reality even
- * if Python tutorials are rolled out for one dataset before the other.
- * Disabled buttons keep the affordance present (signals "Python is
- * coming") rather than vanishing.
+ *   5. If both probes return 404 (no tutorial files exist for this
+ *      dataset), render a soft empty state. This branch is mostly
+ *      defensive: the tab gate in `DatasetTabs` already hides the
+ *      Tutorials tab when both probes are 404, but a direct typed-URL
+ *      navigation to `/datasets/[id]/tutorials` still lands here.
  *
  * # Reference
  *
  * Pattern adapted from `Waltham-Data-Science/ndi-web-app`'s
  * `app/src/components/datasetDetails/DatasetTutorial.tsx` (the
- * pre-unification SPA's tutorial view). The old component was
- * MATLAB-only and used MUI; this rebuild adds the language toggle,
- * uses Tailwind + the existing UI primitives, and gates the tab at
- * the tab-bar layer instead of HEAD-probing per-dataset.
+ * pre-unification SPA's tutorial view). The legacy component HEAD-
+ * probed for the same `.mlx` file too — this PR brings the new site
+ * in line with that auto-detection model.
  */
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import { Download, ExternalLink, FileWarning, Loader2 } from 'lucide-react';
 
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { cn } from '@/lib/cn';
+import { useTutorialAvailability } from '@/lib/data/tutorials';
 
 /**
  * S3 bucket that hosts the rendered tutorial HTML + source files.
- * Path scheme:
+ * Path scheme (aligned with the legacy NDI Cloud app's HEAD-probe
+ * targets):
  *
- *   - `tutorial_<datasetId>.html`         — MATLAB (rendered Live Script)
- *   - `tutorial_<datasetId>.mlx`          — MATLAB source download
- *   - `tutorial_<datasetId>_python.html`  — Python (rendered notebook)
- *   - `tutorial_<datasetId>_python.ipynb` — Python notebook source
+ *   - `tutorial_<datasetId>.html`   — MATLAB (rendered Live Script)
+ *   - `tutorial_<datasetId>.mlx`    — MATLAB source download
+ *   - `tutorial_<datasetId>_python.html` — Python (rendered notebook)
+ *   - `tutorial_<datasetId>.ipynb`  — Python notebook source
  *
- * Both languages share one bucket prefix; the language is encoded in
- * the filename. If the data team standardizes on a different
- * filename pattern later, change the four URL helpers below in lockstep.
+ * The `.mlx` / `.ipynb` pair is what `useTutorialAvailability` probes
+ * (see `lib/data/tutorials.ts`); the `.html` pair is what the iframe
+ * loads. The data team's upload convention pairs the two — when a
+ * dataset gets a `.mlx` it also gets the matching `.html` render —
+ * so probing the source file is sufficient to gate the iframe.
+ *
+ * If the data team standardizes on a different filename pattern
+ * later, change the URL helpers in this file plus the probe URLs
+ * in `lib/data/tutorials.ts` in lockstep.
  */
 const TUTORIALS_S3_BASE =
   'https://ndi-cloud-tutorials.s3.us-east-2.amazonaws.com';
@@ -100,93 +106,82 @@ function tutorialHtmlUrl(datasetId: string, lang: Lang): string {
 function tutorialSourceUrl(datasetId: string, lang: Lang): string {
   return lang === 'matlab'
     ? `${TUTORIALS_S3_BASE}/tutorial_${datasetId}.mlx`
-    : `${TUTORIALS_S3_BASE}/tutorial_${datasetId}_python.ipynb`;
+    : `${TUTORIALS_S3_BASE}/tutorial_${datasetId}.ipynb`;
 }
 
 function tutorialSourceFilename(datasetId: string, lang: Lang): string {
   return lang === 'matlab'
     ? `tutorial_${datasetId}.mlx`
-    : `tutorial_${datasetId}_python.ipynb`;
+    : `tutorial_${datasetId}.ipynb`;
 }
 
 /**
- * State machine for HEAD-probe availability.
+ * State machine for the language pills' visual state. Derived from the
+ * shared `useTutorialAvailability` hook:
  *
- *   - `unknown`: probe in flight (or not started). Render the button
- *     in a quiet "Checking…" state so the layout is stable.
- *   - `available`: probe returned 2xx. Button is fully active.
- *   - `unavailable`: probe returned 4xx (404 most likely). Button
- *     renders with `Coming soon` tooltip + disabled state.
- *
- * The probe is best-effort — a transient network error leaves the
- * button in `unknown` rather than dropping it to `unavailable`. The
- * iframe load below is the real test; if a tutorial is genuinely
- * missing, the iframe shows the bucket's 403/404 response, which is
- * fine as a fallback while the user retries.
+ *   - `unknown`: probe in flight. Render the pill in a quiet
+ *     "Checking…" state so the layout is stable.
+ *   - `available`: probe returned 2xx. Pill is fully active.
+ *   - `unavailable`: probe returned non-2xx or threw. Pill renders
+ *     disabled with a "Coming soon" tooltip.
  */
 type Availability = 'unknown' | 'available' | 'unavailable';
 
 export function TutorialView({ datasetId }: TutorialViewProps) {
-  // `requestedLang` is the user's pick; `effectiveLang` (computed
-  // below) folds in the availability state so an unavailable Python
-  // pick silently falls back to MATLAB without firing a setState in
-  // an effect (which React 19's strict `react-hooks/set-state-in-effect`
-  // rule rejects).
+  // Single shared probe — same hook the tab gate uses, so the request
+  // is fired once per dataset id and cached for 5 minutes.
+  const { data: availability, isPending } = useTutorialAvailability(datasetId);
+
+  // While the query is in flight we show "Checking…" on both pills
+  // and default the iframe to MATLAB. Once it resolves we know which
+  // languages exist and can disable the missing one(s).
+  const matlabAvailable: Availability = isPending
+    ? 'unknown'
+    : availability?.hasMatlab
+      ? 'available'
+      : 'unavailable';
+  const pythonAvailable: Availability = isPending
+    ? 'unknown'
+    : availability?.hasPython
+      ? 'available'
+      : 'unavailable';
+
+  // `requestedLang` is the user's pick; `lang` (computed below) folds
+  // in the availability state so an unavailable Python pick silently
+  // falls back to MATLAB without firing a setState in an effect (which
+  // React 19's strict `react-hooks/set-state-in-effect` rule rejects).
+  // Default to MATLAB unless only Python exists — favors the more
+  // common format when both ship.
   const [requestedLang, setLang] = useState<Lang>('matlab');
-  // Default the MATLAB tutorial to `available` since the gating tab
-  // wouldn't have rendered without one. Python starts `unknown` and
-  // gets HEAD-probed on mount.
-  const [matlabAvailable, setMatlabAvailable] = useState<Availability>(
-    'available',
-  );
-  const [pythonAvailable, setPythonAvailable] = useState<Availability>(
-    'unknown',
-  );
 
-  useEffect(() => {
-    let cancelled = false;
-    // Probe both languages in parallel. The MATLAB probe is mostly a
-    // belt-and-suspenders: the gating tab assumes its presence, but
-    // probing also surfaces "the bucket is down" cleanly via the
-    // iframe-error fallback below.
-    async function probe(url: string): Promise<Availability> {
-      try {
-        const res = await fetch(url, { method: 'HEAD', mode: 'cors' });
-        return res.ok ? 'available' : 'unavailable';
-      } catch {
-        return 'unknown';
-      }
+  // Derived state: if the user picked an unavailable language, fall
+  // back to whichever exists. Same pattern as the previous in-component
+  // probe — keeps `requestedLang` stable so a later re-toggle once
+  // both formats land is a single click.
+  const lang: Lang = (() => {
+    if (requestedLang === 'matlab' && matlabAvailable === 'unavailable') {
+      return pythonAvailable === 'available' ? 'python' : 'matlab';
     }
-    void Promise.all([
-      probe(tutorialHtmlUrl(datasetId, 'matlab')),
-      probe(tutorialHtmlUrl(datasetId, 'python')),
-    ]).then(([matlab, python]) => {
-      if (cancelled) return;
-      // Only flip MATLAB to `unavailable` on an explicit non-2xx.
-      // CORS errors / network blips leave it on `available` so the
-      // user can still try the iframe load.
-      if (matlab === 'unavailable') setMatlabAvailable('unavailable');
-      setPythonAvailable(python);
-    });
-    return () => {
-      cancelled = true;
-    };
-  }, [datasetId]);
+    if (requestedLang === 'python' && pythonAvailable === 'unavailable') {
+      return 'matlab';
+    }
+    return requestedLang;
+  })();
 
-  // Derived state: if the user picked Python before the probe finished
-  // and the probe came back unavailable, display MATLAB. The
-  // `requestedLang` state stays as 'python' so a later re-toggle once
-  // the probe resolves is a single click. Computing this in render
-  // (instead of via a setLang in useEffect) is what the React-19
-  // exhaustive-deps + set-state-in-effect rules want.
-  const lang: Lang =
-    requestedLang === 'python' && pythonAvailable === 'unavailable'
-      ? 'matlab'
-      : requestedLang;
+  // Both formats explicitly missing — soft empty state. Probe
+  // resolved (`!isPending`) and neither file exists. Mostly a
+  // defensive branch: `DatasetTabs` hides the tab in this case, but
+  // a direct typed-URL nav lands here.
+  const noTutorialsExist =
+    !isPending && availability && !availability.hasAny;
 
   const htmlUrl = tutorialHtmlUrl(datasetId, lang);
   const sourceUrl = tutorialSourceUrl(datasetId, lang);
   const sourceFilename = tutorialSourceFilename(datasetId, lang);
+
+  if (noTutorialsExist) {
+    return <NoTutorialEmptyState datasetId={datasetId} />;
+  }
 
   return (
     <Card>
@@ -257,10 +252,14 @@ export function TutorialView({ datasetId }: TutorialViewProps) {
       </CardHeader>
 
       <CardBody className="pt-0">
-        {/* MATLAB-explicit-unavailable fallback. We only show this if
-            the probe was definitively non-2xx (so the iframe would
-            also fail), not on transient errors. */}
-        {lang === 'matlab' && matlabAvailable === 'unavailable' ? (
+        {/* Per-language unavailable fallback. Renders only if the
+            current pick's probe was definitively non-2xx (so the
+            iframe would also fail). Both pills point at downloads
+            for the OTHER language, since at least one exists when
+            we render here (the both-missing case short-circuits to
+            `NoTutorialEmptyState` above). */}
+        {(lang === 'matlab' && matlabAvailable === 'unavailable') ||
+        (lang === 'python' && pythonAvailable === 'unavailable') ? (
           <UnavailableNotice
             lang={lang}
             datasetId={datasetId}
@@ -380,9 +379,9 @@ function UnavailableNotice({
         </p>
         <p className="m-0 text-xs text-fg-muted">
           Dataset id <span className="font-mono">{datasetId}</span> doesn&rsquo;t
-          have a published {langLabel} HTML render in the tutorials bucket.
-          The source notebook may still be available — try the download
-          link below.
+          have a published {langLabel} tutorial in the tutorials bucket.
+          Switch to the other language pill above, or try downloading the
+          source file directly.
         </p>
         <div className="pt-1">
           <a
@@ -398,5 +397,42 @@ function UnavailableNotice({
         </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Soft empty state when both MATLAB and Python tutorials are missing
+ * for this dataset. Shown as a Card-shaped notice (instead of a 404)
+ * because the dataset itself is real — the tutorial just hasn't been
+ * authored yet. The DatasetTabs gate also hides the Tutorials tab in
+ * this case, so users mostly hit this via direct typed-URL navigation.
+ *
+ * Symmetric with the in-page `NoTutorialState` in
+ * `app/(app)/datasets/[id]/tutorials/page.tsx`. Keeping the empty
+ * state's copy here lets the page component delegate to TutorialView
+ * unconditionally — the page no longer knows the per-dataset
+ * availability synchronously.
+ */
+function NoTutorialEmptyState({ datasetId }: { datasetId: string }) {
+  return (
+    <Card>
+      <CardBody>
+        <h2 className="text-base font-bold text-fg-primary mb-2 m-0">
+          No tutorial for this dataset
+        </h2>
+        <p className="text-sm text-fg-secondary mb-3 m-0">
+          Tutorials are authored per-dataset and uploaded to the public
+          tutorials bucket. This dataset doesn&rsquo;t have a MATLAB
+          (`.mlx`) or Python (`.ipynb`) walkthrough yet.
+        </p>
+        <p className="text-xs text-fg-muted m-0">
+          Try the Overview tab for a synthesized summary, or the Document
+          Explorer to browse the dataset&rsquo;s structured records.
+        </p>
+        <p className="text-[10.5px] text-fg-muted/70 mt-4 font-mono m-0">
+          dataset id: {datasetId}
+        </p>
+      </CardBody>
+    </Card>
   );
 }
