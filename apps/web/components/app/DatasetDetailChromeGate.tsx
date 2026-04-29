@@ -36,16 +36,27 @@
 import { usePathname } from 'next/navigation';
 import type { ReactNode } from 'react';
 
-import { DatasetDetailHero } from './DatasetDetailHero';
 import { DatasetTabs } from './DatasetTabs';
 
 interface DatasetDetailChromeGateProps {
   datasetId: string;
+  /**
+   * Server-rendered hero passed in as a slot from `layout.tsx` so the
+   * hero can be an async RSC (with its own Suspense boundary) without
+   * this client component needing to await anything itself. Pre-fix:
+   * the hero was rendered inline as a client component using
+   * `useDataset`, which produced `<h1>{datasetId}</h1>` in the SSR'd
+   * HTML until client hydration. Post-fix: the hero RSC awaits
+   * `safeFetchDataset` server-side and emits the correct H1 in the
+   * initial HTML — visible to crawlers and link-preview generators.
+   */
+  heroSlot: ReactNode;
   children: ReactNode;
 }
 
 export function DatasetDetailChromeGate({
   datasetId,
+  heroSlot,
   children,
 }: DatasetDetailChromeGateProps) {
   const pathname = usePathname();
@@ -53,7 +64,9 @@ export function DatasetDetailChromeGate({
 
   if (isDocumentDetail) {
     // Pass children through raw — the document-detail page ships its
-    // own depth-gradient hero and constrains its own width.
+    // own depth-gradient hero and constrains its own width. The
+    // server-rendered hero slot is intentionally NOT rendered here
+    // (the doc-detail page replaces the chrome entirely).
     return <>{children}</>;
   }
 
@@ -65,7 +78,7 @@ export function DatasetDetailChromeGate({
           is the stable selector — class names can change as Tailwind
           tokens evolve, attribute names stay put. */}
       <div data-dataset-chrome>
-        <DatasetDetailHero datasetId={datasetId} />
+        {heroSlot}
         <DatasetTabs datasetId={datasetId} />
       </div>
       {/*

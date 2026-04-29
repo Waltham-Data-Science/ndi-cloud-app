@@ -368,7 +368,7 @@ export default function HomePage() {
               <ProvCell
                 kicker="For labs"
                 title="Findable on the web"
-                body="Dataset pages render server-side with stable URLs and per-dataset titles, so Google indexes them like any other web page. Your data lives on and can be used in new ways as datasets are downloaded or your documents are discovered in cross-data searches."
+                body="Your data lives on and can be used in new ways as datasets are downloaded or your documents are discovered in cross-data searches."
               />
             </div>
           </div>

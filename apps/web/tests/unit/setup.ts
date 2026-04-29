@@ -30,3 +30,11 @@ vi.mock('geist/font/mono', () => ({
     style: { fontFamily: 'mock-geist-mono' },
   },
 }));
+
+/**
+ * `server-only` is a Next.js sentinel module that throws at build time
+ * when imported from a Client Component. In production it's resolved by
+ * Next's compiler, but vitest doesn't have that resolver. Mock as an
+ * empty module so server-only files can be imported by tests.
+ */
+vi.mock('server-only', () => ({}));

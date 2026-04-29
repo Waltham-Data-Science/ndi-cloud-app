@@ -63,7 +63,13 @@
  *   `documents/page.tsx`              → DocumentExplorer (under chrome)
  *   `documents/[docId]/page.tsx`      → standalone (chrome hidden)
  */
+import { Suspense } from 'react';
+
 import { DatasetDetailChromeGate } from '@/components/app/DatasetDetailChromeGate';
+import {
+  DatasetDetailHero,
+  DatasetDetailHeroSkeleton,
+} from '@/components/app/DatasetDetailHero';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -80,7 +86,27 @@ export default async function DatasetDetailLayout({
   // fires the moment the page below starts to suspend.
   const { id } = await params;
 
+  // The hero is now an async Server Component that awaits
+  // `safeFetchDataset(id)` so the H1 + byline render server-side
+  // (drops the bare-ID flash that was visible to crawlers per the
+  // Apr 2026 SEO audit). Wrapped in `<Suspense>` so the hero's await
+  // doesn't block the page below — `loading.tsx` continues to fire
+  // for the page content while the hero streams in.
+  //
+  // The chrome gate is a client component (uses `usePathname` for the
+  // doc-detail conditional skip); the Suspense + hero compose cleanly
+  // because server components can be passed as props/children to
+  // client components in App Router.
   return (
-    <DatasetDetailChromeGate datasetId={id}>{children}</DatasetDetailChromeGate>
+    <DatasetDetailChromeGate
+      datasetId={id}
+      heroSlot={
+        <Suspense fallback={<DatasetDetailHeroSkeleton />}>
+          <DatasetDetailHero datasetId={id} />
+        </Suspense>
+      }
+    >
+      {children}
+    </DatasetDetailChromeGate>
   );
 }

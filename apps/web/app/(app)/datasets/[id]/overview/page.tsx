@@ -36,8 +36,10 @@ import {
   type DatasetListResponse,
 } from '@/lib/api/datasets';
 import { prefetchDatasetForPage } from '@/lib/api/datasets-prefetch';
+import { safeFetchDataset } from '@/lib/api/datasets-server';
 import { env } from '@/lib/env';
 import { cleanDatasetName } from '@/lib/format';
+import { datasetJsonLd } from '@/lib/seo/dataset-jsonld';
 
 export const revalidate = 60;
 
@@ -97,50 +99,91 @@ export async function generateStaticParams() {
 }
 
 /**
- * Resolve a dataset's display name for the document title. Inlined
- * (not via a shared helper) to keep the import graph minimal — the
- * previous attempt to share a `fetchDatasetServer` helper triggered
- * a turbopack bundling failure when the helper lived alongside
- * `'use client'`-marked exports. This function imports nothing from
- * `lib/api/datasets.ts` — it talks straight to the API.
- *
- * Cloud's detail endpoint returns `_id` on some entries and `id` on
- * others; both are checked. Returns `null` on any failure so the
- * caller can fall back to the generic title.
- *
- * `cache: 'force-cache'` + the page's `revalidate: 60` means the
- * same dataset visited within the revalidate window reuses the
- * cached body — no additional Railway round-trip per metadata
- * generation.
+ * Truncate text at the first sentence boundary up to `max` chars, or
+ * hard-cut at `max - 1` + `'…'` if no sentence boundary is reachable.
+ * Used for `<meta description>` / `og:description` so the snippet
+ * Google shows ends cleanly instead of mid-word.
  */
-async function fetchDatasetNameForMetadata(
-  id: string,
-): Promise<string | null> {
-  if (!env.INTERNAL_API_URL) return null;
-  try {
-    const res = await fetch(`${env.INTERNAL_API_URL}/api/datasets/${id}`, {
-      headers: { Accept: 'application/json' },
-      cache: 'force-cache',
-      next: { revalidate: 60 },
-    });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { name?: unknown };
-    if (typeof data.name !== 'string' || data.name.length === 0) return null;
-    return cleanDatasetName(data.name);
-  } catch {
-    return null;
+function truncateAtSentence(raw: string, max: number): string {
+  const trimmed = raw.trim();
+  if (trimmed.length <= max) return trimmed;
+  const window = trimmed.slice(0, max);
+  const lastBoundary = Math.max(
+    window.lastIndexOf('. '),
+    window.lastIndexOf('! '),
+    window.lastIndexOf('? '),
+  );
+  if (lastBoundary > max * 0.5) {
+    return window.slice(0, lastBoundary + 1);
   }
+  return window.slice(0, max - 1).trimEnd() + '…';
 }
 
+/**
+ * Build a per-dataset description for SEO meta tags. Prefers the
+ * abstract; falls back to a generic "by <authors> on NDI Cloud" string
+ * so search-engine snippets always carry useful signal — never the
+ * generic homepage description that the audit flagged for every
+ * dataset URL pre-fix.
+ */
+function descriptionForMetadata(
+  data: { abstract?: string; description?: string; contributors?: Array<{ firstName?: string; lastName?: string }> } | null,
+): string {
+  if (!data) {
+    return 'A neuroscience dataset on NDI Cloud — published with openMINDS and NDI metadata, browseable in MATLAB or Python.';
+  }
+  const abstract = (data.abstract || data.description)?.trim();
+  if (abstract) return truncateAtSentence(abstract, 250);
+  const authors = (data.contributors ?? [])
+    .map((c) => [c.firstName, c.lastName].filter(Boolean).join(' '))
+    .filter(Boolean)
+    .slice(0, 3)
+    .join(', ');
+  if (authors) {
+    return `Neuroscience dataset by ${authors} on NDI Cloud — DOI-citable with openMINDS and NDI metadata.`;
+  }
+  return 'A neuroscience dataset on NDI Cloud — published with openMINDS and NDI metadata, browseable in MATLAB or Python.';
+}
+
+/**
+ * SEO metadata for `/datasets/[id]/overview`. Per-dataset title,
+ * description, openGraph + twitter cards. Reuses the same
+ * `safeFetchDataset` cache as the page render (Next's request-scoped
+ * fetch cache deduplicates the call within a single SSR), so this
+ * doesn't add a second Railway round-trip per page load.
+ *
+ * Values fall back gracefully when the cloud is slow / unreachable: the
+ * title degrades to the bare `'Dataset'` string and the description
+ * falls back to a generic NDI Cloud one-liner. Never blocks the page
+ * from rendering — metadata is best-effort enhancement.
+ */
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params;
-  const name = await fetchDatasetNameForMetadata(id);
+  const dataset = await safeFetchDataset(id);
+  const name = dataset?.name ? cleanDatasetName(dataset.name) : null;
+  const description = descriptionForMetadata(dataset);
+  const canonical = `https://ndi-cloud.com/datasets/${id}/overview`;
   return {
     // Root layout's `title.template: '%s · NDI Cloud'` adds the
     // suffix automatically. Pass the bare dataset name; never include
     // the brand here or it doubles ("X · NDI Cloud · NDI Cloud").
     title: name ?? 'Dataset',
+    description,
     alternates: { canonical: `/datasets/${id}/overview` },
+    openGraph: {
+      type: 'article',
+      url: canonical,
+      title: name ?? 'Dataset',
+      description,
+      siteName: 'NDI Cloud',
+      images: ['https://ndi-cloud.com/logos/ndicloud-wordmark-color.svg'],
+    },
+    twitter: {
+      card: 'summary',
+      title: name ?? 'Dataset',
+      description,
+      images: ['https://ndi-cloud.com/logos/ndicloud-wordmark-color.svg'],
+    },
   };
 }
 
@@ -151,8 +194,31 @@ export default async function DatasetOverviewPage({ params }: PageProps) {
   // up the sibling `[id]/not-found.tsx` instead of the global one.
   // See `lib/api/datasets-prefetch.ts` for the full rationale.
   const dehydratedState = await prefetchDatasetForPage(id);
+  // Read the dataset record for SEO JSON-LD. Same Railway URL as the
+  // prefetch above — Next's request-scoped fetch cache deduplicates
+  // within this render, so this is free (cached body, no extra
+  // round-trip). `null` means the cloud was slow / unreachable; in
+  // that case we skip the JSON-LD rather than emitting a half-formed
+  // structured-data document. The page still renders fine; Google
+  // Dataset Search just won't pick this dataset up until the next
+  // ISR rebuild gets a successful fetch.
+  const dataset = await safeFetchDataset(id);
   return (
     <HydrationBoundary state={dehydratedState}>
+      {dataset && (
+        <script
+          type="application/ld+json"
+          // JSON-LD structured data — never executable; the
+          // `dangerouslySetInnerHTML` pattern is the standard way to
+          // emit it as a script tag with type="application/ld+json".
+          // The content is a JSON.stringify of a plain object built
+          // from the cloud record by `datasetJsonLd` (no user input
+          // reaches this attribute outside the curated cloud fields).
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(datasetJsonLd(dataset, id)),
+          }}
+        />
+      )}
       <OverviewContent datasetId={id} />
     </HydrationBoundary>
   );

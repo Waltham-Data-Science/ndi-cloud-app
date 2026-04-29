@@ -1,25 +1,34 @@
-'use client';
-
 /**
  * Dataset detail hero — renders dataset name, byline (contributors +
  * date), license + DOI badges, and a `HeroFact` strip with quick-glance
  * facts (species/region/docs/subjects/size/license) below the h1.
  *
- * Phase 6.6 REBUILD-2: ported the source `HeroFact` strip from
- * `ndi-data-browser-v2/frontend/src/pages/DatasetDetailPage.tsx:398-424`
- * + `HeroFact` definition at lines 430-454. The original Phase 3b port
- * shipped a "minimum-viable hero" without the fact strip; the audit
- * flagged this as a deferred-implicit gap (the comment noted "Phase 3+
- * polish layers" but no STATE entry enumerated it). Audience benefit:
- * users browsing dataset detail pages get an immediate quick-glance
- * read on subject count, size, and license without having to wait for
- * the Overview tab content to load.
+ * # Why this is a Server Component (Apr 2026 SEO refactor)
  *
- * Uses `useDataset()` directly (no prefetch from the layout RSC because
- * App Router layouts don't share fetched data with their children's
- * routes). Renders skeletons during load; falls back to dataset id as
- * heading text if the fetch fails (the page below the hero stays
- * usable; you can still navigate tabs).
+ * Pre-fix: the hero was a `'use client'` component using
+ * `useDataset()`. SSR'd HTML emitted `<h1>{datasetId}</h1>` (the bare
+ * 24-hex Mongo id) until the client hook resolved post-hydration.
+ * Crawlers and link-preview generators (Slack / Discord / Twitter
+ * unfurl) only see the SSR'd HTML, so every dataset URL surfaced
+ * with the wrong H1 in search snippets. Per the SEO audit:
+ *
+ *   > H1 still shows the bare dataset ID (`<h1>69bc5ca…</h1>`) until
+ *   > client hydration replaces it. Crawlers see the wrong H1.
+ *
+ * Post-fix: the hero is async RSC. `safeFetchDataset(datasetId)` runs
+ * server-side; the H1 + byline + DOI + facts render with the right
+ * data on first paint. Wrapped in `<Suspense>` at the layout level,
+ * so the page's `loading.tsx` Suspense fallback still fires while the
+ * hero awaits — no regression in perceived navigation latency.
+ *
+ * # Trade-off
+ *
+ * RSC means the hero won't re-render on TanStack Query mutations.
+ * That's fine for the public Commons surface (read-only, no edit
+ * affordance). If the hero needs to live-update on mutations later
+ * (e.g. for the authenticated Data Browser write surface), split into
+ * a server-rendered shell + a small client island for the mutating
+ * cells.
  */
 import { ChevronLeft } from 'lucide-react';
 import Link from 'next/link';
@@ -27,7 +36,7 @@ import type { ReactNode } from 'react';
 
 import { Badge } from '@/components/ui/Badge';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { useDataset } from '@/lib/api/datasets';
+import { safeFetchDataset } from '@/lib/api/datasets-server';
 import { isDefaultBranch } from '@/lib/dataset-filters';
 import { normalizeLicense } from '@/lib/license-normalize';
 import {
@@ -37,8 +46,8 @@ import {
   formatNumber,
 } from '@/lib/format';
 
-export function DatasetDetailHero({ datasetId }: { datasetId: string }) {
-  const { data, isLoading, isError } = useDataset(datasetId);
+export async function DatasetDetailHero({ datasetId }: { datasetId: string }) {
+  const data = await safeFetchDataset(datasetId);
 
   return (
     <section
@@ -55,12 +64,7 @@ export function DatasetDetailHero({ datasetId }: { datasetId: string }) {
           Back to Data Commons
         </Link>
 
-        {isLoading ? (
-          <div className="space-y-3">
-            <Skeleton className="h-6 w-1/2" />
-            <Skeleton className="h-4 w-1/3" />
-          </div>
-        ) : isError || !data ? (
+        {!data ? (
           <h1
             id="dataset-hero-h1"
             className="text-[1.75rem] md:text-[2rem] font-display font-bold tracking-tight leading-tight"
@@ -312,6 +316,37 @@ export function DatasetDetailHero({ datasetId }: { datasetId: string }) {
             })()}
           </>
         )}
+      </div>
+    </section>
+  );
+}
+
+/**
+ * Suspense fallback for the async DatasetDetailHero — renders the same
+ * vertical bands and depth-gradient background so the page doesn't
+ * jump on hero-data resolve. Two skeleton lines occupy the H1 + byline
+ * slots; the fact strip is omitted (its presence depends on which
+ * fact-keys the dataset has). Pure visual fallback — no fetch.
+ *
+ * Used in `[id]/layout.tsx` as `<Suspense fallback={<DatasetDetailHeroSkeleton/>}>`.
+ */
+export function DatasetDetailHeroSkeleton() {
+  return (
+    <section
+      className="relative overflow-hidden text-white"
+      style={{ background: 'var(--grad-depth)' }}
+      aria-busy="true"
+      aria-label="Loading dataset hero"
+    >
+      <div className="relative mx-auto max-w-[1200px] px-7 py-10">
+        <div className="inline-flex items-center gap-1 text-[12.5px] text-white/70 mb-3">
+          <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
+          Back to Data Commons
+        </div>
+        <div className="space-y-3">
+          <Skeleton className="h-7 md:h-8 w-2/3 bg-white/10" />
+          <Skeleton className="h-4 w-1/2 bg-white/10" />
+        </div>
       </div>
     </section>
   );
