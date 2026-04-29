@@ -174,77 +174,105 @@ export function useRawImageData(
 }
 
 /**
- * Sidecar metadata shape for the `imageStack_parameters` partner doc.
- * Lifted verbatim from the NDI schema (`imageStack_parameters.json`):
+ * Sidecar metadata shape for the `imageStack_parameters` block.
  *
- *   - `dimension_size`: `[H, W, C, Z, T]` — height, width, channel,
- *     z-slice, time. Channel is the C-major axis when interleaved RGB
- *     ships in `dimension_order: 'YXCZT'`.
- *   - `dimension_order`: which axis varies fastest in the byte layout.
- *     Default `YXCZT` matches MATLAB column-major output where pixel
- *     bytes appear `[y0,x0,c0..cN, y0,x1,c0..cN, ...]`.
- *   - `data_type`: backing scalar type — `'uint8'` is the only path the
+ *   - `dimension_size`: variable-length array of axis sizes — its
+ *     interpretation depends on `dimension_order`. Production data
+ *     ships 2-D (`YX`), 3-D (`YXT` / `YXC`), and 5-D (`YXCZT`) shapes;
+ *     consumers should run the size + order pair through
+ *     `parseDimensions` (`@/lib/imageStack/dimensions`) to get a
+ *     canonical `{H, W, C, Z, T}` record.
+ *   - `dimension_order`: axis-letter string (`'Y'` row, `'X'` col,
+ *     `'C'` channel, `'Z'` z-slice, `'T'` time). Common values:
+ *     `'YX'`, `'YXT'`, `'YXCZT'`.
+ *   - `data_type`: backing scalar type — `'uint8'` is the only one the
  *     v1 canvas decode handles natively. `'uint16'` / `'logical'` /
- *     `'double'` are deferred (need window/level sliders for proper
- *     display range mapping).
+ *     `'double'` fall through to the PIL pipeline.
  *   - `data_limits`: `[min, max]` — the dataset author's preferred
- *     display range. Used by uint16/float32 paths in the v2 follow-up;
- *     uint8 ignores it because the byte values *are* the display
- *     intensities.
+ *     display range. Used by uint16/float32 paths in the v2 follow-up.
  */
 export interface ImageStackParameters {
-  dimension_size: [number, number, number, number, number];
+  dimension_size: number[];
   dimension_order: string;
   data_type: 'uint8' | 'uint16' | 'logical' | 'double' | string;
   data_limits: [number, number];
 }
 
 /**
- * Locate the `imageStack_parameters` sibling doc that depends on the
- * given imageStack ndiId, parse its `data.imageStack_parameters` block,
- * and return it.
+ * Resolve `imageStack_parameters` for an imageStack document.
  *
- * The link convention is `depends_on[].name === 'imageStack_id'` with
- * `value === <imageStackNdiId>`. This mirrors the openminds_subject
- * convention (`subject_id`) used in
- * `components/app/OpenmindsSubjectTableView.tsx`.
+ * **Inline-first** (primary codepath in production):
+ * Production imageStacks carry the parameters block directly under
+ * `imageStackDoc.data.imageStack_parameters`. We extract from the doc
+ * itself and skip the partner-class round-trip. This matches every
+ * dataset in production today (Bhar `69bc5ca1...` and Haley
+ * `682e7772...`); PR #135's partner-doc-only lookup never resolved
+ * anything because no production dataset ships sibling
+ * `imageStack_parameters` docs.
  *
- * Returns `null` when no partner doc resolves — DataPanel falls back to
- * the existing PIL `/data/image` path in that case so non-imageStack
- * image-class docs (and any imageStack lacking a sidecar) still work.
+ * **Partner-doc fallback** (preserved codepath):
+ * If the doc has no inline parameters block, fall back to looking
+ * for a sibling `imageStack_parameters` doc whose
+ * `depends_on[].name === 'imageStack_id'`. This pathway exists for
+ * hypothetical future datasets that ship sibling docs; no production
+ * dataset uses it today.
+ *
+ * Returns `{ params: null, ... }` when neither path resolves —
+ * DataPanel falls back to the PIL `/data/image` path or, for video
+ * formats, the new `<video>` viewer.
  */
 export function useImageStackParameters(
   datasetId: string | undefined,
-  imageStackNdiId: string | undefined,
+  imageStackDoc: DocumentSummary | undefined,
   enabled: boolean,
 ) {
-  // Pull in the parameters docs from the documents endpoint. The class
-  // is small (one row per imageStack) so a single page suffices for
-  // typical datasets; if a dataset ships >500 imageStacks we'd grow
-  // this to useDocumentsInfinite, but that's not the shape of
-  // anything in production today.
+  // First, try the inline path. If it resolves, we don't need to
+  // fire the partner-class query at all (saving a network round-trip
+  // on the Haley dataset's 7000+ imageStacks).
+  const inlineParams = useMemo<ImageStackParameters | null>(() => {
+    if (!enabled || !imageStackDoc) return null;
+    const data = (imageStackDoc.data ?? {}) as Record<string, unknown>;
+    if (!data.imageStack_parameters) return null;
+    return extractImageStackParameters(imageStackDoc);
+  }, [enabled, imageStackDoc]);
+
+  // Determine whether to run the partner-doc query. We skip it when
+  // either (a) we already have inline params, or (b) the consumer
+  // disabled the hook. Otherwise the query fires — same shape as
+  // the original PR #135 path.
+  const partnerEnabled =
+    enabled && !!imageStackDoc?.ndiId && inlineParams === null;
   const partnerQuery = useDocuments(
-    enabled && imageStackNdiId ? datasetId : undefined,
+    partnerEnabled ? datasetId : undefined,
     'imageStack_parameters',
     1,
     500,
   );
 
-  const params = useMemo<ImageStackParameters | null>(() => {
-    if (!enabled || !imageStackNdiId || !partnerQuery.data) return null;
+  const partnerParams = useMemo<ImageStackParameters | null>(() => {
+    if (!partnerEnabled || !imageStackDoc?.ndiId || !partnerQuery.data) {
+      return null;
+    }
     const partner = pickImageStackPartner(
       partnerQuery.data.documents,
-      imageStackNdiId,
+      imageStackDoc.ndiId,
     );
     if (!partner) return null;
     return extractImageStackParameters(partner);
-  }, [enabled, imageStackNdiId, partnerQuery.data]);
+    // React Compiler prefers a single object dep over chained
+    // optional-chain accessors; widening to `imageStackDoc` matches
+    // the inferred dependency and unblocks compilation.
+  }, [partnerEnabled, imageStackDoc, partnerQuery.data]);
+
+  const params = inlineParams ?? partnerParams;
 
   return {
     params,
-    isLoading: partnerQuery.isLoading,
-    isError: partnerQuery.isError,
-    error: partnerQuery.error,
+    // Inline path resolves synchronously, so loading/error reduce to
+    // the partner query's state — and only when we'd actually run it.
+    isLoading: partnerEnabled ? partnerQuery.isLoading : false,
+    isError: partnerEnabled ? partnerQuery.isError : false,
+    error: partnerEnabled ? partnerQuery.error : null,
   };
 }
 
@@ -279,15 +307,17 @@ export function pickImageStackPartner(
 }
 
 /**
- * Read `data.imageStack_parameters` off a partner doc and validate it
- * has the four fields the canvas decoder relies on. Returns `null`
- * when any field is missing — the caller falls back to the PIL path.
+ * Read `data.imageStack_parameters` off a doc (inline-first path) or
+ * partner doc (legacy path) and surface the four fields the canvas
+ * decoder + format router rely on. Returns `null` when the parameters
+ * block is missing — caller falls back to the PIL or video pipeline.
  *
- * Defensive but not strict: e.g., we don't validate `dimension_size`
- * is exactly five integers (callers handle a partial size gracefully:
- * a 3-element size means single-frame, single-channel — the decoder
- * defaults Z and T to 1 in that case). The strictness lives in the
- * decoder itself where it can fail with an actionable error message.
+ * `dimension_size` is preserved as the raw array (variable length).
+ * Consumers run it through `parseDimensions(order, size)` to canonicalize
+ * to `{H, W, C, Z, T}`. We accept any non-empty numeric array here and
+ * defer the H/W positivity check to the parser, which has clearer
+ * error semantics and can return null for the "shape doesn't make
+ * sense" case in one place.
  */
 export function extractImageStackParameters(
   partner: DocumentSummary,
@@ -299,14 +329,10 @@ export function extractImageStackParameters(
 
   const sizeRaw = p.dimension_size;
   if (!Array.isArray(sizeRaw) || sizeRaw.length === 0) return null;
-  const dimension_size: [number, number, number, number, number] = [
-    Number(sizeRaw[0]) || 0,
-    Number(sizeRaw[1]) || 0,
-    Number(sizeRaw[2]) || 1,
-    Number(sizeRaw[3]) || 1,
-    Number(sizeRaw[4]) || 1,
-  ];
-  if (dimension_size[0] <= 0 || dimension_size[1] <= 0) return null;
+  // Coerce to numbers but preserve the array length — `parseDimensions`
+  // uses `order.length === size.length` as a sanity check, so we can't
+  // pad to a fixed shape here without losing that invariant.
+  const dimension_size: number[] = sizeRaw.map((v) => Number(v) || 0);
 
   const dimension_order =
     typeof p.dimension_order === 'string' && p.dimension_order

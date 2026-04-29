@@ -7,6 +7,10 @@ import type {
   ImageData as NdiImageData,
   ImageStackParameters,
 } from '@/lib/api/binary';
+import {
+  parseDimensions,
+  type ParsedDimensions,
+} from '@/lib/imageStack/dimensions';
 import { Button } from '@/components/ui/Button';
 
 interface ImageViewerProps {
@@ -168,22 +172,27 @@ export function ImageViewer({ data, onFrameChange }: ImageViewerProps) {
 interface ImageStackCanvasViewerProps {
   /** Raw octet-stream bytes from `/data/raw`. */
   buffer: ArrayBuffer;
-  /** Partner-doc-derived metadata describing the byte layout. */
+  /** Sidecar metadata describing the byte layout. */
   params: ImageStackParameters;
 }
 
 /**
  * Canvas-backed viewer for raw uint8 imageStack frames.
  *
- * Frame layout follows the NDI schema's `YXCZT` default — pixel bytes
- * appear `[y0,x0,c0..cN, y0,x1,c0..cN, ..., yN,xN,c0..cN]` for one
- * frame, with `Z*T` frames concatenated end-to-end. This matches the
- * task spec's documented interleave; non-`YXCZT` orderings are deferred
- * (the v2 follow-up will add a switch).
+ * Pixel byte layout is interpreted via `parseDimensions(order, size)`:
+ * each frame is `H*W*C` bytes (interleaved channels on the C-major
+ * axis), with `Z*T` frames concatenated end-to-end. This works for
+ * any `dimension_order` containing `Y` and `X`; missing axes default
+ * to 1.
  *
- * Multi-frame navigation is a flat (Z*T) index for v1. Splitting into
- * separate Z and T sliders is a UX follow-up — the underlying byte math
- * stays the same.
+ * If the parameters can't be parsed (mismatched lengths or non-positive
+ * H/W) we render a placeholder rather than running the decoder on bad
+ * shape information — the caller is supposed to gate on a non-null
+ * params, but defensive handling here costs little.
+ *
+ * Multi-frame navigation is a flat (Z*T) index. Splitting into separate
+ * Z and T sliders is a UX follow-up — the underlying byte math is
+ * unchanged.
  */
 export function ImageStackCanvasViewer({
   buffer,
@@ -193,22 +202,34 @@ export function ImageStackCanvasViewer({
   const [zoom, setZoom] = useState(1);
   const [currentFrame, setCurrentFrame] = useState(0);
 
-  const [H, W, C, Z, T] = params.dimension_size;
-  // Treat zero/missing Z and T as 1 — single-volume / single-time stacks
-  // are common and a 0 here would multiply nFrames to 0, blocking the
-  // initial paint.
-  const nFrames = Math.max(1, Z) * Math.max(1, T);
-  const isStack = nFrames > 1;
-
+  // Parse `(order, size)` to `{H, W, C, Z, T}`. The parser returns
+  // null when the inputs don't make sense (length mismatch, zero H/W);
+  // we render a placeholder in that case rather than computing on bad
+  // shape data.
+  const parsed: ParsedDimensions | null = parseDimensions(
+    params.dimension_order,
+    params.dimension_size,
+  );
+  const H = parsed?.H ?? 0;
+  const W = parsed?.W ?? 0;
   // Channel handling: 1 → grayscale broadcast to RGB, 3 → interleaved
   // RGB on the C-major axis. Channel counts > 3 (e.g., 4-channel
   // RGBA-with-alpha or hyperspectral) collapse to the first 3 channels;
   // a more thoughtful handling lands with the v2 window/level sliders.
-  const channels = Math.max(1, C);
+  const channels = parsed?.C ?? 1;
+  // Treat zero/missing Z and T as 1 — single-volume / single-time stacks
+  // are common and a 0 here would multiply nFrames to 0, blocking the
+  // initial paint.
+  const nFrames = (parsed?.Z ?? 1) * (parsed?.T ?? 1);
+  const isStack = nFrames > 1;
 
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
+    // No usable shape info — bail before touching the canvas. The
+    // surrounding info bar still renders so the user sees that the
+    // params didn't parse, but we don't paint a misleading frame.
+    if (!parsed) return;
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
@@ -277,7 +298,7 @@ export function ImageStackCanvasViewer({
     }
 
     ctx.putImageData(makeImageData(rgba, W, H), 0, 0);
-  }, [buffer, currentFrame, H, W, channels, nFrames]);
+  }, [buffer, currentFrame, parsed, H, W, channels, nFrames]);
 
   const handleFrameChange = (f: number) => {
     const clamped = Math.max(0, Math.min(nFrames - 1, f));

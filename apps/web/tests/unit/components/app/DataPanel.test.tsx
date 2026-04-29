@@ -267,47 +267,142 @@ describe('DataPanel — Phase 6.6 REBUILD-10', () => {
   });
 
   // -------------------------------------------------------------------------
-  // imageStack canvas-decode dispatch
+  // imageStack format-aware dispatch (Step 3 of the viewer rework)
   // -------------------------------------------------------------------------
   //
-  // The new branch: when class is `imageStack` AND we have a partner
-  // `imageStack_parameters` doc AND `data_type === 'uint8'`, route the
-  // image render through `<ImageStackCanvasViewer>` instead of the PIL
-  // `/data/image` path. uint16 / float32 / logical fall through to the
-  // PIL path (which surfaces "preview not supported" for those formats).
+  // Dispatch matrix (post format-aware-viewer rework):
+  //
+  //   formatOntology         | renderMode  | viewer
+  //   -----------------------+-------------+--------------------------
+  //   NCIT:C190180 (MP4)     | video       | ImageStackVideoViewer
+  //   NCIT:C70631  (image)   | pil         | ImageViewer (existing)
+  //   NCIT:C85437  (mask)    | pil         | ImageViewer (existing)
+  //   undefined / unknown    | pil         | ImageViewer (existing)
+  //   raw-bytes ontology +   | canvas      | ImageStackCanvasViewer
+  //   data_type=uint8        |             |   (default-deny today;
+  //                          |             |    no production data
+  //                          |             |    routes here)
+  //
+  // The cases below pin the production-observed cells of that matrix.
 
-  // Patch HTMLCanvasElement.getContext globally so the canvas viewer's
-  // useEffect can call putImageData without crashing in jsdom. Also
-  // stubs `createImageData` because the component falls back to it
-  // when `globalThis.ImageData` isn't defined (jsdom default).
-  function withCanvasMock<T>(fn: () => T): T {
-    const original = HTMLCanvasElement.prototype.getContext;
-    const ctx = {
-      putImageData: vi.fn(),
-      createImageData: vi.fn(
-        (width: number, height: number) => ({
-          width,
-          height,
-          data: new Uint8ClampedArray(width * height * 4),
-          colorSpace: 'srgb',
-        }) as unknown as ImageData,
-      ),
-    } as unknown as CanvasRenderingContext2D;
-    HTMLCanvasElement.prototype.getContext = vi.fn(
-      () => ctx,
-    ) as unknown as typeof HTMLCanvasElement.prototype.getContext;
-    try {
-      return fn();
-    } finally {
-      HTMLCanvasElement.prototype.getContext = original;
-    }
-  }
+  it('routes imageStack docs with formatOntology=NCIT:C190180 (MP4 / Bhar) through the <video> viewer', async () => {
+    // Inline imageStack_parameters block with format ontology MP4 →
+    // ImageStackVideoViewer mounts; canvas decode is gated off; PIL
+    // /data/image is never fired.
+    apiFetchMock.mockImplementation((url: string) => {
+      if (url.endsWith('/data/type')) {
+        return Promise.resolve({ kind: 'image' });
+      }
+      if (url === '/api/datasets/d1/documents/doc-1') {
+        return Promise.resolve({
+          id: 'doc-1',
+          ndiId: 'ndi:imagestack:abc',
+          className: 'imageStack',
+          data: {
+            imageStack: { formatOntology: 'NCIT:C190180' },
+            imageStack_parameters: {
+              dimension_size: [480, 640, 100],
+              dimension_order: 'YXT',
+              data_type: 'uint8',
+              data_limits: [0, 255],
+            },
+          },
+        });
+      }
+      return Promise.reject(new Error(`unexpected url ${url}`));
+    });
 
-  it('routes imageStack uint8 docs through the canvas viewer (not the <img> tag)', async () => {
-    // Image-kind detection routes to the image branch; the document
-    // fetch returns class=imageStack with an ndiId that matches the
-    // partner doc's depends_on; the partner doc carries
-    // imageStack_parameters with data_type=uint8 → canvas path.
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <DataPanel datasetId="d1" documentId="doc-1" />
+      </Wrapper>,
+    );
+
+    // <video> mounts with src=/data/raw.
+    const video = (await screen.findByTestId(
+      'imagestack-video',
+    )) as HTMLVideoElement;
+    expect(video.tagName).toBe('VIDEO');
+    expect(video.getAttribute('src')).toBe(
+      '/api/datasets/d1/documents/doc-1/data/raw',
+    );
+
+    // Neither the canvas nor the PIL `<img>` are in the DOM.
+    expect(screen.queryByTestId('imagestack-canvas')).toBeNull();
+    expect(document.querySelector('img[alt="NDI image data"]')).toBeNull();
+
+    // PIL /data/image was NOT called — the partner-class lookup was
+    // also skipped because we resolved inline.
+    const imageUrls = apiFetchMock.mock.calls
+      .map((c) => String(c[0]))
+      .filter((u) => u.endsWith('/data/image'));
+    expect(imageUrls).toHaveLength(0);
+    const partnerUrls = apiFetchMock.mock.calls
+      .map((c) => String(c[0]))
+      .filter((u) => u.includes('class=imageStack_parameters'));
+    expect(partnerUrls).toHaveLength(0);
+    // Raw binary endpoint isn't hit by DataPanel itself for video —
+    // the `<video>` element streams it directly via its `src`.
+    expect(apiFetchBinaryMock).not.toHaveBeenCalled();
+  });
+
+  it('routes imageStack docs with formatOntology=NCIT:C85437 (PNG mask / Haley) through the PIL /data/image path', async () => {
+    // Inline imageStack_parameters with format ontology = mask image
+    // → PIL pipeline; canvas decode is gated off; <video> not used.
+    apiFetchMock.mockImplementation((url: string) => {
+      if (url.endsWith('/data/type')) {
+        return Promise.resolve({ kind: 'image' });
+      }
+      if (url === '/api/datasets/d1/documents/doc-1') {
+        return Promise.resolve({
+          id: 'doc-1',
+          ndiId: 'ndi:imagestack:abc',
+          className: 'imageStack',
+          data: {
+            imageStack: { formatOntology: 'NCIT:C85437' },
+            imageStack_parameters: {
+              dimension_size: [256, 256],
+              dimension_order: 'YX',
+              data_type: 'uint8',
+              data_limits: [0, 255],
+            },
+          },
+        });
+      }
+      if (url.endsWith('/data/image')) {
+        return Promise.resolve({
+          dataUri: 'data:image/jpeg;base64,abc',
+          width: 256,
+          height: 256,
+          format: 'png',
+        });
+      }
+      return Promise.reject(new Error(`unexpected url ${url}`));
+    });
+
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <DataPanel datasetId="d1" documentId="doc-1" />
+      </Wrapper>,
+    );
+
+    // PIL <img> renders with alt="NDI image data".
+    const img = await screen.findByAltText(/NDI image data/i);
+    expect(img.tagName).toBe('IMG');
+    // No canvas, no video.
+    expect(screen.queryByTestId('imagestack-canvas')).toBeNull();
+    expect(screen.queryByTestId('imagestack-video')).toBeNull();
+    // Raw binary endpoint was NOT hit (canvas path stayed off).
+    expect(apiFetchBinaryMock).not.toHaveBeenCalled();
+  });
+
+  it('falls back to the partner-class query when the doc has no inline imageStack_parameters', async () => {
+    // Hypothetical future dataset that ships sibling
+    // `imageStack_parameters` docs. Not observed in production today,
+    // but the partner-doc resolver is preserved as the fallback.
+    // Without a matching format ontology, this still routes to PIL.
     const docs = {
       total: 1,
       page: 1,
@@ -341,90 +436,8 @@ describe('DataPanel — Phase 6.6 REBUILD-10', () => {
           id: 'doc-1',
           ndiId: 'ndi:imagestack:abc',
           className: 'imageStack',
-          data: {},
-        });
-      }
-      if (url.includes('class=imageStack_parameters')) {
-        return Promise.resolve(docs);
-      }
-      return Promise.reject(new Error(`unexpected url ${url}`));
-    });
-    apiFetchBinaryMock.mockResolvedValue({
-      data: new ArrayBuffer(4 * 4 * 3),
-      headers: { 'x-ndi-doc-id': 'doc-1', 'x-ndi-class-name': 'imageStack' },
-    });
-
-    const Wrapper = withClient();
-    await withCanvasMock(async () => {
-      render(
-        <Wrapper>
-          <DataPanel datasetId="d1" documentId="doc-1" />
-        </Wrapper>,
-      );
-      // Canvas mounts with the test id.
-      const canvas = await screen.findByTestId('imagestack-canvas');
-      expect(canvas).toBeInTheDocument();
-      expect(canvas.tagName).toBe('CANVAS');
-      // The PIL <img> is NOT in the DOM — we skipped /data/image.
-      expect(document.querySelector('img[alt="NDI image data"]')).toBeNull();
-      // The raw binary endpoint was hit, not /data/image.
-      expect(apiFetchBinaryMock).toHaveBeenCalledWith(
-        expect.stringContaining('/data/raw'),
-        expect.any(Object),
-      );
-      const imageUrls = apiFetchMock.mock.calls
-        .map((c) => String(c[0]))
-        .filter((u) => u.endsWith('/data/image'));
-      expect(imageUrls).toHaveLength(0);
-    });
-  });
-
-  it('falls through to the PIL path when the imageStack data_type is uint16 (canvas decode skipped)', async () => {
-    // Same wiring as the uint8 test, but the partner doc says uint16 →
-    // we skip the canvas path entirely and let /data/image run. PIL
-    // still can't decode uint16 frame stacks, so the user sees the
-    // friendly "preview not supported" copy via BINARY_DECODE_FAILED.
-    const docs = {
-      total: 1,
-      page: 1,
-      pageSize: 500,
-      documents: [
-        {
-          id: 'partner-1',
-          ndiId: 'ndi:imagestack_parameters:1',
-          className: 'imageStack_parameters',
-          data: {
-            depends_on: [
-              { name: 'imageStack_id', value: 'ndi:imagestack:abc' },
-            ],
-            imageStack_parameters: {
-              dimension_size: [4, 4, 1, 1, 1],
-              dimension_order: 'YXCZT',
-              data_type: 'uint16',
-              data_limits: [0, 65535],
-            },
-          },
-        },
-      ],
-    };
-
-    const { ApiError } = await import('@/lib/api/errors');
-    const decodeErr = new ApiError(502, {
-      code: 'BINARY_DECODE_FAILED',
-      message: 'Could not read the binary data for this document.',
-      recovery: 'contact_support',
-      requestId: 'test-rid-789',
-    });
-
-    apiFetchMock.mockImplementation((url: string) => {
-      if (url.endsWith('/data/type')) {
-        return Promise.resolve({ kind: 'image' });
-      }
-      if (url === '/api/datasets/d1/documents/doc-1') {
-        return Promise.resolve({
-          id: 'doc-1',
-          ndiId: 'ndi:imagestack:abc',
-          className: 'imageStack',
+          // No inline imageStack_parameters → falls back to the
+          // partner-class query.
           data: {},
         });
       }
@@ -432,7 +445,12 @@ describe('DataPanel — Phase 6.6 REBUILD-10', () => {
         return Promise.resolve(docs);
       }
       if (url.endsWith('/data/image')) {
-        return Promise.reject(decodeErr);
+        return Promise.resolve({
+          dataUri: 'data:image/jpeg;base64,abc',
+          width: 4,
+          height: 4,
+          format: 'png',
+        });
       }
       return Promise.reject(new Error(`unexpected url ${url}`));
     });
@@ -443,10 +461,15 @@ describe('DataPanel — Phase 6.6 REBUILD-10', () => {
         <DataPanel datasetId="d1" documentId="doc-1" />
       </Wrapper>,
     );
-    // Friendly fallback (NOT a canvas).
-    expect(await screen.findByText(/preview not supported/i)).toBeInTheDocument();
+
+    // The partner-class endpoint was hit because no inline params.
+    await screen.findByAltText(/NDI image data/i);
+    const partnerUrls = apiFetchMock.mock.calls
+      .map((c) => String(c[0]))
+      .filter((u) => u.includes('class=imageStack_parameters'));
+    expect(partnerUrls.length).toBeGreaterThan(0);
+    // PIL renders (no formatOntology on the doc → default routing).
     expect(screen.queryByTestId('imagestack-canvas')).toBeNull();
-    // The raw endpoint was NOT hit because canCanvasDecode is false.
-    expect(apiFetchBinaryMock).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('imagestack-video')).toBeNull();
   });
 });
