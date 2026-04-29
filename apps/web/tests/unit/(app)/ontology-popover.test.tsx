@@ -206,8 +206,16 @@ describe('OntologyPopover — audit #66 hover-delay + a11y', () => {
       await Promise.resolve();
       await Promise.resolve();
     });
+    // 2026-04-29 — narrowed: the strain-name round-3 work added an
+    // independent external-link icon next to the chip when the term
+    // ID maps to a known resolver via `ontologyUrl(...)` (Wormbase,
+    // NCBI Taxonomy, EBI OLS4, SciCrunch). That link is computed
+    // from the term ID itself, NOT from the popover's API response,
+    // so it doesn't carry the safeHref XSS surface this test pins.
+    // Narrowed to the popover-content `<ProviderLink>` ("View on
+    // provider →"), which IS the link safeHref guards.
     expect(
-      screen.queryByRole('link', { name: /provider/i }),
+      screen.queryByRole('link', { name: /view on provider/i }),
     ).toBeNull();
   });
 });

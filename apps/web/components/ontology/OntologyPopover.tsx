@@ -28,10 +28,12 @@
  * between them without dismissing.
  */
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { ExternalLink } from 'lucide-react';
 
 import { FloatingPanel } from '@/components/ui/FloatingPanel';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useOntologyLookup } from '@/lib/api/ontology';
+import { ontologyUrl } from '@/lib/ontology/url-builder';
 import { safeHref } from '@/lib/safe-href';
 import { normalizeOntologyTerm } from './ontology-utils';
 
@@ -136,27 +138,55 @@ export function OntologyPopover({
 
   const hasDefinition = !!data && !!data.label;
 
+  // Round-3 fix (team review): when the prefix maps to a known
+  // resolver (Wormbase, NCBI Taxonomy, EBI OLS4, SciCrunch), render
+  // an inline external-link icon next to the chip so users can jump
+  // directly to the canonical provider page without going through
+  // the popover. The chip itself still opens the popover; the icon
+  // is a separate `<a>` with `stopPropagation` so a click hits the
+  // link cleanly. `safeHref` guards against any future resolver
+  // change emitting a non-http(s) scheme.
+  const directLink = safeHref(ontologyUrl(displayId) ?? undefined);
+
   return (
     <>
-      <button
-        ref={triggerRef}
-        type="button"
-        className="text-brand-600 hover:text-brand-700 underline decoration-dotted cursor-help font-mono text-xs"
-        data-ontology-term={displayId}
-        onMouseEnter={scheduleOpen}
-        onMouseLeave={scheduleClose}
-        onFocus={openImmediately}
-        onBlur={scheduleClose}
-        onClick={(e) => {
-          // Keep the popover open + don't trigger an enclosing row's onRowClick.
-          e.stopPropagation();
-          openImmediately();
-        }}
-        aria-expanded={isOpen}
-        aria-label={`Ontology term ${displayId}. Click for definition.`}
-      >
-        {displayId}
-      </button>
+      <span className="inline-flex items-center gap-1">
+        <button
+          ref={triggerRef}
+          type="button"
+          className="text-brand-600 hover:text-brand-700 underline decoration-dotted cursor-help font-mono text-xs"
+          data-ontology-term={displayId}
+          onMouseEnter={scheduleOpen}
+          onMouseLeave={scheduleClose}
+          onFocus={openImmediately}
+          onBlur={scheduleClose}
+          onClick={(e) => {
+            // Keep the popover open + don't trigger an enclosing row's onRowClick.
+            e.stopPropagation();
+            openImmediately();
+          }}
+          aria-expanded={isOpen}
+          aria-label={`Ontology term ${displayId}. Click for definition.`}
+        >
+          {displayId}
+        </button>
+        {directLink && (
+          <a
+            href={directLink}
+            target="_blank"
+            rel="noopener noreferrer"
+            // Stop propagation so the click hits the anchor, not the
+            // table row's onRowClick or the popover trigger.
+            onClick={(e) => e.stopPropagation()}
+            className="text-fg-muted hover:text-brand-600 inline-flex"
+            title={`Open ${displayId} on the provider site`}
+            aria-label={`Open ${displayId} on the provider site (new tab)`}
+            data-ontology-link={displayId}
+          >
+            <ExternalLink className="h-3 w-3" aria-hidden />
+          </a>
+        )}
+      </span>
       <FloatingPanel
         open={isOpen}
         anchorRef={triggerRef}
