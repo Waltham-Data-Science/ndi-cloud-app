@@ -52,7 +52,7 @@ export const metadata: Metadata = {
   //  doubled into "Published datasets · NDI Cloud · NDI Cloud".)
   title: 'Published datasets',
   description:
-    'Browse the NDI Data Commons — open neuroscience datasets with Crossref DOIs, OpenMINDS metadata, and full provenance.',
+    'Browse the NDI Data Commons — open neuroscience datasets with DOIs, openMINDS and NDI metadata, and full provenance.',
   alternates: { canonical: '/datasets' },
 };
 
