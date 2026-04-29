@@ -107,8 +107,8 @@ export default function PlatformPage() {
           <p className="text-[17px] leading-relaxed text-white/80 max-w-[720px] mb-8 m-0">
             The Commons, the Data Browser, and LabChat surface the same
             versioned dataset with the same permissions and provenance —
-            so a finding stands up the same way whether it&rsquo;s in a
-            paper, your workspace, or an AI answer.
+            so a finding looks the same whether it&rsquo;s in a paper, your
+            workspace, or an AI answer.
           </p>
           {/* Hero CTA row standardised to `MarketingButton` lg. The
               previous inline `px-6 py-3 text-base` matched source `.btnPrimaryLg`
@@ -153,7 +153,7 @@ export default function PlatformPage() {
             />
             <TrustMetric
               label="Open to any ontology"
-              sub="NCBITaxon · UBERON · PATO · RRID · OLS — and your lab&rsquo;s"
+              sub="NCBITaxon · UBERON · PATO · RRID · OLS — and your other favorite"
             />
             <TrustMetric
               label="Citable as a tool"
@@ -241,7 +241,7 @@ export default function PlatformPage() {
                   <SvcChip color="teal" label="Version control" />
                   <SvcChip color="teal" label="Access control" />
                   <SvcChip label="Compute API" />
-                  <SvcChip color="cream" label="Crossref DOIs" />
+                  <SvcChip color="cream" label="DOIs" />
                   <SvcChip label="Search index" />
                   <SvcChip label="LabChat RAG" />
                 </div>
@@ -251,7 +251,7 @@ export default function PlatformPage() {
               <div className="flex flex-col gap-2">
                 <ColHead>The world</ColHead>
                 <NodePill color="cream" label="Data Commons" sub="public search · DOIs" />
-                <NodePill color="cream" label="Publications" sub="Crossref · citations" />
+                <NodePill color="cream" label="Publications" sub="DOIs · citations" />
                 <NodePill color="cream" label="Collaborators" sub="role-based · external" />
               </div>
             </div>
@@ -271,7 +271,7 @@ export default function PlatformPage() {
             </h3>
             <p className="text-base leading-relaxed text-fg-secondary mb-8 m-0">
               Most labs live on scattered external drives, shared folders,
-              and personal laptops. NDI is a single store where every session
+              and personal laptops. NDI Cloud is a single store where every session
               is a permanent, citable, downloadable object — still resolvable
               next semester, next decade.
             </p>
@@ -410,8 +410,8 @@ export default function PlatformPage() {
                     },
                     {
                       label: 'DOI · 94a2f08',
-                      kv: 'Crossref · ',
-                      kvV: 'citable',
+                      kv: '',
+                      kvV: 'Citable DOI',
                       cream: true,
                     },
                   ].map((b) => (
@@ -470,7 +470,7 @@ export default function PlatformPage() {
                 chips={[
                   'ndi-cloud.com/datasets',
                   'DOI landing pages',
-                  'Crossref index',
+                  'DOI registry',
                   'Google Scholar',
                 ]}
                 edgeStrong="Open, no login"
@@ -492,7 +492,7 @@ export default function PlatformPage() {
                 title="NDI Cloud services"
                 chips={[
                   'Metadata API',
-                  'Crossref DOI registration',
+                  'DOI registration',
                   'LabChat RAG',
                   'Search index',
                   'Auth · KMS',
@@ -509,10 +509,11 @@ export default function PlatformPage() {
                   'Session graph',
                   'Branches & history',
                   'openMINDS metadata',
-                  'Object storage',
+                  'MATLAB API',
+                  'Python API',
                 ]}
                 edgeStrong="Open spec"
-                edgeSub="S3 · Parquet · RDF"
+                edgeSub="ndi-matlab · ndi-python"
               />
             </div>
 

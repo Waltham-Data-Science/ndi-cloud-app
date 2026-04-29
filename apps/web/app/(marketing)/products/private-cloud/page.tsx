@@ -21,14 +21,14 @@ import { MarketingButton } from '@/components/marketing/Button';
 export const metadata: Metadata = {
   title: 'For Labs — NDI Data Browser',
   description:
-    'The NDI Data Browser is where your lab works. Upload sessions from MATLAB or Python, track sync status, publish datasets with a Crossref DOI.',
+    'The NDI Data Browser is where your lab works. Upload sessions from MATLAB or Python, track sync status, publish datasets with a DOI.',
   alternates: { canonical: 'https://ndi-cloud.com/products/private-cloud' },
   openGraph: {
     type: 'website',
     url: 'https://ndi-cloud.com/products/private-cloud',
     title: 'NDI Data Browser — NDI Cloud',
     description:
-      'Upload sessions from MATLAB or Python, track sync status, publish with a Crossref DOI.',
+      'Upload sessions from MATLAB or Python, track sync status, publish with a DOI.',
     images: ['https://ndi-cloud.com/logos/ndicloud-wordmark-color.svg'],
     siteName: 'NDI Cloud',
   },
@@ -93,7 +93,7 @@ export default function PrivateCloudPage() {
           <p className="text-[17px] leading-relaxed text-white/80 max-w-[720px] mx-auto mb-8 m-0">
             The Data Browser is where your lab works. Upload sessions from the
             rig or your workstation, group them into datasets, attach openMINDS
-            metadata, and publish with a Crossref DOI when the dataset is ready.
+            metadata, and publish with a DOI when the dataset is ready.
             The same data model, from rig to citation.
           </p>
           <div className="flex gap-3 flex-wrap justify-center mb-12">
@@ -249,7 +249,7 @@ export default function PrivateCloudPage() {
               body={
                 <>
                   When your dataset is ready, publish it to the NDI Data Commons.
-                  A Crossref-registered DOI (under the NDI{' '}
+                  A DOI (under the NDI{' '}
                   <code className="font-mono text-[0.88em] bg-gray-100 text-brand-navy px-1.5 py-px rounded-[4px]">10.63884</code> prefix) and a
                   public landing page are created so other researchers can cite
                   your work.
@@ -295,7 +295,7 @@ export default function PrivateCloudPage() {
             <WorkflowStep
               num="03"
               title="Publish with DOI"
-              body="Choose a license (CC-BY, CC0), review the metadata, and publish. Your dataset gets a Crossref-registered DOI and a public landing page on the Data Commons."
+              body="Choose a license (CC-BY 4.0), review the metadata, and publish. Your dataset gets a DOI and a public landing page on the Data Commons."
             />
           </div>
         </div>

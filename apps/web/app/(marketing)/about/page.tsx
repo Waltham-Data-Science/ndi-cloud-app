@@ -166,10 +166,10 @@ export default function AboutPage() {
           <p className="text-[17px] leading-relaxed text-white/80 max-w-[720px] mx-auto m-0">
             Most neuroscience labs lose data the moment a student leaves:
             scattered drives, ad-hoc filenames, metadata that nobody else can
-            read. The open NDI standard — written at the Van Hooser Lab at
-            Brandeis — fixes the format problem. NDI Cloud is the rest:
-            cloud storage, a DOI pipeline, and LabChat. The spec stays open;
-            we run the infrastructure.
+            read. The open NDI standard — developed at Brandeis University as
+            part of the US BRAIN Initiative — fixes the format problem. NDI
+            Cloud is the rest: cloud storage, a DOI pipeline, and LabChat.
+            The spec stays open; we run the infrastructure.
           </p>
         </div>
       </section>
@@ -271,7 +271,7 @@ export default function AboutPage() {
             Backed by &amp; built on
           </div>
           <h2 className="text-[length:var(--type-h2-marketing)] font-bold tracking-tight text-fg-primary leading-[1.2] mb-3 m-0">
-            A citable tool, with NSF and MathWorks behind it.
+            A citable tool with help from NIH, NSF, and MathWorks.
           </h2>
           {/*
             2026-04-28 — pre-launch dedupe (team review feedback). Pre-fix
@@ -302,8 +302,8 @@ export default function AboutPage() {
             >
               GitHub
             </a>
-            . Development is funded by NSF I-Corps; MathWorks is an
-            official Connections Partner.
+            . Development was funded by the NIH BRAIN Initiative and NSF
+            I-Corps; MathWorks is an official Connections Partner.
           </p>
 
           {/* Two logo boxes (was four). The RRID and OSS marks were

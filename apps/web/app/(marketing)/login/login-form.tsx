@@ -59,7 +59,7 @@ export function LoginForm() {
       marketingSubtitle="Sign in to the NDI Data Browser, check progress on in-flight datasets, and publish new work to the Data Commons."
       marketingFeatures={[
         'HIPAA-aware storage with per-tenant isolation',
-        'Crossref-registered DOIs on published datasets',
+        'DOIs on published datasets',
         'Intan, Blackrock, Spike2, and SpikeGadgets file readers in NDI-MATLAB/Python',
       ]}
     >

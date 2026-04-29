@@ -25,8 +25,8 @@ import { HomeSearchForm } from './home-search-form';
  *   7. CTA band — gradient + Create Account / Browse Commons buttons
  *
  * JSON-LD structured data preserved verbatim from the source repo: the
- * Organization + WebSite/SearchAction schemas drive Crossref + Google
- * site-search-result rendering. The SearchAction `target` is now
+ * Organization + WebSite/SearchAction schemas drive Google site-search
+ * result rendering. The SearchAction `target` is now
  * same-origin (`/datasets?q={search_term_string}`) since the data
  * browser is part of this monorepo.
  */
@@ -35,14 +35,14 @@ export const metadata: Metadata = {
     absolute: 'NDI Data Commons — Neuroscience datasets, discoverable',
   },
   description:
-    'A public, FAIR-compliant search across every dataset published on NDI Cloud. Filter by species, region, probe, year. Every entry carries a Crossref DOI and OpenMINDS metadata.',
+    'A public, FAIR-compliant search across every dataset published on NDI Cloud. Filter by species, region, probe, year. Every entry carries a DOI and openMINDS and NDI metadata.',
   alternates: { canonical: 'https://ndi-cloud.com' },
   openGraph: {
     type: 'website',
     url: 'https://ndi-cloud.com/',
     title: 'NDI Data Commons — Neuroscience datasets, discoverable',
     description:
-      'A public, FAIR-compliant search across every dataset published on NDI Cloud. Every entry carries a Crossref DOI and OpenMINDS metadata.',
+      'A public, FAIR-compliant search across every dataset published on NDI Cloud. Every entry carries a DOI and openMINDS and NDI metadata.',
     images: ['https://ndi-cloud.com/logos/ndicloud-wordmark-color.svg'],
     siteName: 'NDI Cloud',
   },
@@ -168,7 +168,7 @@ export default function HomePage() {
                 publishing framing. */}
             <p className="text-[19px] leading-relaxed text-white/80 max-w-[760px] mx-auto mb-8 m-0">
               The data infrastructure for FAIR neuroscience publishing —
-              every dataset carries a Crossref DOI, openMINDS metadata, and
+              every dataset carries a DOI, openMINDS and NDI metadata, and
               ontology-grade species, region, and probe filters. Public
               access, no login.
             </p>
@@ -251,12 +251,12 @@ export default function HomePage() {
 
             <div className="grid grid-cols-4 max-[840px]:grid-cols-2 max-[480px]:grid-cols-1 gap-5">
               <FairTile letter="F" title="Findable">
-                A Crossref DOI and openMINDS metadata on every published dataset.
-                Indexed where researchers already search.
+                A DOI and openMINDS and NDI metadata on every published
+                dataset. Indexed where researchers already search.
               </FairTile>
               <FairTile letter="A" title="Accessible">
                 Public datasets download over plain HTTP or through the NDI
-                Python API. No login. Rate limits are generous.
+                MATLAB or Python API. No login required.
               </FairTile>
               <FairTile
                 letter="I"
@@ -268,8 +268,8 @@ export default function HomePage() {
                 conversion.
               </FairTile>
               <FairTile letter="R" title="Reusable">
-                CC-BY or CC0 on every release. Full provenance from raw session
-                to cohort — no broken links, no detached files.
+                CC-BY 4.0 on every release. Full provenance from raw session
+                to cohort.
               </FairTile>
             </div>
           </div>
@@ -292,14 +292,14 @@ export default function HomePage() {
                 A DOI, a landing page, a citation. Same as a journal.
               </h2>
               <p className="text-base leading-relaxed text-fg-secondary mb-5 m-0">
-                When you publish, you get a Crossref DOI under the NDI Cloud
-                prefix <code className="font-mono text-sm">10.63884</code>, a
+                When you publish, you get a DOI under the NDI Cloud prefix{' '}
+                <code className="font-mono text-sm">10.63884</code>, a
                 permanent landing page, and a BibTeX block ready to drop into
                 the methods section. Researchers cite the dataset. The dataset
                 stays where the citation points.
               </p>
               <p className="text-sm font-mono text-ndi-teal m-0">
-                → <span className="underline">doi.org/10.48324/ndi.ds.94a2f08</span>
+                → <span className="underline">doi.org/10.63884/ndic.2025.jyxfer8m</span>
               </p>
             </div>
 
@@ -314,21 +314,23 @@ export default function HomePage() {
                 Published
               </span>
               <div className="text-base font-bold text-fg-primary mb-1">
-                V1 whole-cell recordings during drifting gratings
+                Vasopressin and oxytocin excite BNST neurons through cell
+                type-specific receptor expression
               </div>
               <div className="text-sm text-fg-muted mb-4">
-                Van Hooser Lab · Brandeis University
+                Dabrowska Lab · Rosalind Franklin University
               </div>
 
-              <DoiField k="DOI" v="10.48324/ndi.ds.94a2f08" />
-              <DoiField k="Species" v="M. musculus · V1" />
-              <DoiField k="Sessions" v="128 · 2.4 GB" />
+              <DoiField k="DOI" v="10.63884/ndic.2025.jyxfer8m" />
+              <DoiField k="Species" v="R. norvegicus · BNST" />
+              <DoiField k="Sessions" v="14,644 · 4.0 GB" />
               <DoiField k="License" v="CC-BY 4.0" />
 
               <div className="mt-4 pt-4 border-t border-border-subtle text-xs leading-relaxed text-fg-secondary italic">
-                Van Hooser, S. et al. (2024). V1 whole-cell recordings during
-                drifting gratings [Data set]. NDI Cloud.
-                doi:10.48324/ndi.ds.94a2f08
+                Francesconi, W. et al. (2025). Vasopressin and oxytocin excite
+                BNST neurons through cell type-specific expression of oxytocin
+                receptors [Data set]. NDI Cloud.
+                doi:10.63884/ndic.2025.jyxfer8m
               </div>
             </div>
           </div>
@@ -356,17 +358,17 @@ export default function HomePage() {
               <ProvCell
                 kicker="For readers"
                 title="Search and download"
-                body="Search by species, region, probe, or year. Download direct, or browse from a notebook with the NDI Python API."
+                body="Search by species, region, probe, or year. Download direct, or browse from a laptop with the NDI MATLAB or Python API."
               />
               <ProvCell
                 kicker="For reviewers"
                 title="Cite in papers"
-                body="BibTeX and RIS on every landing page. DOIs resolve immediately, and they keep resolving — references that don't rot mid-review."
+                body="BibTeX and RIS on every landing page. DOIs resolve immediately."
               />
               <ProvCell
                 kicker="For labs"
-                title="Get discovered"
-                body="Published datasets show up in Crossref, Google Scholar, and openMINDS search — where researchers already look. Citations and download counts come back to your Data Browser."
+                title="Findable on the web"
+                body="Dataset pages render server-side with stable URLs and per-dataset titles, so Google indexes them like any other web page. Your data lives on and can be used in new ways as datasets are downloaded or your documents are discovered in cross-data searches."
               />
             </div>
           </div>
@@ -433,7 +435,7 @@ export default function HomePage() {
               <BridgeRow
                 num="03"
                 title="NDI Data Browser"
-                desc="The private workspace for your lab. Upload sessions from MATLAB or Python, track sync status, publish with a Crossref DOI."
+                desc="The private workspace for your lab. Upload sessions from MATLAB or Python, track sync status, publish with a DOI."
                 comingSoon
               />
             </div>
@@ -469,8 +471,8 @@ export default function HomePage() {
             </h2>
             <p className="text-base leading-relaxed text-white/80 mb-8 m-0">
               Upload your sessions, fill in the metadata, click publish. Your
-              dataset gets a Crossref DOI, a landing page, and a place in the
-              Commons — from the same workspace your lab already uses.
+              dataset gets a DOI, a landing page, and a place in the Commons —
+              from the same workspace your lab already uses.
             </p>
             {/* CTA buttons standardised to `MarketingButton` `lg`. Was
                 hand-rolled `text-base px-6 py-2.5` inline classes —

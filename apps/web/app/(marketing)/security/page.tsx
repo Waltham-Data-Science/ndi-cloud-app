@@ -197,7 +197,7 @@ export default function SecurityPage() {
             <ComplyRow
               status="live"
               title="NIH Data Management & Sharing Plan"
-              desc="Every published dataset satisfies NIH DMSP requirements out of the box: Crossref DOI, FAIR metadata, defined license, stable landing page."
+              desc="Every published dataset satisfies NIH DMSP requirements out of the box: DOI, FAIR metadata, defined license, stable landing page."
             />
             <ComplyRow
               status="in-progress"
