@@ -158,8 +158,31 @@ export function DatasetDetailHero({ datasetId }: { datasetId: string }) {
                 {data.contributors && data.contributors.length > 0 && (data.uploadedAt || data.createdAt) && (
                   <span className="mx-2 text-white/40">·</span>
                 )}
+                {/*
+                  2026-04-28 — team-review feedback: the inline hero
+                  date was unlabeled, leaving readers to guess whether
+                  it was the data acquisition date, the paper
+                  publication date, or the dataset upload date. The
+                  field is `uploadedAt` (when the dataset record was
+                  first persisted to the NDI cloud) with a fallback to
+                  `createdAt` (older records that pre-date the
+                  uploadedAt column). Both represent the same logical
+                  event from a reader's perspective: when this dataset
+                  became available on NDI. Surface that with a visible
+                  "Published" prefix and a `title` tooltip pinning the
+                  exact field for any reader who hovers. The richer
+                  Created / Updated breakdown still lives in the
+                  Overview card's metadata block below.
+                */}
                 {(data.uploadedAt || data.createdAt) && (
-                  <span>
+                  <span
+                    title={
+                      data.uploadedAt
+                        ? 'Date this dataset was uploaded to NDI (uploadedAt)'
+                        : 'Date this dataset record was first created on NDI (createdAt)'
+                    }
+                  >
+                    <span className="text-white/55">Published </span>
                     {formatDate(data.uploadedAt || data.createdAt!)}
                   </span>
                 )}

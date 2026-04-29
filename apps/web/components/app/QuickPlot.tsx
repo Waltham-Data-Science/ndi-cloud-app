@@ -222,10 +222,31 @@ export function QuickPlot({ datasetId, className, table }: QuickPlotProps) {
               </select>
             </label>
 
+            {/*
+              2026-04-28 — team-review feedback: the Plot button
+              previously read "Quick plot doesn't seem to be plotting
+              anything meaningful" because the user couldn't tell why
+              the button was disabled. Adding a tooltip via `title`
+              spells out the unmet precondition (a Y column hasn't
+              been picked yet, or in xnumeric mode both X+Y are
+              required). The disabled state stays the same — this is
+              purely the "tell the user why" affordance.
+            */}
             <Button
               size="sm"
               onClick={run}
               disabled={!canRun || distribute.isPending}
+              title={
+                distribute.isPending
+                  ? 'Plotting…'
+                  : canRun
+                    ? undefined
+                    : axisMode === 'xnumeric'
+                      ? 'Pick numeric X and Y columns to plot'
+                      : plotType === 'bar'
+                        ? 'Pick a Group-by column'
+                        : 'Pick a Y column'
+              }
               className="h-7 text-xs"
             >
               {distribute.isPending ? (
@@ -237,16 +258,51 @@ export function QuickPlot({ datasetId, className, table }: QuickPlotProps) {
             </Button>
           </div>
 
-          {numericCols.length === 0 && axisMode === 'xnumeric' && (
-            <p className="text-xs text-gray-500">
-              This table has no numeric columns to plot on X.
-            </p>
-          )}
-          {numericCols.length === 0 && axisMode === 'group' && plotType !== 'bar' && (
-            <p className="text-xs text-gray-500">
-              This table has no numeric columns to plot.
-            </p>
-          )}
+          {/*
+            2026-04-28 — team-review empty-state polish. Three
+            mutually-exclusive empty states render INSIDE the plot
+            area (a dashed-border placeholder), in priority order:
+
+              1. Table has zero numeric columns at all → tell the
+                 user the table can't be plotted by Quick Plot. This
+                 takes precedence over the "pick a column" hint
+                 because there's nothing to pick.
+              2. Y unset (group mode, non-bar plots; or xnumeric
+                 with X+Y missing) → tell the user what to pick AND
+                 give a one-line "what is Quick Plot" description so
+                 they understand the feature without leaving the
+                 page.
+              3. Otherwise: the canRun flag is true and the renderer
+                 below shows the actual plot.
+
+            Group/bar mode is a special case: Y isn't used, so the
+            empty state asks for the X (Group-by) column instead.
+          */}
+          {numericCols.length === 0 ? (
+            <QuickPlotEmptyState
+              testId="quickplot-empty-no-numeric"
+              title="No numeric columns in this table"
+              description="Quick Plot needs at least one numeric column. This table has none — try a different summary table on this dataset."
+            />
+          ) : axisMode === 'xnumeric' && !scatterCanRun ? (
+            <QuickPlotEmptyState
+              testId="quickplot-empty-pick-xy"
+              title="Pick numeric X and Y columns to plot"
+              description="Quick Plot summarizes one column of this table — pick a numeric Y column and (optionally) a categorical Group-by, and choose violin / box / histogram / bar."
+            />
+          ) : axisMode === 'group' && plotType === 'bar' && !xField ? (
+            <QuickPlotEmptyState
+              testId="quickplot-empty-pick-group"
+              title="Pick a Group-by column to plot"
+              description="Quick Plot summarizes one column of this table — pick a numeric Y column and (optionally) a categorical Group-by, and choose violin / box / histogram / bar."
+            />
+          ) : axisMode === 'group' && plotType !== 'bar' && !yField ? (
+            <QuickPlotEmptyState
+              testId="quickplot-empty-pick-y"
+              title="Pick a numeric column on the Y axis to plot"
+              description="Quick Plot summarizes one column of this table — pick a numeric Y column and (optionally) a categorical Group-by, and choose violin / box / histogram / bar."
+            />
+          ) : null}
 
           {distribute.error && axisMode === 'group' && plotType !== 'bar' && (
             <ErrorState error={distribute.error} onRetry={() => distribute.reset()} />
@@ -395,6 +451,38 @@ function toViolinGroup(g: DistributionGroupedResponse['groups'][number]): Violin
     q1: g.q1,
     q3: g.q3,
   };
+}
+
+/**
+ * Friendly empty-state placeholder rendered inside the Quick Plot
+ * card when the user hasn't yet picked enough columns to render a
+ * plot, or when the table has no numeric columns at all.
+ *
+ * The dashed border + min-height makes the empty state feel like
+ * "the place where the plot will go" rather than a stray sentence
+ * of helper text. The description gives a one-line "what is Quick
+ * Plot" hand-off so first-time users understand the feature
+ * without leaving the page (team-review feedback 2026-04-28).
+ */
+function QuickPlotEmptyState({
+  title,
+  description,
+  testId,
+}: {
+  title: string;
+  description: string;
+  testId: string;
+}) {
+  return (
+    <div
+      data-testid={testId}
+      className="flex min-h-[180px] flex-col items-center justify-center gap-1.5 rounded-md border border-dashed border-gray-300 bg-gray-50 px-6 py-8 text-center"
+    >
+      <BarChart3 className="h-5 w-5 text-gray-400" aria-hidden />
+      <p className="text-sm font-medium text-gray-700">{title}</p>
+      <p className="max-w-md text-xs text-gray-500">{description}</p>
+    </div>
+  );
 }
 
 function ungroupedToViolin(
