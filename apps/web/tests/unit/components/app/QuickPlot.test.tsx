@@ -383,6 +383,99 @@ describe('QuickPlot — X=numeric (scatter) mode', () => {
   });
 });
 
+describe('QuickPlot — empty-state copy (team-review feedback 2026-04-28)', () => {
+  // Pre-fix the empty state was a small gray sentence ("This table
+  // has no numeric columns to plot.") that the team review flagged
+  // as ambiguous — readers couldn't tell what Quick Plot was for.
+  // The new contract: when no plot is renderable, show a dashed-
+  // border placeholder INSIDE the plot area with a clear "what to
+  // do next" title plus a one-line description of the feature.
+
+  it('shows the "Pick a Y column" empty state when Y is unset (group mode, default)', () => {
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
+      </Wrapper>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
+
+    const empty = screen.getByTestId('quickplot-empty-pick-y');
+    expect(empty).toBeInTheDocument();
+    expect(empty).toHaveTextContent(/Pick a numeric column on the Y axis to plot/i);
+    expect(empty).toHaveTextContent(/Quick Plot summarizes one column of this table/i);
+    // Disabled Plot button explains itself via the title attribute.
+    const plotBtn = screen.getByRole('button', { name: 'Plot' });
+    expect(plotBtn).toBeDisabled();
+    expect(plotBtn).toHaveAttribute('title', expect.stringMatching(/Pick a Y column/i));
+  });
+
+  it('shows the "no numeric columns" empty state when the table has zero numeric columns', () => {
+    const Wrapper = withClient();
+    const NO_NUMERIC_TABLE: TableResponse = {
+      columns: [
+        { key: 'subject', label: 'subject' },
+        { key: 'region', label: 'region' },
+        { key: 'condition', label: 'condition' },
+      ],
+      rows: [
+        { subject: 'm1', region: 'V1', condition: 'control' },
+        { subject: 'm2', region: 'V2', condition: 'treated' },
+        { subject: 'm3', region: 'V1', condition: 'control' },
+      ],
+    };
+    render(
+      <Wrapper>
+        <QuickPlot datasetId="d1" className="subject" table={NO_NUMERIC_TABLE} />
+      </Wrapper>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
+
+    const empty = screen.getByTestId('quickplot-empty-no-numeric');
+    expect(empty).toBeInTheDocument();
+    expect(empty).toHaveTextContent(/No numeric columns in this table/i);
+    expect(empty).toHaveTextContent(/Quick Plot needs at least one numeric column/i);
+    // The "pick a Y column" hint should NOT be visible — there's
+    // nothing to pick. The no-numeric branch takes priority.
+    expect(screen.queryByTestId('quickplot-empty-pick-y')).toBeNull();
+  });
+
+  it('shows the "Pick X+Y" empty state in xnumeric mode when neither is picked', () => {
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
+      </Wrapper>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
+    fireEvent.change(
+      screen.getByRole('combobox', { name: /Axis mode/i }),
+      { target: { value: 'xnumeric' } },
+    );
+    expect(screen.getByTestId('quickplot-empty-pick-xy')).toBeInTheDocument();
+    expect(screen.getByTestId('quickplot-empty-pick-xy')).toHaveTextContent(
+      /Pick numeric X and Y columns to plot/i,
+    );
+  });
+
+  it('hides the empty state once a Y column is picked (group mode)', () => {
+    apiFetchMock.mockResolvedValue(GROUPED_RESPONSE);
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
+      </Wrapper>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
+    fireEvent.change(
+      screen.getByRole('combobox', { name: /Y \(numeric\)/i }),
+      { target: { value: 'firingRate' } },
+    );
+    // Y is now set — the empty-state placeholder must disappear.
+    expect(screen.queryByTestId('quickplot-empty-pick-y')).toBeNull();
+  });
+});
+
 describe('QuickPlot — small-n graceful degradation', () => {
   it('with n=2 group, violin mode does not crash (renders the SVG container)', async () => {
     apiFetchMock.mockResolvedValue({

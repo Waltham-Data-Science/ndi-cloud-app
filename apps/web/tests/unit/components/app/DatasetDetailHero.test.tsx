@@ -116,6 +116,70 @@ describe('DatasetDetailHero', () => {
     expect(screen.getByText(/doi\.org\/10\.63884\/abc/)).toBeInTheDocument();
   });
 
+  // 2026-04-28 — team-review feedback: the inline hero date was
+  // unlabeled (e.g. "Jun 17, 2025") which left readers guessing
+  // whether it was the data acquisition date, the paper publication
+  // date, or the dataset upload date. The fix renders a visible
+  // "Published" prefix and a `title` tooltip that pins the exact
+  // field source (uploadedAt vs createdAt). The richer Created /
+  // Updated breakdown still lives in the Overview card's metadata
+  // block below.
+  it('renders the hero date with a visible "Published" label', async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      id: 'd1',
+      name: 'Labeled-date dataset',
+      // Use noon UTC so the date doesn't roll over the day boundary
+      // when the test runner sits in a non-UTC timezone (formatDate
+      // is locale-pinned but timezone-relative — see lib/format.ts).
+      uploadedAt: '2025-06-17T12:00:00.000Z',
+      isPublished: true,
+    });
+    const Wrapper = withClient();
+    const { container } = render(
+      <Wrapper>
+        <DatasetDetailHero datasetId="d1" />
+      </Wrapper>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/Jun 17, 2025/i)).toBeInTheDocument();
+    });
+    // The visible prefix must read "Published " so the date isn't
+    // ambiguous when scanned alongside the contributor names.
+    // Anchor on the date wrapper's tooltip so we don't collide with
+    // the unrelated "● Published" status pill above the h1 (which
+    // also matches /Published/).
+    const dateWrapper = container.querySelector(
+      'span[title*="uploadedAt"]',
+    );
+    expect(dateWrapper).not.toBeNull();
+    expect(dateWrapper?.textContent).toMatch(/Published\s+Jun 17, 2025/);
+  });
+
+  it('uses the createdAt field meaning in the title tooltip when uploadedAt is missing', async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      id: 'd1',
+      name: 'CreatedAt-only dataset',
+      // Older records that pre-date the uploadedAt column fall back
+      // to createdAt — the tooltip must reflect that field source.
+      // Noon UTC avoids day-boundary rollover in non-UTC test envs.
+      createdAt: '2024-03-08T12:00:00.000Z',
+      isPublished: true,
+    });
+    const Wrapper = withClient();
+    const { container } = render(
+      <Wrapper>
+        <DatasetDetailHero datasetId="d1" />
+      </Wrapper>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText(/Mar 8, 2024/i)).toBeInTheDocument();
+    });
+    // The tooltip lives on the wrapper <span>; assert via querySelector
+    // because the visible text is the date, not the title attribute.
+    const tooltipNode = container.querySelector('span[title*="createdAt"]');
+    expect(tooltipNode).not.toBeNull();
+  });
+
   it('renders a non-original branch badge when present', async () => {
     mockedApiFetch.mockResolvedValueOnce({
       id: 'd1',
