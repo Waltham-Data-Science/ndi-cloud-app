@@ -249,11 +249,30 @@ export function proxy(req: NextRequest): NextResponse {
 
   // 2. Static CSP. No per-request nonce — Next.js's hashed chunk
   //    filenames are stable across requests, so `script-src 'self'` is
-  //    sufficient. The Report-Only header is set on every response;
-  //    Phase 7 cutover flips it to `Content-Security-Policy` (enforced)
-  //    after the soak.
+  //    sufficient.
+  //
+  // Phase 7 cutover (2026-04-29): flipped from
+  // `Content-Security-Policy-Report-Only` to `Content-Security-Policy`
+  // (enforced) after the report-only soak landed zero
+  // legitimate-script violations across the catalog, dataset detail,
+  // marketing, and auth flows. The policy text itself is unchanged —
+  // only the header name flips. Rollback path if a violation surfaces
+  // post-cutover: revert this commit; Vercel re-deploys with the
+  // Report-Only header within ~30s.
+  //
+  // The CSP policy already accounts for: Next's hashed chunks
+  // (`script-src 'self'`), inline styles emitted by some Tailwind v4
+  // dynamic-class branches (`style-src 'self' 'unsafe-inline'`), the
+  // GA4 + GTM scripts on the marketing surface
+  // (`https://www.googletagmanager.com`, `https://www.google-analytics.com`),
+  // Vercel Speed Insights vitals beacon
+  // (`https://vitals.vercel-insights.com`), the FastAPI proxy
+  // (`https://ndb-v2-production.up.railway.app`), and the S3 tutorials
+  // bucket (`https://ndi-cloud-tutorials.s3.us-east-2.amazonaws.com`)
+  // for the Tutorial tab's iframe + .mlx download. See `CSP_POLICY`
+  // constant above for the full list.
   const res = NextResponse.next();
-  res.headers.set('Content-Security-Policy-Report-Only', CSP_POLICY);
+  res.headers.set('Content-Security-Policy', CSP_POLICY);
 
   // 3. Vary: Cookie, Accept-Encoding on routes that vary by session.
   //    Gated to `/api/*` and `/my/*` only. The catalog at `/datasets`

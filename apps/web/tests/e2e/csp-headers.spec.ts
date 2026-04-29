@@ -1,10 +1,17 @@
 /**
- * CSP middleware production verification — Phase 6.
+ * CSP proxy production verification.
  *
- * The middleware-emitted CSP nonce is the audit-2026-04-23 #58 fix.
- * Locally CI runs middleware tests against the request handler in
- * isolation; this spec asserts the nonce actually lands on responses
- * served by Vercel edge.
+ * History:
+ *   - The original audit-2026-04-23 #58 fix shipped a nonce-based CSP
+ *     with `strict-dynamic`. That carried through Phase 5.
+ *   - Phase 6.7 B2 simplified to a static CSP (`'self'` + a small
+ *     allowlist of analytics/Railway/S3 hosts), no per-request nonce.
+ *   - Phase 7 cutover (2026-04-29) flipped the header from
+ *     `Content-Security-Policy-Report-Only` to `Content-Security-Policy`
+ *     (enforced) after the soak ran clean.
+ *
+ * These tests pin the post-cutover contract: enforced header, static
+ * shape, no nonce.
  *
  * **Gated on `PLAYWRIGHT_PREVIEW_URL`** — CI skips because `next dev`
  * doesn't run middleware on every response in the same way Vercel
@@ -14,35 +21,41 @@ import { expect, test } from '@playwright/test';
 
 const PREVIEW_URL = process.env.PLAYWRIGHT_PREVIEW_URL;
 
-test.describe('CSP middleware (production)', () => {
+test.describe('CSP proxy (production)', () => {
   test.skip(
     !PREVIEW_URL,
-    'CSP middleware verification runs against a Vercel preview URL ' +
+    'CSP proxy verification runs against a Vercel preview URL ' +
       '(not `next dev`).',
   );
 
-  test('emits Content-Security-Policy-Report-Only on /api/* responses', async ({
+  test('emits enforced Content-Security-Policy on /api/* responses', async ({
     request,
   }) => {
     const res = await request.get(`${PREVIEW_URL}/api/health/ready`);
-    const csp = res.headers()['content-security-policy-report-only'];
+    const csp = res.headers()['content-security-policy'];
     expect(csp).toBeTruthy();
-    expect(csp).toMatch(/nonce-/);
-    expect(csp).toMatch(/'strict-dynamic'/);
+    // B2 dropped per-request nonce + strict-dynamic — static shape only.
+    expect(csp).not.toMatch(/nonce-/);
+    expect(csp).not.toMatch(/'strict-dynamic'/);
   });
 
-  test('uses a fresh nonce on consecutive requests', async ({ request }) => {
-    const r1 = await request.get(`${PREVIEW_URL}/api/health/ready`);
-    const r2 = await request.get(`${PREVIEW_URL}/api/health/ready`);
-    const m1 = (r1.headers()['content-security-policy-report-only'] ?? '').match(
-      /nonce-([^']+)'/,
-    );
-    const m2 = (r2.headers()['content-security-policy-report-only'] ?? '').match(
-      /nonce-([^']+)'/,
-    );
-    expect(m1).not.toBeNull();
-    expect(m2).not.toBeNull();
-    expect(m1![1]).not.toBe(m2![1]);
+  test('does NOT emit Report-Only header (Phase 7 flipped to enforced)', async ({
+    request,
+  }) => {
+    const res = await request.get(`${PREVIEW_URL}/api/health/ready`);
+    expect(
+      res.headers()['content-security-policy-report-only'],
+    ).toBeUndefined();
+  });
+
+  test('CSP includes the canonical script-src allowlist (self + GTM/GA)', async ({
+    request,
+  }) => {
+    const res = await request.get(`${PREVIEW_URL}/api/health/ready`);
+    const csp = res.headers()['content-security-policy'] ?? '';
+    expect(csp).toMatch(/script-src 'self'/);
+    expect(csp).toMatch(/googletagmanager\.com/);
+    expect(csp).toMatch(/google-analytics\.com/);
   });
 
   test('returns 403 on POST /api/* with bad Origin', async ({ request }) => {

@@ -10,9 +10,9 @@
  *   1. Origin enforcement on /api/* mutations (defense-in-depth ahead
  *      of FastAPI's CSRF check)
  *   2. Static CSP (no nonce, no strict-dynamic) emitted as
- *      `Content-Security-Policy-Report-Only`. Phase 7 cutover flips
- *      Report-Only to enforced — these tests pin the static shape so
- *      that flip is safe.
+ *      `Content-Security-Policy` (enforced). Phase 7 cutover (2026-04-29)
+ *      flipped Report-Only to enforced after a clean soak; these tests
+ *      pin the enforced-header contract.
  *   3. Vary: Cookie, Accept-Encoding GATED to session-varying routes
  *      (`/api/*`, `/my/*`). The catalog at `/datasets` stays
  *      anonymous-public-cacheable.
@@ -272,55 +272,55 @@ describe('Origin allowlist — production vs preview environments', () => {
   });
 });
 
-describe('CSP (Report-Only) — Phase 6.7 B2 static shape', () => {
-  it('emits Content-Security-Policy-Report-Only on /api/*', async () => {
+describe('CSP (enforced) — Phase 7 cutover flip', () => {
+  it('emits Content-Security-Policy on /api/*', async () => {
     const req = makeReq('https://ndi-cloud.com/api/auth/me');
     const res = await proxy(req);
-    expect(res.headers.get('content-security-policy-report-only')).toBeTruthy();
+    expect(res.headers.get('content-security-policy')).toBeTruthy();
   });
 
-  it('emits CSP-RO on /my/* (authenticated app routes)', async () => {
+  it('emits CSP on /my/* (authenticated app routes)', async () => {
     const req = makeReq('https://ndi-cloud.com/my/something');
     const res = await proxy(req);
-    expect(res.headers.get('content-security-policy-report-only')).toBeTruthy();
+    expect(res.headers.get('content-security-policy')).toBeTruthy();
   });
 
-  it('emits CSP-RO on the catalog at /datasets (O1 widened matcher)', async () => {
+  it('emits CSP on the catalog at /datasets (O1 widened matcher)', async () => {
     const req = makeReq('https://ndi-cloud.com/datasets');
     const res = await proxy(req);
-    expect(res.headers.get('content-security-policy-report-only')).toBeTruthy();
+    expect(res.headers.get('content-security-policy')).toBeTruthy();
   });
 
-  it('emits CSP-RO on marketing root / (O1 widened matcher)', async () => {
+  it('emits CSP on marketing root / (O1 widened matcher)', async () => {
     const req = makeReq('https://ndi-cloud.com/');
     const res = await proxy(req);
-    expect(res.headers.get('content-security-policy-report-only')).toBeTruthy();
+    expect(res.headers.get('content-security-policy')).toBeTruthy();
   });
 
-  it('does NOT emit enforced Content-Security-Policy header (24h soak)', async () => {
+  it('does NOT emit Report-Only header (Phase 7 flipped to enforced)', async () => {
     const req = makeReq('https://ndi-cloud.com/api/auth/me');
     const res = await proxy(req);
-    expect(res.headers.get('content-security-policy')).toBeNull();
+    expect(res.headers.get('content-security-policy-report-only')).toBeNull();
   });
 
   it('script-src does NOT include nonce-... (B2 dropped the per-request nonce)', async () => {
     const req = makeReq('https://ndi-cloud.com/api/auth/me');
     const res = await proxy(req);
-    const csp = res.headers.get('content-security-policy-report-only')!;
+    const csp = res.headers.get('content-security-policy')!;
     expect(csp).not.toMatch(/nonce-/);
   });
 
   it('script-src does NOT include strict-dynamic (B2 dropped it; was broken-on-flip)', async () => {
     const req = makeReq('https://ndi-cloud.com/api/auth/me');
     const res = await proxy(req);
-    const csp = res.headers.get('content-security-policy-report-only')!;
+    const csp = res.headers.get('content-security-policy')!;
     expect(csp).not.toMatch(/'strict-dynamic'/);
   });
 
   it('script-src is `self` + GTM/GA only (Vercel Analytics + Speed Insights tags)', async () => {
     const req = makeReq('https://ndi-cloud.com/api/auth/me');
     const res = await proxy(req);
-    const csp = res.headers.get('content-security-policy-report-only')!;
+    const csp = res.headers.get('content-security-policy')!;
     expect(csp).toMatch(
       /script-src 'self' https:\/\/www\.googletagmanager\.com https:\/\/www\.google-analytics\.com/,
     );
