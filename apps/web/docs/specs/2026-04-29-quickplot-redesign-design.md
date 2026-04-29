@@ -44,6 +44,8 @@ It is a triage tool, not a publication tool. If you want a publication-grade fig
 - Plotting from raw binary data (`.nbf`, `.tiff`, `.mp4`)
 - Drag-and-drop column assignment
 - Mobile-first layout polish beyond what existing responsive CSS gives free
+- **Statistical overlays beyond the violin's inset IQR box.** No p-value brackets, CI/SEM error bars, or n-count text annotations. Copy-as-Python is the escape hatch for users who need real stats.
+- **Log / power-scale axis transforms.** The negative/zero/bin-spacing edge cases compound across histogram and scatter and erode the triage-tool scope.
 
 ## Architecture
 
@@ -66,6 +68,8 @@ It is a triage tool, not a publication tool. If you want a publication-grade fig
 ```
 (yField, xField, columnTypes, table) → plotType
 ```
+
+**Picker scoping.** The Y dropdown surfaces **numeric columns only**, so the categorical-Y case never reaches `inferPlotShape`. None of the in-scope plot types have a meaningful categorical Y (a "Y" that's a strain name has no axis position). The X dropdown surfaces all columns — `inferPlotShape` switches on X's type.
 
 | Y      | X            | Inferred plotType    | Dispatch        | Override chips visible          |
 |--------|--------------|----------------------|-----------------|---------------------------------|
@@ -90,21 +94,24 @@ Deterministic, schema-driven. The result is `{ primary, secondary[] }`; `primary
 
 ```
 pickPrimary(table, numericCols, categoricalCols):
-  goodCategorical = categoricalCols.find(c => 2 ≤ uniqueValues(c) ≤ 8)
+  groupableCat = categoricalCols.find(c => 2 ≤ uniqueValues(c) ≤ 8)
+  countableCat = categoricalCols.find(c => 2 ≤ uniqueValues(c) ≤ 20)
 
-  if numericCols.length ≥ 1 AND goodCategorical:
-    → violin: y=numericCols[0], x=goodCategorical
+  if numericCols.length ≥ 1 AND groupableCat:
+    → violin: y=numericCols[0], x=groupableCat
   if numericCols.length ≥ 2:
     → scatter: x=numericCols[0], y=numericCols[1]
   if numericCols.length ≥ 1:
     → histogram: y=numericCols[0]
-  if categoricalCols.length ≥ 1:
-    → bar-count: x=categoricalCols[0]
+  if countableCat:
+    → bar-count: x=countableCat
   else:
     → null  (render existing "no numeric columns" empty state)
 ```
 
 `secondary` returns up to two alternative configurations from the same priority list, deduplicated against `primary`.
+
+**Why two cardinality thresholds.** A blanket `categoricalCols[0]` could land on a high-cardinality identifier like `Subject Doc ID` (5,314 uniques on the Bhar dataset) and render a useless 5,314-bar hairbrush. `groupableCat` is tight (≤ 8) because violins are unreadable past that; `countableCat` is looser (≤ 20) because bar charts tolerate more bars. If neither matches, fall through to null rather than emit a degenerate plot.
 
 Why violin-grouped beats scatter when both are available: in summary tables, group comparison is the more common scientific question. Tutorials skew that direction.
 
