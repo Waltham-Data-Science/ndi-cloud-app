@@ -65,7 +65,7 @@ describe('DatasetDetailChromeGate — Phase 6.6 REBUILD-8', () => {
     CURRENT_PATHNAME = '/datasets/d1/overview';
     render(
       withClient(
-        <DatasetDetailChromeGate datasetId="d1">
+        <DatasetDetailChromeGate datasetId="d1" heroSlot={<div data-testid="hero-slot-marker">hero</div>}>
           <p data-testid="content-marker">tab content</p>
         </DatasetDetailChromeGate>,
       ),
@@ -82,7 +82,7 @@ describe('DatasetDetailChromeGate — Phase 6.6 REBUILD-8', () => {
     CURRENT_PATHNAME = '/datasets/d1/tables/subject';
     render(
       withClient(
-        <DatasetDetailChromeGate datasetId="d1">
+        <DatasetDetailChromeGate datasetId="d1" heroSlot={<div data-testid="hero-slot-marker">hero</div>}>
           <p data-testid="content-marker">table content</p>
         </DatasetDetailChromeGate>,
       ),
@@ -96,7 +96,7 @@ describe('DatasetDetailChromeGate — Phase 6.6 REBUILD-8', () => {
     CURRENT_PATHNAME = '/datasets/d1/documents';
     render(
       withClient(
-        <DatasetDetailChromeGate datasetId="d1">
+        <DatasetDetailChromeGate datasetId="d1" heroSlot={<div data-testid="hero-slot-marker">hero</div>}>
           <p data-testid="content-marker">explorer content</p>
         </DatasetDetailChromeGate>,
       ),
@@ -110,7 +110,7 @@ describe('DatasetDetailChromeGate — Phase 6.6 REBUILD-8', () => {
     CURRENT_PATHNAME = '/datasets/d1/documents/abc123';
     render(
       withClient(
-        <DatasetDetailChromeGate datasetId="d1">
+        <DatasetDetailChromeGate datasetId="d1" heroSlot={<div data-testid="hero-slot-marker">hero</div>}>
           <p data-testid="content-marker">document detail content</p>
         </DatasetDetailChromeGate>,
       ),
@@ -126,7 +126,7 @@ describe('DatasetDetailChromeGate — Phase 6.6 REBUILD-8', () => {
     CURRENT_PATHNAME = '/datasets/d1/documents/abc123/';
     render(
       withClient(
-        <DatasetDetailChromeGate datasetId="d1">
+        <DatasetDetailChromeGate datasetId="d1" heroSlot={<div data-testid="hero-slot-marker">hero</div>}>
           <p data-testid="content-marker">document detail trailing</p>
         </DatasetDetailChromeGate>,
       ),
@@ -140,7 +140,7 @@ describe('DatasetDetailChromeGate — Phase 6.6 REBUILD-8', () => {
     CURRENT_PATHNAME = '/datasets/d2/documents/abc123';
     render(
       withClient(
-        <DatasetDetailChromeGate datasetId="d1">
+        <DatasetDetailChromeGate datasetId="d1" heroSlot={<div data-testid="hero-slot-marker">hero</div>}>
           <p data-testid="content-marker">cross-dataset</p>
         </DatasetDetailChromeGate>,
       ),
