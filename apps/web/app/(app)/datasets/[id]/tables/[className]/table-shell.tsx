@@ -46,6 +46,10 @@ import { useCallback, useMemo } from 'react';
 import { cn } from '@/lib/cn';
 import { ApiError } from '@/lib/api/client';
 import { useClassCounts } from '@/lib/api/datasets';
+import {
+  useDocumentsInfinite,
+  type DocumentSummary,
+} from '@/lib/api/documents';
 import { useSummaryTable, type TableResponse } from '@/lib/api/tables';
 import { Card, CardBody } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
@@ -121,6 +125,18 @@ const HIDDEN_DEFAULT_TABS = new Set([
   'openminds_subject',
   'combined',
 ]);
+
+/**
+ * Page size for the openminds_subject documents fetch that backs the
+ * per-subject strain-name join (round-3 fix). 200 is the FastAPI
+ * validator's hard ceiling on `/api/datasets/:id/documents?pageSize=...`
+ * — `OpenmindsSubjectTableView` uses the same value for the same reason.
+ * `useDocumentsInfinite` will stream additional pages until the total
+ * is reached, so very large openminds_subject sets (Haley's 9k+) still
+ * arrive — they just take more round-trips. The strain-name join
+ * applies progressively as each page lands.
+ */
+const OPENMINDS_SUBJECT_PAGE_SIZE = 200;
 
 /**
  * Pretty per-class label for the empty-state copy. The URL slug is
@@ -346,6 +362,31 @@ function StandardTableContent({
     className === 'subject' ? 'treatment' : undefined,
   );
 
+  // 2026-04-28 (round 3) — Strain-name lookup. The team-review feedback
+  // surfaced a separate strain-display bug from the round-1 NDI-ref
+  // payload: subjects whose `strainName` IS already a clean ID like
+  // `WBStrain:00000001` were rendering the *ID*, not the human-readable
+  // strain *name* (`N2`). The cloud's subject summary projection
+  // doesn't carry the strain's `fields.name` — that lives on the
+  // companion `openminds_subject` doc of type `Strain` linked back via
+  // `depends_on.subject_id`. We fetch those docs progressively (cap at
+  // 200/page per the FastAPI validator) and build a per-subject
+  // strain-name map that's spliced onto each subject row in the
+  // `enrichedData` memo below. The original ID still flows through
+  // `strainOntology` (also clickable and now hyperlinked to Wormbase
+  // via the URL builder + the cell renderer), so the user sees the
+  // human name AND a link to the canonical provider page.
+  //
+  // Same `enabled`-gating story as the treatment join — only fires for
+  // the subject grain so other tabs pay zero network cost. The
+  // `useDocumentsInfinite` query is shared with `OpenmindsSubjectTableView`
+  // (same TanStack cache key), so visiting either tab primes both.
+  const openmindsDocsQuery = useDocumentsInfinite(
+    className === 'subject' ? datasetId : undefined,
+    className === 'subject' ? 'openminds_subject' : null,
+    OPENMINDS_SUBJECT_PAGE_SIZE,
+  );
+
   // 2026-04-28 — Subject grain row enrichment for the strain-raw-ID bug
   // (team review feedback). The `subject` summary endpoint sometimes
   // returns `strainName` as an array of `ndi://`-prefixed companion-doc
@@ -372,6 +413,11 @@ function StandardTableContent({
   // re-fetches that change the data identity.
   const queryData = query.data;
   const treatmentData = treatmentQuery.data;
+  const openmindsDocs = useMemo<DocumentSummary[] | undefined>(() => {
+    if (className !== 'subject') return undefined;
+    if (!openmindsDocsQuery.data) return undefined;
+    return openmindsDocsQuery.data.pages.flatMap((p) => p.documents);
+  }, [openmindsDocsQuery.data, className]);
   const enrichedData = useMemo(() => {
     if (!queryData) return queryData;
     if (className !== 'subject') return queryData;
@@ -382,13 +428,22 @@ function StandardTableContent({
         rewriteStrainNdiRefToOntology(r as Record<string, unknown>),
       ),
     };
-    // Then: join treatments to subjects when the treatment table
+    // Second: replace `strainName` (currently the bare ID like
+    // `WBStrain:00000001`) with the human-readable strain name from
+    // the matching openminds_subject Strain doc. While the
+    // openminds_subject docs are still in flight we leave the row
+    // alone — the user briefly sees the ID, then it flips to the
+    // human name once data lands.
+    const strainNamed = openmindsDocs
+      ? joinStrainNamesToSubjects(strainRewritten, openmindsDocs)
+      : strainRewritten;
+    // Third: join treatments to subjects when the treatment table
     // has resolved. While treatment is still loading we render the
     // subject table without the dynamic columns rather than block
     // the whole view; columns appear once the join is ready.
-    if (!treatmentData) return strainRewritten;
-    return joinTreatmentsToSubjects(strainRewritten, treatmentData);
-  }, [queryData, className, treatmentData]);
+    if (!treatmentData) return strainNamed;
+    return joinTreatmentsToSubjects(strainNamed, treatmentData);
+  }, [queryData, className, treatmentData, openmindsDocs]);
 
   // Wire row-click navigation to `/datasets/[id]/documents/[ndiId]`.
   // Any `*DocumentIdentifier` cell value IS the ndiId — the cloud's
@@ -514,6 +569,146 @@ function isNdiRefPayload(v: unknown): boolean {
     return v.startsWith('ndi://');
   }
   return false;
+}
+
+/**
+ * 2026-04-28 (round 3) — Per-subject strain-name join.
+ *
+ * The cloud's subject summary projection sometimes ships `strainName`
+ * as the bare ontology ID (e.g. `WBStrain:00000001`) rather than the
+ * human-readable strain name (`N2`). The team-review feedback was
+ * explicit: "currently displaying as 00000001 should be displaying as
+ * N2 and link to wormbase.org". The strain *name* lives on the partner
+ * `openminds_subject` doc of type `Strain`, linked to the subject via
+ * `data.depends_on[name=subject_id].value`.
+ *
+ * Inputs:
+ *   - `subjectTable` — the rows + columns from
+ *     `useSummaryTable(datasetId, 'subject')`. Already strain-NDI-ref
+ *     rewritten by the time we get here. The `strainName` column may
+ *     be a clean string (e.g. `WBStrain:00000001`), an array, or
+ *     `null`/empty.
+ *   - `openmindsDocs` — every `openminds_subject` doc returned by
+ *     `useDocumentsInfinite`. We filter to `matlab_type ===
+ *     'openminds.core.research.Strain'` (or the openminds_type URI
+ *     terminal segment `Strain`) and walk `depends_on` for the
+ *     subject linkage.
+ *
+ * Output: a new `TableResponse` with `strainName` replaced by the
+ * resolved strain name on each subject row that has a matching Strain
+ * doc. Subjects with no matching openminds_subject Strain are left
+ * alone (the `strainOntology` column still renders the ID chip with
+ * its hyperlink — no information lost). Pure function; does not
+ * mutate inputs.
+ *
+ * Long-term, the synthesizer should ship the strain name directly on
+ * the subject row; this is the unblocker today.
+ */
+function joinStrainNamesToSubjects(
+  subjectTable: TableResponse,
+  openmindsDocs: ReadonlyArray<DocumentSummary>,
+): TableResponse {
+  const strainNamesBySubjectId = buildStrainNamesBySubjectId(openmindsDocs);
+  if (strainNamesBySubjectId.size === 0) return subjectTable;
+  const newRows = subjectTable.rows.map((row) => {
+    const subjectId = row.subjectDocumentIdentifier;
+    if (typeof subjectId !== 'string' || !subjectId) return row;
+    const resolvedName = strainNamesBySubjectId.get(subjectId);
+    if (!resolvedName) return row;
+    return { ...row, strainName: resolvedName };
+  });
+  return { ...subjectTable, rows: newRows };
+}
+
+/**
+ * Walk an array of openminds_subject documents and return a map keyed
+ * by `subject_id` (extracted from `depends_on`) whose value is the
+ * strain's human-readable `fields.name`. Skips any non-Strain docs
+ * (Species, BiologicalSex, GeneticStrainType — those carry their own
+ * names but aren't relevant to the strain column). Skips Strain docs
+ * whose `fields.name` is missing or non-string (Schema-B nested-ref
+ * payloads still slip through to `rewriteStrainNdiRefToOntology` for
+ * the popover chip fallback). Multiple Strain docs per subject keep
+ * the FIRST one we see — datasets with multiple strains per subject
+ * are rare; if we hit one, the dedicated OpenMINDS Subjects tab is the
+ * complete view.
+ *
+ * Exported for unit testing — kept module-local (not from any other
+ * file) so the shape change is contained to this PR.
+ */
+export function buildStrainNamesBySubjectId(
+  docs: ReadonlyArray<DocumentSummary>,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const doc of docs) {
+    if (!isStrainDoc(doc)) continue;
+    const subjectId = pickSubjectIdFromDependsOn(doc);
+    if (!subjectId) continue;
+    if (out.has(subjectId)) continue; // first-write wins
+    const name = pickStrainName(doc);
+    if (!name) continue;
+    out.set(subjectId, name);
+  }
+  return out;
+}
+
+/**
+ * True iff this openminds_subject doc represents a Strain — checked
+ * primarily via the canonical `matlab_type` discriminator
+ * (`'openminds.core.research.Strain'`), with a fallback to the
+ * `openminds_type` URI's terminal segment for older docs that don't
+ * carry the matlab discriminator.
+ */
+function isStrainDoc(doc: DocumentSummary): boolean {
+  const data = (doc.data ?? {}) as Record<string, unknown>;
+  const openminds = (data.openminds ?? {}) as Record<string, unknown>;
+  const matlabType = openminds.matlab_type;
+  if (typeof matlabType === 'string' && matlabType === 'openminds.core.research.Strain') {
+    return true;
+  }
+  const openmindsType = openminds.openminds_type;
+  if (typeof openmindsType === 'string') {
+    const terminal = openmindsType.split('/').pop() ?? '';
+    if (terminal === 'Strain') return true;
+  }
+  return false;
+}
+
+/**
+ * Walk a Strain doc's `depends_on` for the `subject_id` link and return
+ * the subject's NDI ID. Mirrors `pickDependencyValue` in
+ * `OpenmindsSubjectTableView` but inlined here so the two callsites stay
+ * decoupled (they compute different downstream shapes).
+ */
+function pickSubjectIdFromDependsOn(doc: DocumentSummary): string | null {
+  const data = (doc.data ?? {}) as Record<string, unknown>;
+  const raw = data.depends_on;
+  if (!raw) return null;
+  const arr = Array.isArray(raw) ? raw : [raw];
+  for (const d of arr) {
+    if (!d || typeof d !== 'object') continue;
+    const name = (d as Record<string, unknown>).name;
+    if (name !== 'subject_id') continue;
+    const value = (d as Record<string, unknown>).value;
+    if (typeof value === 'string' && value) return value;
+  }
+  return null;
+}
+
+/**
+ * Pull `data.openminds.fields.name` off a Strain doc, defending
+ * against the cloud emitting non-string payloads (lists of nested
+ * `ndi://` refs). When the field IS a string, return it trimmed.
+ * Otherwise null — caller skips the row.
+ */
+function pickStrainName(doc: DocumentSummary): string | null {
+  const data = (doc.data ?? {}) as Record<string, unknown>;
+  const openminds = (data.openminds ?? {}) as Record<string, unknown>;
+  const fields = (openminds.fields ?? {}) as Record<string, unknown>;
+  const name = fields.name;
+  if (typeof name !== 'string') return null;
+  const trimmed = name.trim();
+  return trimmed || null;
 }
 
 /**

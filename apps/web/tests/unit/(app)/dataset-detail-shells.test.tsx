@@ -276,16 +276,41 @@ describe('TableShell', () => {
     // of ApiError. The errors module isn't mocked, so it's the
     // canonical source.
     const { ApiError } = await import('@/lib/api/errors');
-    mockedApiFetch.mockRejectedValueOnce(
-      new ApiError(503, {
-        error: {
-          code: 'CLOUD_UNREACHABLE',
-          message: 'cloud upstream unreachable',
-          recovery: 'retry',
-          requestId: 'req-503-test',
-        },
-      }),
-    );
+    // 2026-04-29 — strain-name join (round 3) added a second
+    // `useDocumentsInfinite('openminds_subject', …)` query to the
+    // subject grain. Switched from one-shot `mockRejectedValueOnce`
+    // to URL-dispatched mocking so the openminds_subject + class-
+    // counts queries get safe stubs while the subject summary query
+    // is the one that errors. Otherwise the un-mocked second call
+    // returns `undefined` and crashes `useDocumentsInfinite`'s
+    // `getNextPageParam`.
+    const error = new ApiError(503, {
+      error: {
+        code: 'CLOUD_UNREACHABLE',
+        message: 'cloud upstream unreachable',
+        recovery: 'retry',
+        requestId: 'req-503-test',
+      },
+    });
+    mockedApiFetch.mockImplementation((url: string) => {
+      if (url.includes('/class-counts')) {
+        return Promise.resolve({
+          datasetId: 'd1',
+          totalDocuments: 0,
+          classCounts: {},
+        });
+      }
+      if (url.includes('/documents?') && url.includes('class=openminds_subject')) {
+        return Promise.resolve({
+          total: 0,
+          documents: [],
+          page: 1,
+          pageSize: 200,
+        });
+      }
+      // The subject summary table query is the one we want to fail.
+      return Promise.reject(error);
+    });
     const Wrapper = withClient();
     render(
       <Wrapper>
@@ -418,23 +443,178 @@ describe('TableShell', () => {
     expect(sub3Row?.textContent).not.toContain('UBERON:0002034');
   });
 
+  it('replaces strain ID with the human-readable name from the partner openminds_subject doc and renders a Wormbase link', async () => {
+    // 2026-04-28 (round 3) — Team review feedback: "currently
+    // displaying as 00000001 should be displaying as N2 and link to
+    // wormbase.org". The cloud's subject summary projection ships
+    // `strainName: "WBStrain:00000001"` (the bare ID); the strain
+    // *name* `"N2"` lives on the partner openminds_subject Strain
+    // doc linked to the subject via depends_on.subject_id. This
+    // PR fetches those docs and joins them onto the subject row.
+    //
+    // Contract pinned by this test:
+    //  (a) The strain cell renders the human strain name (`N2`),
+    //      not the raw ID (`WBStrain:00000001`).
+    //  (b) The strainOntology cell still shows the ID chip AND a
+    //      hyperlink to https://wormbase.org/.../strain/WBStrain00000001
+    //      (data-ontology-link attribute carries the term ID for
+    //       e2e hooks).
+    mockedApiFetch.mockImplementation((url: string) => {
+      if (url.includes('/class-counts')) {
+        return Promise.resolve({
+          datasetId: 'd1',
+          totalDocuments: 99,
+          classCounts: {
+            subject: 2,
+            openminds_subject: 2,
+          },
+        });
+      }
+      if (url.includes('/tables/subject')) {
+        return Promise.resolve({
+          columns: [
+            { key: 'subjectDocumentIdentifier', label: 'Subject Doc ID' },
+            { key: 'strainName', label: 'Strain' },
+            { key: 'strainOntology', label: 'Strain Ontology' },
+          ],
+          rows: [
+            {
+              subjectDocumentIdentifier: 'sub-A',
+              strainName: 'WBStrain:00000001',
+              strainOntology: 'WBStrain:00000001',
+            },
+            {
+              subjectDocumentIdentifier: 'sub-B',
+              strainName: 'WBStrain:00000007',
+              strainOntology: 'WBStrain:00000007',
+            },
+          ],
+        });
+      }
+      if (url.includes('/documents') && url.includes('class=openminds_subject')) {
+        return Promise.resolve({
+          total: 2,
+          page: 1,
+          pageSize: 200,
+          documents: [
+            {
+              ndiId: 'ndi:strain:1',
+              data: {
+                openminds: {
+                  matlab_type: 'openminds.core.research.Strain',
+                  openminds_type: 'https://openminds.om-i.org/types/Strain',
+                  fields: {
+                    name: 'N2',
+                    ontologyIdentifier: 'WBStrain:00000001',
+                  },
+                },
+                depends_on: [{ name: 'subject_id', value: 'sub-A' }],
+              },
+            },
+            {
+              ndiId: 'ndi:strain:2',
+              data: {
+                openminds: {
+                  matlab_type: 'openminds.core.research.Strain',
+                  openminds_type: 'https://openminds.om-i.org/types/Strain',
+                  fields: {
+                    name: 'CB1234',
+                    ontologyIdentifier: 'WBStrain:00000007',
+                  },
+                },
+                depends_on: [{ name: 'subject_id', value: 'sub-B' }],
+              },
+            },
+          ],
+        });
+      }
+      // Any other URL — the treatment fetch will hit this for the
+      // subject grain (the per-subject treatment join also fires).
+      // Resolve as 404 so the empty-treatment-table path is exercised
+      // and doesn't block the subject render.
+      return new Promise(() => {});
+    });
+
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <TableShell datasetId="d1" className="subject" />
+      </Wrapper>,
+    );
+
+    // (a) Wait for the strain-name join to apply — sub-A row should
+    //     show `N2` somewhere, not the bare ID.
+    await waitFor(() => {
+      const sub1Row = document.querySelector('tbody tr');
+      expect(sub1Row?.textContent).toContain('N2');
+    });
+    const subARow = screen
+      .getAllByText('sub-A', { selector: 'span' })[0]
+      ?.closest('tr');
+    expect(subARow).toBeTruthy();
+    // The strain cell on sub-A's row carries `N2` (not just somewhere
+    // on the page).
+    expect(subARow?.textContent).toContain('N2');
+
+    const subBRow = screen
+      .getAllByText('sub-B', { selector: 'span' })[0]
+      ?.closest('tr');
+    expect(subBRow).toBeTruthy();
+    expect(subBRow?.textContent).toContain('CB1234');
+
+    // (b) The strainOntology chip still shows the ID. The external
+    //     link renders for the WBStrain prefix → Wormbase.
+    const links = document.querySelectorAll('a[data-ontology-link]');
+    const wbLinks = Array.from(links).filter(
+      (a) => a.getAttribute('data-ontology-link') === 'WBStrain:00000001',
+    );
+    expect(wbLinks.length).toBeGreaterThan(0);
+    expect(wbLinks[0]?.getAttribute('href')).toBe(
+      'https://wormbase.org/species/c_elegans/strain/WBStrain00000001',
+    );
+    expect(wbLinks[0]?.getAttribute('target')).toBe('_blank');
+    expect(wbLinks[0]?.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
   it('clicking a subject row navigates to the document detail page', async () => {
     // Smoke-test feedback (post-Phase-6.7): summary-tables rows were
     // not clickable in the cloud-app port even though the data-browser
     // SPA navigated to /datasets/[id]/documents/[ndiId] on row click.
     // This pin guards the per-grain primary-id mapping in
     // `PRIMARY_DOC_ID_FIELD` (subject grain → subjectDocumentIdentifier).
-    mockedApiFetch.mockResolvedValueOnce({
-      columns: [
-        { key: 'subjectDocumentIdentifier', label: 'Subject Doc ID' },
-        { key: 'subjectLocalIdentifier', label: 'Local Identifier' },
-      ],
-      rows: [
-        {
-          subjectDocumentIdentifier: 'ndi-sub-A',
-          subjectLocalIdentifier: 'A@lab.edu',
-        },
-      ],
+    // 2026-04-29 — same mocking-shape change as the retry-copy test
+    // above: subject grain now fires three queries (class-counts +
+    // subject summary + openminds_subject documents for strain-name
+    // join). Dispatch by URL so each gets a sensible stub.
+    mockedApiFetch.mockImplementation((url: string) => {
+      if (url.includes('/class-counts')) {
+        return Promise.resolve({
+          datasetId: 'd1',
+          totalDocuments: 1,
+          classCounts: { subject: 1 },
+        });
+      }
+      if (url.includes('/documents?') && url.includes('class=openminds_subject')) {
+        return Promise.resolve({
+          total: 0,
+          documents: [],
+          page: 1,
+          pageSize: 200,
+        });
+      }
+      // Subject summary table — the actual payload under test.
+      return Promise.resolve({
+        columns: [
+          { key: 'subjectDocumentIdentifier', label: 'Subject Doc ID' },
+          { key: 'subjectLocalIdentifier', label: 'Local Identifier' },
+        ],
+        rows: [
+          {
+            subjectDocumentIdentifier: 'ndi-sub-A',
+            subjectLocalIdentifier: 'A@lab.edu',
+          },
+        ],
+      });
     });
     const Wrapper = withClient();
     const { container } = render(
