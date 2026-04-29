@@ -397,27 +397,44 @@ export default function HomePage() {
             </p>
 
             <div className="bg-bg-surface border border-border-subtle rounded-xl overflow-hidden">
+              {/* 2026-04-28 (round 2) — `01` row now carries an explicit
+                  "Go to Data Commons →" CTA into `/datasets` (team
+                  review feedback). The active "You're here" badge on
+                  the home page already implied this row mapped to the
+                  Commons, but the only way to actually click into
+                  `/datasets` was via the top-nav header. Adding the
+                  CTA keeps the badge (the row IS the home page) while
+                  giving users a direct entry into the dataset list
+                  from the homepage body. */}
               <BridgeRow
                 num="01"
                 title="NDI Data Commons"
                 desc="Public search across every published NDI dataset. DOI landing pages, openMINDS metadata, NIH DMSP ready."
                 active
+                ctaHref={commonsSearchUrl()}
+                ctaLabel="Go to Data Commons"
               />
-              {/* 2026-04-28 — Data Browser row marked Coming Soon (team
-                  review feedback). The page at /products/private-cloud
-                  still exists but is hidden from the top nav until the
-                  product matches the pitch — see Header.tsx comment. */}
+              {/* 2026-04-28 (round 2) — LabChat promoted to `02` since
+                  the Data Browser row is still in the Coming Soon
+                  state from the round-1 review. Three numbered rows
+                  with `02` showing as Coming Soon read as a stalled
+                  pipeline; renumbering puts the live LabChat link in
+                  the `02` slot and demotes the placeholder to `03`. */}
               <BridgeRow
                 num="02"
-                title="NDI Data Browser"
-                desc="The private workspace for your lab. Upload sessions from MATLAB or Python, track sync status, publish with a Crossref DOI."
-                comingSoon
-              />
-              <BridgeRow
-                num="03"
                 title="LabChat"
                 desc="An AI assistant that answers from your lab's papers, protocols, and datasets. Every answer cites its sources."
                 href="/products/labchat"
+              />
+              {/* Data Browser row stays Coming Soon. The page at
+                  /products/private-cloud still exists but is hidden
+                  from the top nav until the product matches the pitch
+                  — see Header.tsx comment. */}
+              <BridgeRow
+                num="03"
+                title="NDI Data Browser"
+                desc="The private workspace for your lab. Upload sessions from MATLAB or Python, track sync status, publish with a Crossref DOI."
+                comingSoon
               />
             </div>
             <p className="mt-6 text-sm text-fg-muted m-0">
@@ -573,6 +590,8 @@ function BridgeRow({
   href,
   active,
   comingSoon,
+  ctaHref,
+  ctaLabel,
 }: {
   num: string;
   title: string;
@@ -588,6 +607,18 @@ function BridgeRow({
    * coming-soon teaser, not both.
    */
   comingSoon?: boolean;
+  /**
+   * Optional secondary CTA rendered beneath the row body, separate
+   * from the right-side badge / arrow. Used by the active "01" row
+   * to surface a `Go to Data Commons →` entry into `/datasets`
+   * directly from the homepage body — the active row's "You're
+   * here" badge alone gave users no in-page way to follow through
+   * (team review round-2 feedback). When the row is `active` AND a
+   * `ctaHref` is set, the CTA appears below the desc as a teal
+   * underline-on-hover link; otherwise omitted.
+   */
+  ctaHref?: string;
+  ctaLabel?: string;
 }) {
   // Single-row layout inside the unified bridge container. No own border
   // (the parent provides the outer card); a top divider on every row except
@@ -614,6 +645,20 @@ function BridgeRow({
           {title}
         </div>
         <div className="text-[0.95rem] leading-[1.55] text-fg-secondary">{desc}</div>
+        {/* Secondary CTA — only rendered when the row supplies its own
+            `ctaHref` (currently just the active "01" row that links to
+            `/datasets`). Sits inside the body column so the right-side
+            badge ("You're here" / "Coming soon" / arrow) keeps its
+            existing layout. Underline-on-hover matches the rest of the
+            marketing inline links. */}
+        {ctaHref && ctaLabel && (
+          <Link
+            href={ctaHref}
+            className="mt-2 inline-flex items-center gap-1 text-[13px] font-semibold text-ndi-teal hover:text-ndi-primary transition-colors no-underline hover:underline"
+          >
+            {ctaLabel} <span aria-hidden>→</span>
+          </Link>
+        )}
       </div>
       <span
         className={

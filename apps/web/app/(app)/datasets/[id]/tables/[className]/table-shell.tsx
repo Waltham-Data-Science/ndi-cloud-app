@@ -89,6 +89,40 @@ const COMMON_CLASSES = [
 const ALWAYS_VISIBLE_CLASSES = new Set(['ontology']);
 
 /**
+ * Tabs that are NEVER rendered in the default sub-tab strip — even when
+ * the dataset has rows for them. The route slugs still resolve (so old
+ * bookmarks like `/datasets/<id>/tables/treatment` continue to work and
+ * the corresponding view renders), but they're omitted from the visible
+ * tab list so they don't compete with the primary grains.
+ *
+ * Team review round-2 feedback: "I don't think we need treatment or
+ * openminds subject tables. They are redundant with the subject
+ * summary." (Treatment columns are now per-subject-joined onto the
+ * Subjects tab — see `joinTreatmentsToSubjects` below — so the standalone
+ * Treatments tab no longer adds information; OpenMINDS Subjects has the
+ * same identifying fields the regular Subjects tab carries.) "The
+ * combined table doesn't seem to have anything meaningful in it. Maybe
+ * drop for now?" (Combined is the Cartesian-style join across grains;
+ * with treatments now folded into Subjects, the join produces little
+ * the per-class tabs don't already show.)
+ *
+ * Routes intentionally retained:
+ *   - `/datasets/[id]/tables/treatment` (TableContent dispatches here)
+ *   - `/datasets/[id]/tables/openminds_subject`
+ *     (`<OpenmindsSubjectTableView>`)
+ *   - `/datasets/[id]/tables/combined`
+ *     (standard projection, same envelope as subject/element/etc.)
+ *
+ * If a future review wants any of these promoted back into the default
+ * strip, drop the class id from this set.
+ */
+const HIDDEN_DEFAULT_TABS = new Set([
+  'treatment',
+  'openminds_subject',
+  'combined',
+]);
+
+/**
  * Pretty per-class label for the empty-state copy. The URL slug is
  * the source of truth (`subject`, `element`, `treatment`...) but it's
  * jargon when shown to a user — render the friendlier label from the
@@ -114,11 +148,29 @@ export function TableShell({
   // the empty tabs drop. If the call errors we keep the full nav too,
   // since hiding tabs based on a failed count fetch would be worse
   // than leaving them and letting the per-tab empty state speak.
+  //
+  // 2026-04-28 (round 2) — `HIDDEN_DEFAULT_TABS` (treatment,
+  // openminds_subject, combined) are now filtered out unconditionally
+  // for the default strip per team review feedback. Exception: when
+  // the user has navigated directly to one of those slugs (e.g. via
+  // a saved bookmark), we surface the active tab in the strip so they
+  // know where they are. The route + view continue to render.
   const { data: countsResp } = useClassCounts(datasetId);
   const visibleClasses = useMemo(() => {
-    if (!countsResp) return COMMON_CLASSES;
-    return COMMON_CLASSES.filter((c) => {
+    const baseList = COMMON_CLASSES.filter((c) => {
+      // Always keep the active tab in the strip — including hidden
+      // defaults the user landed on via direct URL — so the active
+      // state has a visible target.
+      if (c.id === activeClass) return true;
+      return !HIDDEN_DEFAULT_TABS.has(c.id);
+    });
+    if (!countsResp) return baseList;
+    return baseList.filter((c) => {
       if (ALWAYS_VISIBLE_CLASSES.has(c.id)) return true;
+      // Keep the active class regardless of count (so the active
+      // ring renders and the user can navigate away from an empty
+      // tab they bookmarked).
+      if (c.id === activeClass) return true;
       // The count for `element` is occasionally keyed `probe` server-
       // side (legacy column name kept after the slug rename); accept
       // either to avoid a false-empty drop on the Elements tab.
@@ -133,7 +185,7 @@ export function TableShell({
             : countsResp.classCounts[c.id] ?? 0;
       return count > 0;
     });
-  }, [countsResp]);
+  }, [countsResp, activeClass]);
 
   return (
     <div className="space-y-4">
