@@ -1,7 +1,14 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { BarChart3, ChevronDown, ChevronUp } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  BarChart3,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Download,
+} from 'lucide-react';
 
 import {
   useDistribution,
@@ -16,6 +23,7 @@ import {
   type PlotType,
 } from '@/lib/viewer/inferPlotShape';
 import { pickPlotSuggestions } from '@/lib/viewer/pickPlotSuggestions';
+import { formatPythonSnippet } from '@/lib/viewer/pythonSnippet';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ErrorState } from '@/components/errors/ErrorState';
 import { ViolinPlot, type ViolinGroup } from './ViolinPlot';
@@ -68,6 +76,10 @@ export function QuickPlot({ datasetId, className, table }: QuickPlotProps) {
   const [plotTypeOverride, setPlotTypeOverride] = useState<PlotType | null>(
     null,
   );
+  const [exportFeedback, setExportFeedback] = useState<
+    'png-copied' | 'py-copied' | 'png-error' | null
+  >(null);
+  const plotRef = useRef<HTMLDivElement>(null);
   const distribute = useDistribution();
 
   const { numericCols, categoricalCols } = useMemo(
@@ -184,6 +196,73 @@ export function QuickPlot({ datasetId, className, table }: QuickPlotProps) {
   const grouped =
     result && 'groups' in result ? (result as DistributionGroupedResponse) : null;
 
+  // Whether anything plottable is rendered. Controls when the export
+  // buttons are enabled — there's no point trying to copy a PNG of an
+  // empty plot region or generate Python for a state with no plot.
+  const hasRenderedPlot =
+    !!effectivePlotType &&
+    (effectivePlotType === 'scatter' ||
+    effectivePlotType === 'line' ||
+    effectivePlotType === 'bar-count'
+      ? !!yField || !!xField
+      : !!result &&
+        (grouped
+          ? grouped.groups.length > 0
+          : 'n' in result && result.n > 0));
+
+  const showFeedback = useCallback((kind: typeof exportFeedback) => {
+    setExportFeedback(kind);
+    setTimeout(() => setExportFeedback(null), 1800);
+  }, []);
+
+  const handleCopyPng = useCallback(async () => {
+    if (!plotRef.current) return;
+    try {
+      // Lazy-loaded so html-to-image doesn't appear in the initial
+      // bundle for users who never click the button.
+      const { toBlob } = await import('html-to-image');
+      const blob = await toBlob(plotRef.current, {
+        backgroundColor: '#ffffff',
+        pixelRatio: 2,
+      });
+      if (!blob) throw new Error('toBlob returned null');
+      if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+        throw new Error('Clipboard image API unavailable');
+      }
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blob }),
+      ]);
+      showFeedback('png-copied');
+    } catch (err) {
+      console.error('Quick Plot: Copy PNG failed', err);
+      showFeedback('png-error');
+    }
+  }, [showFeedback]);
+
+  const handleCopyPython = useCallback(async () => {
+    if (!effectivePlotType) return;
+    const code = formatPythonSnippet({
+      plotType: effectivePlotType,
+      datasetId,
+      className,
+      yField,
+      xField,
+    });
+    try {
+      await navigator.clipboard.writeText(code);
+      showFeedback('py-copied');
+    } catch (err) {
+      console.error('Quick Plot: Copy Python failed', err);
+    }
+  }, [
+    effectivePlotType,
+    datasetId,
+    className,
+    yField,
+    xField,
+    showFeedback,
+  ]);
+
   return (
     <Card>
       <CardHeader className="py-3">
@@ -242,70 +321,113 @@ export function QuickPlot({ datasetId, className, table }: QuickPlotProps) {
                   />
                 )}
 
-              {effectivePlotType === 'scatter' && yField && xField && (
-                <div className="pt-2">
-                  <ScatterPlot
-                    rows={table.rows}
-                    xField={xField}
-                    yField={yField}
-                    groupBy={null}
-                    xLabel={xField}
-                    yLabel={yField}
-                  />
-                </div>
-              )}
-
-              {effectivePlotType === 'line' && yField && xField && (
-                <div className="pt-2">
-                  <LinePlot
-                    rows={table.rows}
-                    xField={xField}
-                    yField={yField}
-                    xLabel={xField}
-                    yLabel={yField}
-                  />
-                </div>
-              )}
-
-              {effectivePlotType === 'bar-count' && xField && (
-                <div className="pt-2">
-                  <BarChartByGroup
-                    bars={barCounts}
-                    xLabel={xField}
-                    width={720}
-                    height={380}
-                  />
-                </div>
-              )}
-
-              {(effectivePlotType === 'violin' ||
-                effectivePlotType === 'box' ||
-                effectivePlotType === 'histogram') &&
-                grouped &&
-                grouped.groups.length > 0 && (
+              <div ref={plotRef}>
+                {effectivePlotType === 'scatter' && yField && xField && (
                   <div className="pt-2">
-                    <GroupedRenderer
-                      plotType={effectivePlotType}
-                      groups={grouped.groups.map(toViolinGroup)}
+                    <ScatterPlot
+                      rows={table.rows}
+                      xField={xField}
+                      yField={yField}
+                      groupBy={null}
+                      xLabel={xField}
                       yLabel={yField}
-                      xLabel={xField || '(ungrouped)'}
                     />
                   </div>
                 )}
 
-              {(effectivePlotType === 'violin' ||
-                effectivePlotType === 'box' ||
-                effectivePlotType === 'histogram') &&
-                !grouped &&
-                result &&
-                'n' in result &&
-                result.n > 0 && (
-                  <UngroupedResult
-                    result={result}
-                    yField={yField}
-                    plotType={effectivePlotType}
-                  />
+                {effectivePlotType === 'line' && yField && xField && (
+                  <div className="pt-2">
+                    <LinePlot
+                      rows={table.rows}
+                      xField={xField}
+                      yField={yField}
+                      xLabel={xField}
+                      yLabel={yField}
+                    />
+                  </div>
                 )}
+
+                {effectivePlotType === 'bar-count' && xField && (
+                  <div className="pt-2">
+                    <BarChartByGroup
+                      bars={barCounts}
+                      xLabel={xField}
+                      width={720}
+                      height={380}
+                    />
+                  </div>
+                )}
+
+                {(effectivePlotType === 'violin' ||
+                  effectivePlotType === 'box' ||
+                  effectivePlotType === 'histogram') &&
+                  grouped &&
+                  grouped.groups.length > 0 && (
+                    <div className="pt-2">
+                      <GroupedRenderer
+                        plotType={effectivePlotType}
+                        groups={grouped.groups.map(toViolinGroup)}
+                        yLabel={yField}
+                        xLabel={xField || '(ungrouped)'}
+                      />
+                    </div>
+                  )}
+
+                {(effectivePlotType === 'violin' ||
+                  effectivePlotType === 'box' ||
+                  effectivePlotType === 'histogram') &&
+                  !grouped &&
+                  result &&
+                  'n' in result &&
+                  result.n > 0 && (
+                    <UngroupedResult
+                      result={result}
+                      yField={yField}
+                      plotType={effectivePlotType}
+                    />
+                  )}
+              </div>
+
+              {hasRenderedPlot && (
+                <div
+                  className="flex flex-wrap items-center gap-2 pt-1"
+                  data-testid="quickplot-export-row"
+                >
+                  <button
+                    type="button"
+                    onClick={handleCopyPng}
+                    className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-[11px] text-gray-700 hover:border-gray-400"
+                    data-testid="quickplot-copy-png"
+                  >
+                    {exportFeedback === 'png-copied' ? (
+                      <Check className="h-3 w-3 text-emerald-600" />
+                    ) : (
+                      <Download className="h-3 w-3" />
+                    )}
+                    {exportFeedback === 'png-copied' ? 'Copied PNG' : 'Copy PNG'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopyPython}
+                    className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-[11px] text-gray-700 hover:border-gray-400"
+                    data-testid="quickplot-copy-python"
+                  >
+                    {exportFeedback === 'py-copied' ? (
+                      <Check className="h-3 w-3 text-emerald-600" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                    {exportFeedback === 'py-copied'
+                      ? 'Copied Python'
+                      : 'Copy Python'}
+                  </button>
+                  {exportFeedback === 'png-error' && (
+                    <span className="text-[11px] text-rose-600">
+                      Couldn&apos;t copy — check browser permissions
+                    </span>
+                  )}
+                </div>
+              )}
 
               {suggestions.secondary.length > 0 && (
                 <div
