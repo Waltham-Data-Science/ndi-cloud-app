@@ -209,12 +209,44 @@ describe('DatasetDetailHero', () => {
     expect(container.querySelector('dl')).toBeNull();
   });
 
-  // Audit 2026-04-27 #18 (design call) — when fewer than 4 facts are
-  // populated, center-justify the strip so it doesn't sit awkwardly
-  // aligned-left next to the wide hero. Reikersdorfer-style 2-fact
-  // datasets get justify-center; Sophie-style 5-fact datasets stay
-  // justify-start.
-  it('center-justifies the HeroFact strip when fewer than 4 facts are populated', async () => {
+  // Team review 2026-04-28 — Griswold-style datasets (3 facts:
+  // Documents / Size / License, no numberOfSubjects) were rendering
+  // with the row centered inside its max-w-3xl dl, which made the
+  // items appear "indented and floating" relative to the h1. The
+  // earlier audit #18 heuristic (justify-center when fact count <
+  // 4) is reverted — the strip now always left-aligns with the
+  // hero title, irrespective of fact count.
+  it('left-justifies the HeroFact strip with a Griswold-style 3-fact dataset (Documents / Size / License)', async () => {
+    mockedApiFetch.mockResolvedValueOnce({
+      // Shape mirrors production dataset 68839b1fbf243809c0800a01
+      // (Griswold/Van Hooser 2025): Documents + Size + License are
+      // populated, but numberOfSubjects is null. Pre-fix this
+      // rendered with `justify-center` and the items started ~250px
+      // to the right of the h1.
+      id: 'd1',
+      name: 'Griswold-style dataset',
+      documentCount: 101396,
+      totalSize: 188467208494,
+      license: 'CC-BY-4.0',
+      isPublished: true,
+    });
+    const Wrapper = withClient();
+    const { container } = render(
+      <Wrapper>
+        <DatasetDetailHero datasetId="d1" />
+      </Wrapper>,
+    );
+    await waitFor(() => {
+      expect(screen.getByText('Documents')).toBeInTheDocument();
+    });
+    const dl = container.querySelector('dl[data-fact-count]');
+    expect(dl).not.toBeNull();
+    expect(dl?.getAttribute('data-fact-count')).toBe('3');
+    expect(dl?.className).toMatch(/justify-start/);
+    expect(dl?.className).not.toMatch(/justify-center/);
+  });
+
+  it('left-justifies the HeroFact strip when only 2 facts are populated', async () => {
     mockedApiFetch.mockResolvedValueOnce({
       id: 'd1',
       name: 'Sparse dataset',
@@ -235,8 +267,8 @@ describe('DatasetDetailHero', () => {
     const dl = container.querySelector('dl[data-fact-count]');
     expect(dl).not.toBeNull();
     expect(dl?.getAttribute('data-fact-count')).toBe('2');
-    expect(dl?.className).toMatch(/justify-center/);
-    expect(dl?.className).not.toMatch(/justify-start/);
+    expect(dl?.className).toMatch(/justify-start/);
+    expect(dl?.className).not.toMatch(/justify-center/);
   });
 
   it('left-justifies the HeroFact strip when 4+ facts are populated', async () => {
