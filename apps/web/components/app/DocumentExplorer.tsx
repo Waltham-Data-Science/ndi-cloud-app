@@ -52,7 +52,32 @@ import { Skeleton, TableSkeleton } from '@/components/ui/Skeleton';
 import { formatNumber } from '@/lib/format';
 import { ClassCountsList } from './ClassCountsList';
 
-const PAGE_SIZE = 50;
+/**
+ * 2026-04-29 — page size lowered from 50 to 25 after round-3 review
+ * surfaced docs-list slowness on fat-document datasets. Production
+ * profile across 5 datasets shows the list endpoint is payload-bound:
+ *
+ *   Bhar         50 docs / 63 KB     → 2.6s   (1.3 KB/doc)
+ *   Haley        50 docs / 100 KB    → 5.0s   (2.0 KB/doc)
+ *   Francesconi  50 docs / 331 KB    → 11.5s  (6.6 KB/doc)
+ *   Dabrowska-3  50 docs / 501 KB    → 11.7s  (10.0 KB/doc)
+ *
+ * Per-page timing scales roughly linearly with payload size, so
+ * halving the page size roughly halves first-paint wait. The user
+ * still sees full data — `useDocumentsInfinite` auto-fetches the
+ * next page when they scroll near the table bottom (see
+ * `AUTO_FETCH_AHEAD_PX` below). For Bhar-shape (slim) datasets the
+ * change is barely perceptible (50→25 saves ~1.3s, but the threshold
+ * for noticing wasn't crossed); for Francesconi/Dabrowska-shape (fat)
+ * datasets the change is clearly user-visible (~6s instead of ~12s
+ * before any rows render).
+ *
+ * The proper fix is a slimmer projection on the cloud side — only
+ * return the fields the table actually displays — so we don't pay
+ * for nested data we never render. That's a backend conversation;
+ * page-size halving is the frontend mitigation that ships today.
+ */
+const PAGE_SIZE = 25;
 
 /**
  * IntersectionObserver root margin for auto-fetch trigger. When the
@@ -342,23 +367,24 @@ export function DocumentExplorer({ datasetId }: { datasetId: string }) {
 }
 
 /**
- * Round-3 team review surfaced a real timeout on Haley
- * (`/api/datasets/682e7772.../class-counts` → 88s) and Dabrowska-CRH-3
- * (~90s). The cloud's class-counts aggregation scales superlinearly
- * with document count; the frontend's apiFetch timeout was bumped to
- * 120s in `lib/api/datasets.ts` so the request actually lands. But
- * a silent skeleton for 30-90 seconds reads as "the page is broken"
- * to a user who doesn't know this dataset is large.
+ * `ClassCountsLoading` — class-counts skeleton with a delayed
+ * "still loading" reassurance.
  *
- * `ClassCountsLoading` shows a normal skeleton for the first 10
- * seconds (covers all sub-15s datasets — most of the catalog). After
- * that, if the request is still pending, it overlays an explanatory
- * note: "Large datasets can take up to ~90 seconds…". The skeleton
- * stays so the visual loading affordance is preserved.
+ * Round-3 team review surfaced timeouts on Haley + Dabrowska-CRH-3
+ * (~88-90s). Steve's MongoDB `$lookup` drop on `getDocumentClassCounts`
+ * (ndi-cloud-node @ `e544fdd`, deployed 2026-04-28) brought cold
+ * compute back to 1-3s for those datasets, so the worst-case wait is
+ * now far shorter than the round-3 baseline. The notice still earns
+ * its keep on the rare cold-cache + slow-Mongo combination — but the
+ * copy is calibrated to the new reality (a few seconds, not 90).
+ *
+ * The frontend's `class-counts` apiFetch timeout (120s) and the
+ * 5-min staleTime in `useClassCounts` are kept as resilience belts;
+ * they cost nothing in the happy path and absorb regressions.
  *
  * The escalation timer is intentionally short (10s) — a normal
- * datacenter round-trip from the user is < 2s, and any wait > 10s
- * is far enough outside expectation to warrant explanation.
+ * datacenter round-trip is < 2s, so any wait > 10s is unusual enough
+ * to warrant a one-line reassurance that the page isn't stuck.
  */
 function ClassCountsLoading() {
   const [showSlowNotice, setShowSlowNotice] = useState(false);
@@ -371,9 +397,8 @@ function ClassCountsLoading() {
       <Skeleton className="h-32 w-full" />
       {showSlowNotice && (
         <p className="text-[11px] text-fg-muted leading-snug">
-          This is a large dataset — the document-class breakdown can take
-          up to ~90 seconds to compute. Hang tight; it&rsquo;ll appear
-          here when ready.
+          Still loading the document-class breakdown — large datasets
+          can take a few extra seconds. Hang tight.
         </p>
       )}
     </div>
