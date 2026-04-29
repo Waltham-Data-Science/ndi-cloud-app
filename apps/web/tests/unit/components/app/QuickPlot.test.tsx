@@ -1,34 +1,24 @@
 /**
- * QuickPlot — Phase 6.6 REBUILD-11 + Phase 6.7+ P0 plot-type chooser
- * and X=numeric scatter mode.
+ * QuickPlot — column-first redesign (2026-04-29). Tests pin the new
+ * contract:
  *
- * Source: `apps/web/components/app/QuickPlot.tsx`. Tests pin the
- * dispatcher contract:
+ *   - Empty state when there are no plottable columns at all.
+ *   - When the table has plottable columns, expanding the card auto-
+ *     applies the primary suggestion (no blank-dropdown state).
+ *   - Switching Y/X re-infers plotType; the chip row highlights match.
+ *   - Clicking a chip overrides the inferred type within the
+ *     compatible family.
+ *   - Clicking a secondary suggestion chip re-seeds Y/X/plotType.
+ *   - Copy-Python emits the right matplotlib snippet for the current
+ *     view to the clipboard.
+ *   - Copy-PNG triggers the html-to-image dynamic import + clipboard
+ *     write.
  *
- *   - Header collapse/expand state.
- *   - Auto-detected numeric + categorical columns populate the
- *     dropdowns from the table response.
- *   - Plot-type dropdown (violin/box/histogram/bar) swaps the renderer.
- *   - Plot button disabled until a numeric Y is picked (group mode) or
- *     until both X+Y are picked (xnumeric mode).
- *   - Plot button dispatches `/api/visualize/distribution` only when the
- *     plot type needs server-side aggregation; bar-by-count and scatter
- *     compute locally and don't hit the API.
- *   - X=numeric (scatter) mode replaces the categorical dropdown with
- *     numeric columns.
- *
- * D3 path emission is asserted only via `data-testid` presence/absence
- * (the SVG paths depend on jsdom SVG measurement which is unstable).
- * uPlot is mocked because jsdom can't drive its canvas measurement.
+ * uPlot and html-to-image are mocked because jsdom can't drive a
+ * canvas. The distribution endpoint is mocked at the apiFetch layer.
  */
-import {
-  describe,
-  expect,
-  it,
-  vi,
-  beforeEach,
-} from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import {
   QueryClient,
   QueryClientProvider,
@@ -42,16 +32,17 @@ vi.mock('@/lib/api/client', () => ({
   apiFetch: (...args: unknown[]) => apiFetchMock(...args),
 }));
 
-// Stub uPlot — the constructor would crash in jsdom on first
-// `getContext('2d')`. ScatterPlot uses it for the X=numeric path; the
-// tests assert on the surrounding chrome / data-testid wrapper rather
-// than the canvas-rendered chart itself.
 vi.mock('uplot', () => ({
   default: vi.fn().mockImplementation(function () {
     return { destroy: vi.fn(), setSize: vi.fn() };
   }),
 }));
 vi.mock('uplot/dist/uPlot.min.css', () => ({}));
+
+const htmlToImageBlob = vi.fn();
+vi.mock('html-to-image', () => ({
+  toBlob: (...args: unknown[]) => htmlToImageBlob(...args),
+}));
 
 import { QuickPlot } from '@/components/app/QuickPlot';
 
@@ -111,14 +102,33 @@ const GROUPED_RESPONSE = {
       q1: 12.0,
       q3: 14.0,
     },
+    {
+      name: 'A1',
+      values: [9.8],
+      count: 1,
+      mean: 9.8,
+      median: 9.8,
+      std: 0,
+      min: 9.8,
+      max: 9.8,
+      q1: 9.8,
+      q3: 9.8,
+    },
   ],
+};
+
+const EMPTY_TABLE: TableResponse = {
+  columns: [{ key: 'note', label: 'note' }],
+  rows: Array.from({ length: 25 }, (_, i) => ({ note: `unique-${i}` })),
 };
 
 beforeEach(() => {
   apiFetchMock.mockReset();
+  htmlToImageBlob.mockReset();
+  apiFetchMock.mockResolvedValue(GROUPED_RESPONSE);
 });
 
-describe('QuickPlot — collapse / expand / dropdowns', () => {
+describe('QuickPlot — collapse / expand', () => {
   it('renders collapsed by default with a "Quick plot" header', () => {
     const Wrapper = withClient();
     render(
@@ -129,10 +139,10 @@ describe('QuickPlot — collapse / expand / dropdowns', () => {
     const header = screen.getByRole('button', { name: /Quick plot/i });
     expect(header).toBeInTheDocument();
     expect(header).toHaveAttribute('aria-expanded', 'false');
-    expect(screen.queryByText(/Y \(numeric\)/i)).toBeNull();
+    expect(screen.queryByLabelText(/Y axis/i)).toBeNull();
   });
 
-  it('clicking the header expands the body with axis-mode + plot-type + Y/X dropdowns', () => {
+  it('expanding shows the column-first controls (no axis-mode toggle, no Plot button)', () => {
     const Wrapper = withClient();
     render(
       <Wrapper>
@@ -140,45 +150,33 @@ describe('QuickPlot — collapse / expand / dropdowns', () => {
       </Wrapper>,
     );
     fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
-    expect(screen.getByText(/Axis mode/i)).toBeInTheDocument();
-    expect(screen.getByText(/Plot type/i)).toBeInTheDocument();
-    expect(screen.getByText(/Y \(numeric\)/i)).toBeInTheDocument();
-    expect(screen.getByText(/Group by/i)).toBeInTheDocument();
-  });
-
-  it('auto-detects numeric + categorical columns into the right dropdowns', () => {
-    const Wrapper = withClient();
-    render(
-      <Wrapper>
-        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
-      </Wrapper>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
-
-    const yDropdown = screen.getByRole('combobox', { name: /Y \(numeric\)/i });
-    const xDropdown = screen.getByRole('combobox', { name: /Group by/i });
-
-    const yOptions = Array.from(yDropdown.querySelectorAll('option')).map(
-      (o) => o.value,
-    );
-    expect(yOptions).toContain('firingRate');
-    expect(yOptions).toContain('spikeCount');
-    expect(yOptions).toContain('time');
-    expect(yOptions).not.toContain('subject');
-    expect(yOptions).not.toContain('region');
-
-    const xOptions = Array.from(xDropdown.querySelectorAll('option')).map(
-      (o) => o.value,
-    );
-    expect(xOptions).toContain('subject');
-    expect(xOptions).toContain('region');
-    expect(xOptions).not.toContain('firingRate');
+    expect(screen.getByLabelText(/Y axis/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/X axis/i)).toBeInTheDocument();
+    expect(screen.queryByText(/Axis mode/i)).toBeNull();
+    expect(
+      screen.queryByRole('button', { name: /^Plot$/i }),
+    ).toBeNull();
   });
 });
 
-describe('QuickPlot — dispatch (group mode, distribution endpoint)', () => {
-  it('Plot button is disabled until a Y field is picked, then dispatches with field + groupBy', async () => {
-    apiFetchMock.mockResolvedValue(GROUPED_RESPONSE);
+describe('QuickPlot — empty state', () => {
+  it('renders the no-plottable-columns empty state for a degenerate table', () => {
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <QuickPlot datasetId="d1" className="subject" table={EMPTY_TABLE} />
+      </Wrapper>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
+    expect(
+      screen.getByTestId('quickplot-empty-no-columns'),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText(/Y axis/i)).toBeNull();
+  });
+});
+
+describe('QuickPlot — primary suggestion auto-applies on first expand', () => {
+  it('auto-seeds the controls from the deterministic primary suggestion', async () => {
     const Wrapper = withClient();
     render(
       <Wrapper>
@@ -187,41 +185,198 @@ describe('QuickPlot — dispatch (group mode, distribution endpoint)', () => {
     );
     fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
 
-    const plotBtn = screen.getByRole('button', { name: 'Plot' });
-    expect(plotBtn).toBeDisabled();
+    await waitFor(() => {
+      const yPicker = screen.getByLabelText(/Y axis/i) as HTMLSelectElement;
+      expect(yPicker.value).toBe('firingRate');
+    });
+    // categoricalCols are walked in column-declaration order; `subject`
+    // appears before `region` in the fixture, so it wins the
+    // groupableCat slot.
+    const xPicker = screen.getByLabelText(/X axis/i) as HTMLSelectElement;
+    expect(xPicker.value).toBe('subject');
+    expect(
+      screen.getByRole('radio', { name: 'Violin' }),
+    ).toHaveAttribute('aria-checked', 'true');
+  });
 
-    fireEvent.change(
-      screen.getByRole('combobox', { name: /Y \(numeric\)/i }),
-      { target: { value: 'firingRate' } },
+  it('fires the distribution mutation for the auto-seeded violin', async () => {
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
+      </Wrapper>,
     );
-    fireEvent.change(
-      screen.getByRole('combobox', { name: /Group by/i }),
-      { target: { value: 'region' } },
-    );
+    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
 
-    expect(plotBtn).not.toBeDisabled();
-    fireEvent.click(plotBtn);
-
-    await vi.waitFor(() => {
+    await waitFor(() => {
       expect(apiFetchMock).toHaveBeenCalled();
     });
-    const [url, init] = apiFetchMock.mock.calls[0] ?? [];
-    expect(String(url)).toBe('/api/visualize/distribution');
-    expect(init).toMatchObject({
-      method: 'POST',
-      body: {
-        datasetId: 'd1',
-        className: 'subject',
-        field: 'firingRate',
-        groupBy: 'region',
+    const [path, init] = apiFetchMock.mock.calls[0]!;
+    expect(path).toBe('/api/visualize/distribution');
+    expect((init as { body: unknown }).body).toMatchObject({
+      datasetId: 'd1',
+      className: 'subject',
+      field: 'firingRate',
+      groupBy: 'subject',
+    });
+  });
+});
+
+describe('QuickPlot — column changes trigger re-inference', () => {
+  it('changing X to a numeric time-shaped column flips the chip row to scatter/line', async () => {
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
+      </Wrapper>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
+    await waitFor(() =>
+      expect(screen.getByLabelText(/Y axis/i)).toHaveValue('firingRate'),
+    );
+
+    fireEvent.change(screen.getByLabelText(/X axis/i), {
+      target: { value: 'time' },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole('radio', { name: 'Line' }),
+      ).toHaveAttribute('aria-checked', 'true');
+    });
+    expect(screen.queryByRole('radio', { name: 'Violin' })).toBeNull();
+    expect(screen.getByRole('radio', { name: 'Scatter' })).toBeInTheDocument();
+  });
+});
+
+describe('QuickPlot — chip override', () => {
+  it('clicking a non-active chip flips the plot type within the family', async () => {
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
+      </Wrapper>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole('radio', { name: 'Violin' }),
+      ).toHaveAttribute('aria-checked', 'true'),
+    );
+
+    fireEvent.click(screen.getByRole('radio', { name: 'Box' }));
+
+    expect(
+      screen.getByRole('radio', { name: 'Box' }),
+    ).toHaveAttribute('aria-checked', 'true');
+    expect(
+      screen.getByRole('radio', { name: 'Violin' }),
+    ).toHaveAttribute('aria-checked', 'false');
+  });
+});
+
+describe('QuickPlot — secondary suggestions', () => {
+  it('renders secondary suggestion chips below the plot', async () => {
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
+      </Wrapper>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('quickplot-secondary-suggestions'),
+      ).toBeInTheDocument(),
+    );
+    const buttons = screen
+      .getByTestId('quickplot-secondary-suggestions')
+      .querySelectorAll('button');
+    expect(buttons.length).toBeGreaterThanOrEqual(1);
+  });
+
+  it('clicking a secondary suggestion re-seeds the controls', async () => {
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
+      </Wrapper>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
+    await waitFor(() =>
+      expect(
+        screen.getByTestId('quickplot-secondary-suggestions'),
+      ).toBeInTheDocument(),
+    );
+
+    const suggestionsBlock = screen.getByTestId(
+      'quickplot-secondary-suggestions',
+    );
+    const firstSuggestion = suggestionsBlock.querySelector('button');
+    expect(firstSuggestion).toBeTruthy();
+    fireEvent.click(firstSuggestion!);
+
+    await waitFor(() => {
+      const yPicker = screen.getByLabelText(/Y axis/i) as HTMLSelectElement;
+      expect(['spikeCount', 'firingRate']).toContain(yPicker.value);
+    });
+  });
+});
+
+describe('QuickPlot — Copy Python', () => {
+  it('writes the matplotlib snippet for the current view to the clipboard', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { writeText },
+      configurable: true,
+    });
+
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
+      </Wrapper>,
+    );
+    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
+    await waitFor(() =>
+      expect(apiFetchMock).toHaveBeenCalled(),
+    );
+
+    const button = await screen.findByTestId('quickplot-copy-python');
+    fireEvent.click(button);
+
+    await waitFor(() => expect(writeText).toHaveBeenCalled());
+    const code = writeText.mock.calls[0]![0] as string;
+    expect(code).toContain('ax.violinplot');
+    expect(code).toContain('"firingRate"');
+    expect(code).toContain('"subject"');
+  });
+});
+
+describe('QuickPlot — Copy PNG', () => {
+  afterEach(() => {
+    Object.defineProperty(window, 'ClipboardItem', {
+      value: undefined,
+      configurable: true,
+    });
+  });
+
+  it('lazy-imports html-to-image and writes a ClipboardItem to the clipboard', async () => {
+    const fakeBlob = new Blob(['fake-png'], { type: 'image/png' });
+    htmlToImageBlob.mockResolvedValue(fakeBlob);
+
+    const write = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, 'clipboard', {
+      value: { write },
+      configurable: true,
+    });
+    Object.defineProperty(window, 'ClipboardItem', {
+      value: class {
+        constructor(readonly items: Record<string, Blob>) {}
       },
+      configurable: true,
     });
-  });
-});
 
-describe('QuickPlot — plot-type chooser swaps renderers', () => {
-  async function runWithPlotType(plotType: 'violin' | 'box' | 'histogram') {
-    apiFetchMock.mockResolvedValue(GROUPED_RESPONSE);
     const Wrapper = withClient();
     render(
       <Wrapper>
@@ -229,294 +384,14 @@ describe('QuickPlot — plot-type chooser swaps renderers', () => {
       </Wrapper>,
     );
     fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
-    fireEvent.change(
-      screen.getByRole('combobox', { name: /Y \(numeric\)/i }),
-      { target: { value: 'firingRate' } },
-    );
-    fireEvent.change(
-      screen.getByRole('combobox', { name: /Group by/i }),
-      { target: { value: 'region' } },
-    );
-    fireEvent.change(
-      screen.getByRole('combobox', { name: /Plot type/i }),
-      { target: { value: plotType } },
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Plot' }));
-    await vi.waitFor(() => {
-      expect(apiFetchMock).toHaveBeenCalled();
-    });
-  }
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalled());
 
-  it('renders violin SVG when plot type is violin (default)', async () => {
-    await runWithPlotType('violin');
-    await vi.waitFor(() => {
-      expect(screen.getByTestId('violin-plot-svg')).toBeInTheDocument();
-    });
-    expect(screen.queryByTestId('box-plot-svg')).toBeNull();
-    expect(screen.queryByTestId('histogram-svg')).toBeNull();
-  });
+    const button = await screen.findByTestId('quickplot-copy-png');
+    fireEvent.click(button);
 
-  it('renders box-plot SVG when plot type is box', async () => {
-    await runWithPlotType('box');
-    await vi.waitFor(() => {
-      expect(screen.getByTestId('box-plot-svg')).toBeInTheDocument();
-    });
-    expect(screen.queryByTestId('violin-plot-svg')).toBeNull();
-  });
-
-  it('renders histogram SVG when plot type is histogram', async () => {
-    await runWithPlotType('histogram');
-    await vi.waitFor(() => {
-      expect(screen.getByTestId('histogram-svg')).toBeInTheDocument();
-    });
-    expect(screen.queryByTestId('violin-plot-svg')).toBeNull();
-  });
-
-  it('renders bar-by-count SVG without dispatching the API when plot type is bar', () => {
-    const Wrapper = withClient();
-    render(
-      <Wrapper>
-        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
-      </Wrapper>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
-    fireEvent.change(
-      screen.getByRole('combobox', { name: /Plot type/i }),
-      { target: { value: 'bar' } },
-    );
-    // The X dropdown is now required; no Y field.
-    const xDropdown = screen.getByRole('combobox', { name: /Group by/i });
-    fireEvent.change(xDropdown, { target: { value: 'region' } });
-
-    fireEvent.click(screen.getByRole('button', { name: 'Plot' }));
-
-    expect(screen.getByTestId('bar-chart-svg')).toBeInTheDocument();
-    // Bar-by-count is computed in-memory — it must not dispatch.
-    expect(apiFetchMock).not.toHaveBeenCalled();
-  });
-});
-
-describe('QuickPlot — X=numeric (scatter) mode', () => {
-  it('switching axis mode to xnumeric shows numeric options in X dropdown', () => {
-    const Wrapper = withClient();
-    render(
-      <Wrapper>
-        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
-      </Wrapper>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
-
-    fireEvent.change(
-      screen.getByRole('combobox', { name: /Axis mode/i }),
-      { target: { value: 'xnumeric' } },
-    );
-
-    const xDropdown = screen.getByRole('combobox', { name: /X \(numeric\)/i });
-    const xOptions = Array.from(xDropdown.querySelectorAll('option')).map(
-      (o) => o.value,
-    );
-    // After the flip, X exposes numeric columns — not categorical ones.
-    expect(xOptions).toContain('firingRate');
-    expect(xOptions).toContain('spikeCount');
-    expect(xOptions).toContain('time');
-    expect(xOptions).not.toContain('region');
-    expect(xOptions).not.toContain('subject');
-  });
-
-  it('renders ScatterPlot from in-memory rows without hitting the API', () => {
-    const Wrapper = withClient();
-    render(
-      <Wrapper>
-        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
-      </Wrapper>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
-
-    fireEvent.change(
-      screen.getByRole('combobox', { name: /Axis mode/i }),
-      { target: { value: 'xnumeric' } },
-    );
-    fireEvent.change(
-      screen.getByRole('combobox', { name: /X \(numeric\)/i }),
-      { target: { value: 'time' } },
-    );
-    fireEvent.change(
-      screen.getByRole('combobox', { name: /Y \(numeric\)/i }),
-      { target: { value: 'firingRate' } },
-    );
-
-    expect(screen.getByTestId('scatter-plot')).toBeInTheDocument();
-    // 5 rows in TABLE — all have numeric time + firingRate.
-    expect(screen.getByText(/5 points/i)).toBeInTheDocument();
-    // Must not dispatch the distribution endpoint.
-    expect(apiFetchMock).not.toHaveBeenCalled();
-  });
-
-  it('flipping back to group mode resets the X picker (avoids carrying invalid choice)', () => {
-    const Wrapper = withClient();
-    render(
-      <Wrapper>
-        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
-      </Wrapper>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
-
-    // Pick a numeric X under xnumeric mode.
-    fireEvent.change(
-      screen.getByRole('combobox', { name: /Axis mode/i }),
-      { target: { value: 'xnumeric' } },
-    );
-    fireEvent.change(
-      screen.getByRole('combobox', { name: /X \(numeric\)/i }),
-      { target: { value: 'firingRate' } },
-    );
-
-    // Flip back to group mode — X picker should reset (the categorical
-    // dropdown wouldn't have "firingRate" as an option anyway, but
-    // explicit reset prevents a stuck stale value).
-    fireEvent.change(
-      screen.getByRole('combobox', { name: /Axis mode/i }),
-      { target: { value: 'group' } },
-    );
-    const xDropdown = screen.getByRole('combobox', { name: /Group by/i });
-    expect((xDropdown as HTMLSelectElement).value).toBe('');
-  });
-});
-
-describe('QuickPlot — empty-state copy (team-review feedback 2026-04-28)', () => {
-  // Pre-fix the empty state was a small gray sentence ("This table
-  // has no numeric columns to plot.") that the team review flagged
-  // as ambiguous — readers couldn't tell what Quick Plot was for.
-  // The new contract: when no plot is renderable, show a dashed-
-  // border placeholder INSIDE the plot area with a clear "what to
-  // do next" title plus a one-line description of the feature.
-
-  it('shows the "Pick a Y column" empty state when Y is unset (group mode, default)', () => {
-    const Wrapper = withClient();
-    render(
-      <Wrapper>
-        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
-      </Wrapper>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
-
-    const empty = screen.getByTestId('quickplot-empty-pick-y');
-    expect(empty).toBeInTheDocument();
-    expect(empty).toHaveTextContent(/Pick a numeric column on the Y axis to plot/i);
-    expect(empty).toHaveTextContent(/Quick Plot summarizes one column of this table/i);
-    // Disabled Plot button explains itself via the title attribute.
-    const plotBtn = screen.getByRole('button', { name: 'Plot' });
-    expect(plotBtn).toBeDisabled();
-    expect(plotBtn).toHaveAttribute('title', expect.stringMatching(/Pick a Y column/i));
-  });
-
-  it('shows the "no numeric columns" empty state when the table has zero numeric columns', () => {
-    const Wrapper = withClient();
-    const NO_NUMERIC_TABLE: TableResponse = {
-      columns: [
-        { key: 'subject', label: 'subject' },
-        { key: 'region', label: 'region' },
-        { key: 'condition', label: 'condition' },
-      ],
-      rows: [
-        { subject: 'm1', region: 'V1', condition: 'control' },
-        { subject: 'm2', region: 'V2', condition: 'treated' },
-        { subject: 'm3', region: 'V1', condition: 'control' },
-      ],
-    };
-    render(
-      <Wrapper>
-        <QuickPlot datasetId="d1" className="subject" table={NO_NUMERIC_TABLE} />
-      </Wrapper>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
-
-    const empty = screen.getByTestId('quickplot-empty-no-numeric');
-    expect(empty).toBeInTheDocument();
-    expect(empty).toHaveTextContent(/No numeric columns in this table/i);
-    expect(empty).toHaveTextContent(/Quick Plot needs at least one numeric column/i);
-    // The "pick a Y column" hint should NOT be visible — there's
-    // nothing to pick. The no-numeric branch takes priority.
-    expect(screen.queryByTestId('quickplot-empty-pick-y')).toBeNull();
-  });
-
-  it('shows the "Pick X+Y" empty state in xnumeric mode when neither is picked', () => {
-    const Wrapper = withClient();
-    render(
-      <Wrapper>
-        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
-      </Wrapper>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
-    fireEvent.change(
-      screen.getByRole('combobox', { name: /Axis mode/i }),
-      { target: { value: 'xnumeric' } },
-    );
-    expect(screen.getByTestId('quickplot-empty-pick-xy')).toBeInTheDocument();
-    expect(screen.getByTestId('quickplot-empty-pick-xy')).toHaveTextContent(
-      /Pick numeric X and Y columns to plot/i,
-    );
-  });
-
-  it('hides the empty state once a Y column is picked (group mode)', () => {
-    apiFetchMock.mockResolvedValue(GROUPED_RESPONSE);
-    const Wrapper = withClient();
-    render(
-      <Wrapper>
-        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
-      </Wrapper>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
-    fireEvent.change(
-      screen.getByRole('combobox', { name: /Y \(numeric\)/i }),
-      { target: { value: 'firingRate' } },
-    );
-    // Y is now set — the empty-state placeholder must disappear.
-    expect(screen.queryByTestId('quickplot-empty-pick-y')).toBeNull();
-  });
-});
-
-describe('QuickPlot — small-n graceful degradation', () => {
-  it('with n=2 group, violin mode does not crash (renders the SVG container)', async () => {
-    apiFetchMock.mockResolvedValue({
-      groups: [
-        {
-          name: 'V1',
-          values: [12.4, 8.7],
-          count: 2,
-          mean: 10.55,
-          median: 10.55,
-          std: 1.85,
-          min: 8.7,
-          max: 12.4,
-          q1: 9.6,
-          q3: 11.5,
-        },
-      ],
-    });
-    const Wrapper = withClient();
-    render(
-      <Wrapper>
-        <QuickPlot datasetId="d1" className="subject" table={TABLE} />
-      </Wrapper>,
-    );
-    fireEvent.click(screen.getByRole('button', { name: /Quick plot/i }));
-    fireEvent.change(
-      screen.getByRole('combobox', { name: /Y \(numeric\)/i }),
-      { target: { value: 'firingRate' } },
-    );
-    fireEvent.change(
-      screen.getByRole('combobox', { name: /Group by/i }),
-      { target: { value: 'region' } },
-    );
-    fireEvent.click(screen.getByRole('button', { name: 'Plot' }));
-
-    // Violin internal short-circuit: when group.values.length < 2 it
-    // renders empty paths. n=2 still triggers KDE — but the box and
-    // jitter paths should render without error and the SVG container
-    // mounts cleanly.
-    await vi.waitFor(() => {
-      expect(screen.getByTestId('violin-plot-svg')).toBeInTheDocument();
+    await waitFor(() => {
+      expect(htmlToImageBlob).toHaveBeenCalled();
+      expect(write).toHaveBeenCalled();
     });
   });
 });

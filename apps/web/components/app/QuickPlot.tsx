@@ -1,7 +1,14 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { BarChart3, ChevronDown, ChevronUp, Loader2, Play } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  BarChart3,
+  Check,
+  ChevronDown,
+  ChevronUp,
+  Copy,
+  Download,
+} from 'lucide-react';
 
 import {
   useDistribution,
@@ -10,7 +17,13 @@ import {
 } from '@/lib/api/visualize';
 import type { TableResponse } from '@/lib/api/tables';
 import { classifyColumns } from '@/lib/viewer/math';
-import { Button } from '@/components/ui/Button';
+import {
+  inferPlotShape,
+  type DispatchMode,
+  type PlotType,
+} from '@/lib/viewer/inferPlotShape';
+import { pickPlotSuggestions } from '@/lib/viewer/pickPlotSuggestions';
+import { formatPythonSnippet } from '@/lib/viewer/pythonSnippet';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ErrorState } from '@/components/errors/ErrorState';
 import { ViolinPlot, type ViolinGroup } from './ViolinPlot';
@@ -18,6 +31,8 @@ import { BoxPlot } from './BoxPlot';
 import { Histogram } from './Histogram';
 import { BarChartByGroup } from './BarChartByGroup';
 import { ScatterPlot } from './ScatterPlot';
+import { LinePlot } from './LinePlot';
+import { QuickPlotControls } from './QuickPlotControls';
 
 interface QuickPlotProps {
   datasetId: string;
@@ -25,42 +40,46 @@ interface QuickPlotProps {
   table: TableResponse;
 }
 
-type PlotType = 'violin' | 'box' | 'histogram' | 'bar';
-type AxisMode = 'group' | 'xnumeric';
-
-const PLOT_TYPE_LABELS: Record<PlotType, string> = {
-  violin: 'Violin',
-  box: 'Box',
-  histogram: 'Histogram',
-  bar: 'Bar (count by group)',
-};
-
 /**
- * Collapsible card embedded in the SummaryTableView. Auto-detects numeric
- * columns (≥70% parse as numeric) and categorical columns (≤20 unique
- * values), then lets the user pick a plot type and X/Y/group axes to render.
+ * Collapsible Quick Plot card embedded in the SummaryTableView.
  *
- * Modes:
+ * Column-first redesign (2026-04-29): the user picks a Y column (or
+ * an X column for solo bar-count) and a plot renders immediately —
+ * no upfront plot-type or axis-mode decisions. Plot type is inferred
+ * from the column types via `inferPlotShape`; the user can override
+ * within a compatible family via the chip row in `QuickPlotControls`.
  *
- * - **Group axis (categorical X)** — distribution endpoint shapes (violin,
- *   box, histogram, bar by count).
- * - **X numeric axis** — pulls X+Y from in-memory `table.rows` and renders
- *   a uPlot scatter; no API call needed. Color-by-group when `groupBy` is
- *   also set.
+ * On first expand, `pickPlotSuggestions` seeds the controls with a
+ * deterministic primary suggestion so the empty card is replaced by
+ * a real plot the moment the user opens it. Up to two secondary
+ * suggestions render as inline chips below the plot — one click
+ * re-seeds the controls.
  *
- * Phase 6.7+ P0: the third dropdown (plot type) lets users pick the shape
- * that fits their data — violin is meaningless for n=2 groups, histogram
- * is the right tool for "what does this distribution look like", bar
- * answers "how many rows fall in each group". Scatter unlocks the
- * headline plots from the reference tutorials (worm trajectory,
- * distance-to-patch, startle-over-trial).
+ * Dispatch is hidden behind the inference function:
+ *
+ * - `distribution-grouped` / `distribution-ungrouped` → POST
+ *   /api/visualize/distribution. Server returns KDE + per-group stats
+ *   that the SVG renderers (ViolinPlot, BoxPlot, Histogram) consume.
+ * - `in-memory` → renderers read `table.rows` directly. No API call.
+ *
+ * Out of scope (matplotlib territory): multi-Y / shared-X subplots,
+ * continuous color encoding, custom titles or axis-range controls,
+ * statistical overlays beyond the violin's inset IQR box, log-axis
+ * transforms, plotting from raw binary data. Hand-off to Python is
+ * via the Copy-as-Python button (Task 9).
  */
 export function QuickPlot({ datasetId, className, table }: QuickPlotProps) {
   const [open, setOpen] = useState(false);
   const [yField, setYField] = useState<string>('');
   const [xField, setXField] = useState<string>('');
-  const [plotType, setPlotType] = useState<PlotType>('violin');
-  const [axisMode, setAxisMode] = useState<AxisMode>('group');
+  const [seeded, setSeeded] = useState(false);
+  const [plotTypeOverride, setPlotTypeOverride] = useState<PlotType | null>(
+    null,
+  );
+  const [exportFeedback, setExportFeedback] = useState<
+    'png-copied' | 'py-copied' | 'png-error' | null
+  >(null);
+  const plotRef = useRef<HTMLDivElement>(null);
   const distribute = useDistribution();
 
   const { numericCols, categoricalCols } = useMemo(
@@ -68,42 +87,104 @@ export function QuickPlot({ datasetId, className, table }: QuickPlotProps) {
     [table],
   );
 
-  // Group-mode: needs Y (except for `bar`) and dispatches to /distribution.
-  // X-numeric mode: needs both X numeric + Y numeric (no API).
-  const groupModeCanRun =
-    !!datasetId && !!className && (plotType === 'bar' ? !!xField : !!yField);
-  const scatterCanRun = !!xField && !!yField;
-  const canRun = axisMode === 'xnumeric' ? scatterCanRun : groupModeCanRun;
+  const suggestions = useMemo(
+    () => pickPlotSuggestions(table, numericCols, categoricalCols),
+    [table, numericCols, categoricalCols],
+  );
 
-  // For the bar-by-count plot, X is required (it's the group axis).
-  const xRequired = axisMode === 'xnumeric' || plotType === 'bar';
-
-  const run = () => {
-    if (!canRun) return;
-    if (axisMode === 'xnumeric') {
-      // Scatter reads in-memory rows; nothing to dispatch. The render
-      // path just consults `xField` + `yField`.
-      return;
+  // First expand seeds the controls from the primary suggestion so
+  // the user sees a real plot, not blank dropdowns. Subsequent column
+  // changes don't re-seed — once the user has touched the controls
+  // they own them. Seeding fires from the open-click handler rather
+  // than an effect to avoid the cascading-render lint rule.
+  const handleOpenToggle = () => {
+    if (!open && !seeded && suggestions.primary) {
+      setYField(suggestions.primary.yField);
+      setXField(suggestions.primary.xField);
+      setPlotTypeOverride(null);
+      setSeeded(true);
     }
-    if (plotType === 'bar') {
-      // Bar-by-count is computed locally from `table.rows` — no API call.
+    setOpen(!open);
+  };
+
+  const inferred = useMemo(
+    () =>
+      inferPlotShape({
+        yField,
+        xField,
+        numericCols,
+        categoricalCols,
+        table,
+      }),
+    [yField, xField, numericCols, categoricalCols, table],
+  );
+
+  // Effective plot type: user override wins, but only when it remains
+  // compatible with the current X/Y types (the chip row hides
+  // incompatible types, but if the column choice changes after an
+  // override, the override may have become invalid — fall back to
+  // inferred in that case).
+  const effectivePlotType: PlotType | null = useMemo(() => {
+    if (!inferred) return null;
+    if (!plotTypeOverride) return inferred.plotType;
+    if (chipsAreCompatible(plotTypeOverride, inferred.plotType)) {
+      return plotTypeOverride;
+    }
+    return inferred.plotType;
+  }, [inferred, plotTypeOverride]);
+
+  const dispatchMode: DispatchMode | null = useMemo(() => {
+    if (!effectivePlotType || !inferred) return null;
+    return dispatchForPlotType(effectivePlotType, inferred.dispatchMode);
+  }, [effectivePlotType, inferred]);
+
+  // Auto-fire the distribution mutation whenever the inputs settle on
+  // a server-side combination. Each new (yField, xField, dispatchMode)
+  // triggers a fresh request; the latest result wins.
+  useEffect(() => {
+    if (
+      !yField ||
+      !dispatchMode ||
+      dispatchMode === 'in-memory'
+    ) {
       return;
     }
     distribute.mutate({
       datasetId,
       className,
       field: yField,
-      groupBy: xField || undefined,
+      groupBy: dispatchMode === 'distribution-grouped' ? xField : undefined,
     });
+    // The mutate ref is stable; including it in deps would loop. Same
+    // pattern used elsewhere in the codebase for tanstack mutations.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datasetId, className, yField, xField, dispatchMode]);
+
+  const handleYChange = (next: string) => {
+    setYField(next);
+    setPlotTypeOverride(null);
+  };
+  const handleXChange = (next: string) => {
+    setXField(next);
+    setPlotTypeOverride(null);
+  };
+  const handlePlotTypeChange = (next: PlotType) => {
+    setPlotTypeOverride(next);
+  };
+  const applySuggestion = (s: {
+    plotType: PlotType;
+    yField: string;
+    xField: string;
+  }) => {
+    setYField(s.yField);
+    setXField(s.xField);
+    setPlotTypeOverride(s.plotType);
   };
 
-  const result = distribute.data;
-  const grouped =
-    result && 'groups' in result ? (result as DistributionGroupedResponse) : null;
-
-  // For the bar-by-count chart we don't need the API — count rows in-memory.
+  // Only show the bar-count helper data when we'd render a bar chart —
+  // it's a derived count map over `table.rows[xField]`.
   const barCounts = useMemo(() => {
-    if (axisMode !== 'group' || plotType !== 'bar' || !xField) return [];
+    if (effectivePlotType !== 'bar-count' || !xField) return [];
     const counts = new Map<string, number>();
     for (const row of table.rows) {
       const v = row[xField];
@@ -112,24 +193,85 @@ export function QuickPlot({ datasetId, className, table }: QuickPlotProps) {
       counts.set(k, (counts.get(k) ?? 0) + 1);
     }
     return [...counts.entries()].map(([name, count]) => ({ name, count }));
-  }, [axisMode, plotType, xField, table.rows]);
+  }, [effectivePlotType, xField, table.rows]);
 
-  // The X-axis dropdown's option set depends on axisMode: categorical when
-  // grouping (violin/box/histogram/bar payloads), numeric when scattering.
-  const xOptions = axisMode === 'xnumeric' ? numericCols : categoricalCols;
-  const xLabelText =
-    axisMode === 'xnumeric'
-      ? 'X (numeric)'
-      : plotType === 'bar'
-        ? 'Group by (categorical, required)'
-        : 'Group by (optional, categorical)';
+  const result = distribute.data;
+  const grouped =
+    result && 'groups' in result ? (result as DistributionGroupedResponse) : null;
+
+  // Whether anything plottable is rendered. Controls when the export
+  // buttons are enabled — there's no point trying to copy a PNG of an
+  // empty plot region or generate Python for a state with no plot.
+  const hasRenderedPlot =
+    !!effectivePlotType &&
+    (effectivePlotType === 'scatter' ||
+    effectivePlotType === 'line' ||
+    effectivePlotType === 'bar-count'
+      ? !!yField || !!xField
+      : !!result &&
+        (grouped
+          ? grouped.groups.length > 0
+          : 'n' in result && result.n > 0));
+
+  const showFeedback = useCallback((kind: typeof exportFeedback) => {
+    setExportFeedback(kind);
+    setTimeout(() => setExportFeedback(null), 1800);
+  }, []);
+
+  const handleCopyPng = useCallback(async () => {
+    if (!plotRef.current) return;
+    try {
+      // Lazy-loaded so html-to-image doesn't appear in the initial
+      // bundle for users who never click the button.
+      const { toBlob } = await import('html-to-image');
+      const blob = await toBlob(plotRef.current, {
+        backgroundColor: '#ffffff',
+        pixelRatio: 2,
+      });
+      if (!blob) throw new Error('toBlob returned null');
+      if (typeof ClipboardItem === 'undefined' || !navigator.clipboard?.write) {
+        throw new Error('Clipboard image API unavailable');
+      }
+      await navigator.clipboard.write([
+        new ClipboardItem({ 'image/png': blob }),
+      ]);
+      showFeedback('png-copied');
+    } catch (err) {
+      console.error('Quick Plot: Copy PNG failed', err);
+      showFeedback('png-error');
+    }
+  }, [showFeedback]);
+
+  const handleCopyPython = useCallback(async () => {
+    if (!effectivePlotType) return;
+    const code = formatPythonSnippet({
+      plotType: effectivePlotType,
+      datasetId,
+      className,
+      yField,
+      xField,
+    });
+    try {
+      await navigator.clipboard.writeText(code);
+      showFeedback('py-copied');
+    } catch (err) {
+      console.error('Quick Plot: Copy Python failed', err);
+    }
+  }, [
+    effectivePlotType,
+    datasetId,
+    className,
+    yField,
+    xField,
+    showFeedback,
+  ]);
 
   return (
     <Card>
       <CardHeader className="py-3">
         <button
           type="button"
-          onClick={() => setOpen(!open)}
+          onClick={handleOpenToggle}
           className="w-full flex items-center justify-between gap-2"
           aria-expanded={open}
         >
@@ -146,235 +288,230 @@ export function QuickPlot({ datasetId, className, table }: QuickPlotProps) {
       </CardHeader>
       {open && (
         <CardBody className="pt-0 space-y-3">
-          <div className="flex flex-wrap items-end gap-3">
-            <label className="flex flex-col gap-0.5 text-xs">
-              <span className="text-gray-500">Axis mode</span>
-              <select
-                value={axisMode}
-                onChange={(e) => {
-                  const next = e.target.value as AxisMode;
-                  setAxisMode(next);
-                  // Resetting the X picker avoids carrying a now-invalid
-                  // column choice across the categorical↔numeric flip
-                  // (e.g. "region" was valid for grouping; if the user
-                  // switches to scatter mode, it shouldn't stick because
-                  // the dropdown will repopulate with numeric columns).
-                  setXField('');
-                }}
-                className="h-7 text-xs rounded border border-gray-300 bg-white px-2"
-              >
-                <option value="group">Group (categorical)</option>
-                <option value="xnumeric">X (numeric)</option>
-              </select>
-            </label>
-
-            {axisMode === 'group' && (
-              <label className="flex flex-col gap-0.5 text-xs">
-                <span className="text-gray-500">Plot type</span>
-                <select
-                  value={plotType}
-                  onChange={(e) => setPlotType(e.target.value as PlotType)}
-                  className="h-7 text-xs rounded border border-gray-300 bg-white px-2"
-                >
-                  {(Object.keys(PLOT_TYPE_LABELS) as PlotType[]).map((p) => (
-                    <option key={p} value={p}>
-                      {PLOT_TYPE_LABELS[p]}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            )}
-
-            <label className="flex flex-col gap-0.5 text-xs">
-              <span className="text-gray-500">
-                {axisMode === 'xnumeric' || plotType !== 'bar'
-                  ? 'Y (numeric)'
-                  : 'Y (numeric, ignored for bar)'}
-              </span>
-              <select
-                value={yField}
-                onChange={(e) => setYField(e.target.value)}
-                className="h-7 text-xs rounded border border-gray-300 bg-white px-2"
-                disabled={axisMode === 'group' && plotType === 'bar'}
-              >
-                <option value="">— Pick numeric column —</option>
-                {numericCols.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            <label className="flex flex-col gap-0.5 text-xs">
-              <span className="text-gray-500">{xLabelText}</span>
-              <select
-                value={xField}
-                onChange={(e) => setXField(e.target.value)}
-                className="h-7 text-xs rounded border border-gray-300 bg-white px-2"
-              >
-                <option value="">{xRequired ? '— Pick column —' : '— None —'}</option>
-                {xOptions.map((c) => (
-                  <option key={c} value={c}>
-                    {c}
-                  </option>
-                ))}
-              </select>
-            </label>
-
-            {/*
-              2026-04-28 — team-review feedback: the Plot button
-              previously read "Quick plot doesn't seem to be plotting
-              anything meaningful" because the user couldn't tell why
-              the button was disabled. Adding a tooltip via `title`
-              spells out the unmet precondition (a Y column hasn't
-              been picked yet, or in xnumeric mode both X+Y are
-              required). The disabled state stays the same — this is
-              purely the "tell the user why" affordance.
-            */}
-            <Button
-              size="sm"
-              onClick={run}
-              disabled={!canRun || distribute.isPending}
-              title={
-                distribute.isPending
-                  ? 'Plotting…'
-                  : canRun
-                    ? undefined
-                    : axisMode === 'xnumeric'
-                      ? 'Pick numeric X and Y columns to plot'
-                      : plotType === 'bar'
-                        ? 'Pick a Group-by column'
-                        : 'Pick a Y column'
-              }
-              className="h-7 text-xs"
-            >
-              {distribute.isPending ? (
-                <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-              ) : (
-                <Play className="h-3 w-3 mr-1" />
-              )}
-              Plot
-            </Button>
-          </div>
-
-          {/*
-            2026-04-28 — team-review empty-state polish. Three
-            mutually-exclusive empty states render INSIDE the plot
-            area (a dashed-border placeholder), in priority order:
-
-              1. Table has zero numeric columns at all → tell the
-                 user the table can't be plotted by Quick Plot. This
-                 takes precedence over the "pick a column" hint
-                 because there's nothing to pick.
-              2. Y unset (group mode, non-bar plots; or xnumeric
-                 with X+Y missing) → tell the user what to pick AND
-                 give a one-line "what is Quick Plot" description so
-                 they understand the feature without leaving the
-                 page.
-              3. Otherwise: the canRun flag is true and the renderer
-                 below shows the actual plot.
-
-            Group/bar mode is a special case: Y isn't used, so the
-            empty state asks for the X (Group-by) column instead.
-          */}
-          {numericCols.length === 0 ? (
+          {numericCols.length === 0 && categoricalCols.length === 0 ? (
             <QuickPlotEmptyState
-              testId="quickplot-empty-no-numeric"
-              title="No numeric columns in this table"
-              description="Quick Plot needs at least one numeric column. This table has none — try a different summary table on this dataset."
+              testId="quickplot-empty-no-columns"
+              title="No plottable columns in this table"
+              description="Quick Plot needs at least one numeric column or a low-cardinality categorical column. This table has neither — try a different summary table on this dataset."
             />
-          ) : axisMode === 'xnumeric' && !scatterCanRun ? (
-            <QuickPlotEmptyState
-              testId="quickplot-empty-pick-xy"
-              title="Pick numeric X and Y columns to plot"
-              description="Quick Plot summarizes one column of this table — pick a numeric Y column and (optionally) a categorical Group-by, and choose violin / box / histogram / bar."
-            />
-          ) : axisMode === 'group' && plotType === 'bar' && !xField ? (
-            <QuickPlotEmptyState
-              testId="quickplot-empty-pick-group"
-              title="Pick a Group-by column to plot"
-              description="Quick Plot summarizes one column of this table — pick a numeric Y column and (optionally) a categorical Group-by, and choose violin / box / histogram / bar."
-            />
-          ) : axisMode === 'group' && plotType !== 'bar' && !yField ? (
-            <QuickPlotEmptyState
-              testId="quickplot-empty-pick-y"
-              title="Pick a numeric column on the Y axis to plot"
-              description="Quick Plot summarizes one column of this table — pick a numeric Y column and (optionally) a categorical Group-by, and choose violin / box / histogram / bar."
-            />
-          ) : null}
-
-          {distribute.error && axisMode === 'group' && plotType !== 'bar' && (
-            <ErrorState error={distribute.error} onRetry={() => distribute.reset()} />
-          )}
-
-          {/* Renderers — only one mounts at a time based on axisMode +
-            plotType. Mounting/unmounting trumps a hidden-but-rendered
-            approach because the children all instantiate uPlot or do
-            heavy d3 work in their effects/useMemo paths. */}
-
-          {axisMode === 'xnumeric' && scatterCanRun && (
-            <div className="pt-2">
-              <ScatterPlot
-                rows={table.rows}
-                xField={xField}
+          ) : (
+            <>
+              <QuickPlotControls
+                numericCols={numericCols}
+                categoricalCols={categoricalCols}
                 yField={yField}
-                groupBy={null}
-                xLabel={xField}
-                yLabel={yField}
+                xField={xField}
+                plotType={effectivePlotType}
+                onYChange={handleYChange}
+                onXChange={handleXChange}
+                onPlotTypeChange={handlePlotTypeChange}
               />
-            </div>
-          )}
 
-          {axisMode === 'group' && plotType === 'bar' && xField && (
-            <div className="pt-2">
-              <BarChartByGroup
-                bars={barCounts}
-                xLabel={xField}
-                width={720}
-                height={380}
-              />
-            </div>
-          )}
-
-          {axisMode === 'group' &&
-            plotType !== 'bar' &&
-            grouped &&
-            grouped.groups.length > 0 && (
-              <div className="pt-2">
-                <GroupedRenderer
-                  plotType={plotType}
-                  groups={grouped.groups.map(toViolinGroup)}
-                  yLabel={yField}
-                  xLabel={xField || '(ungrouped)'}
+              {!effectivePlotType && (
+                <QuickPlotEmptyState
+                  testId="quickplot-empty-pick-y"
+                  title="Pick a column to plot"
+                  description="Quick Plot summarizes one or two columns of this table — pick a numeric Y for distributions and comparisons, or a categorical X for a bar count. Plot type is inferred from the column types."
                 />
-              </div>
-            )}
+              )}
 
-          {axisMode === 'group' &&
-            plotType !== 'bar' &&
-            !grouped &&
-            result &&
-            'n' in result &&
-            result.n > 0 && (
-              <UngroupedResult result={result} yField={yField} plotType={plotType} />
-            )}
+              {distribute.error &&
+                dispatchMode &&
+                dispatchMode !== 'in-memory' && (
+                  <ErrorState
+                    error={distribute.error}
+                    onRetry={() => distribute.reset()}
+                  />
+                )}
+
+              <div ref={plotRef}>
+                {effectivePlotType === 'scatter' && yField && xField && (
+                  <div className="pt-2">
+                    <ScatterPlot
+                      rows={table.rows}
+                      xField={xField}
+                      yField={yField}
+                      groupBy={null}
+                      xLabel={xField}
+                      yLabel={yField}
+                    />
+                  </div>
+                )}
+
+                {effectivePlotType === 'line' && yField && xField && (
+                  <div className="pt-2">
+                    <LinePlot
+                      rows={table.rows}
+                      xField={xField}
+                      yField={yField}
+                      xLabel={xField}
+                      yLabel={yField}
+                    />
+                  </div>
+                )}
+
+                {effectivePlotType === 'bar-count' && xField && (
+                  <div className="pt-2">
+                    <BarChartByGroup
+                      bars={barCounts}
+                      xLabel={xField}
+                      width={720}
+                      height={380}
+                    />
+                  </div>
+                )}
+
+                {(effectivePlotType === 'violin' ||
+                  effectivePlotType === 'box' ||
+                  effectivePlotType === 'histogram') &&
+                  grouped &&
+                  grouped.groups.length > 0 && (
+                    <div className="pt-2">
+                      <GroupedRenderer
+                        plotType={effectivePlotType}
+                        groups={grouped.groups.map(toViolinGroup)}
+                        yLabel={yField}
+                        xLabel={xField || '(ungrouped)'}
+                      />
+                    </div>
+                  )}
+
+                {(effectivePlotType === 'violin' ||
+                  effectivePlotType === 'box' ||
+                  effectivePlotType === 'histogram') &&
+                  !grouped &&
+                  result &&
+                  'n' in result &&
+                  result.n > 0 && (
+                    <UngroupedResult
+                      result={result}
+                      yField={yField}
+                      plotType={effectivePlotType}
+                    />
+                  )}
+              </div>
+
+              {hasRenderedPlot && (
+                <div
+                  className="flex flex-wrap items-center gap-2 pt-1"
+                  data-testid="quickplot-export-row"
+                >
+                  <button
+                    type="button"
+                    onClick={handleCopyPng}
+                    className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-[11px] text-gray-700 hover:border-gray-400"
+                    data-testid="quickplot-copy-png"
+                  >
+                    {exportFeedback === 'png-copied' ? (
+                      <Check className="h-3 w-3 text-emerald-600" />
+                    ) : (
+                      <Download className="h-3 w-3" />
+                    )}
+                    {exportFeedback === 'png-copied' ? 'Copied PNG' : 'Copy PNG'}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleCopyPython}
+                    className="inline-flex items-center gap-1 rounded-md border border-gray-300 bg-white px-2 py-1 text-[11px] text-gray-700 hover:border-gray-400"
+                    data-testid="quickplot-copy-python"
+                  >
+                    {exportFeedback === 'py-copied' ? (
+                      <Check className="h-3 w-3 text-emerald-600" />
+                    ) : (
+                      <Copy className="h-3 w-3" />
+                    )}
+                    {exportFeedback === 'py-copied'
+                      ? 'Copied Python'
+                      : 'Copy Python'}
+                  </button>
+                  {exportFeedback === 'png-error' && (
+                    <span className="text-[11px] text-rose-600">
+                      Couldn&apos;t copy — check browser permissions
+                    </span>
+                  )}
+                </div>
+              )}
+
+              {suggestions.secondary.length > 0 && (
+                <div
+                  className="flex flex-wrap items-center gap-1.5 pt-1 text-[11px] text-gray-500"
+                  data-testid="quickplot-secondary-suggestions"
+                >
+                  <span>Try:</span>
+                  {suggestions.secondary.map((s, i) => (
+                    <button
+                      key={`${s.plotType}-${i}`}
+                      type="button"
+                      onClick={() => applySuggestion(s)}
+                      className="rounded-full border border-gray-300 bg-white px-2 py-0.5 text-gray-700 hover:border-gray-400"
+                    >
+                      {describeSuggestion(s)}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </>
+          )}
         </CardBody>
       )}
     </Card>
   );
 }
 
-/** Picks the right SVG sibling for a grouped distribution payload. The
- *  three plotters all consume `ViolinGroup[]` — they just emit different
- *  SVG geometries. */
+/** The chip row in QuickPlotControls only allows in-family overrides
+ *  (histogram ↔ violin ↔ box; scatter ↔ line; bar-count alone). Used
+ *  here to validate that an existing override is still compatible
+ *  with the current inferred type after a column change. */
+function chipsAreCompatible(override: PlotType, inferred: PlotType): boolean {
+  const distribution: PlotType[] = ['histogram', 'violin', 'box'];
+  const xy: PlotType[] = ['scatter', 'line'];
+  if (distribution.includes(override) && distribution.includes(inferred))
+    return true;
+  if (xy.includes(override) && xy.includes(inferred)) return true;
+  if (override === 'bar-count' && inferred === 'bar-count') return true;
+  return false;
+}
+
+/** When the user overrides the plot type within a family, the dispatch
+ *  mode usually stays the same (all distribution shapes share the
+ *  /distribution endpoint; both XY shapes are in-memory). This helper
+ *  encodes that — fall back to the inferred dispatch mode and only
+ *  override when truly needed. */
+function dispatchForPlotType(
+  plotType: PlotType,
+  inferredDispatch: DispatchMode,
+): DispatchMode {
+  if (plotType === 'scatter' || plotType === 'line' || plotType === 'bar-count')
+    return 'in-memory';
+  return inferredDispatch;
+}
+
+function describeSuggestion(s: {
+  plotType: PlotType;
+  yField: string;
+  xField: string;
+}): string {
+  switch (s.plotType) {
+    case 'violin':
+    case 'box':
+      return `${s.yField} by ${s.xField}`;
+    case 'scatter':
+    case 'line':
+      return `${s.yField} vs ${s.xField}`;
+    case 'histogram':
+      return `${s.yField} distribution`;
+    case 'bar-count':
+      return `count by ${s.xField}`;
+  }
+}
+
 function GroupedRenderer({
   plotType,
   groups,
   yLabel,
   xLabel,
 }: {
-  plotType: Exclude<PlotType, 'bar'>;
+  plotType: 'violin' | 'box' | 'histogram';
   groups: ViolinGroup[];
   yLabel: string;
   xLabel: string;
@@ -419,14 +556,14 @@ function UngroupedResult({
 }: {
   result: DistributionUngroupedResponse;
   yField: string;
-  plotType: Exclude<PlotType, 'bar'>;
+  plotType: 'violin' | 'box' | 'histogram';
 }) {
   const groups = [ungroupedToViolin(yField, result)];
   return (
     <div className="pt-2">
       <p className="text-xs text-gray-500 font-mono">
-        n={result.n} · mean={(result.mean ?? 0).toFixed(3)} ·
-        std={(result.std ?? 0).toFixed(3)}
+        n={result.n} · mean={(result.mean ?? 0).toFixed(3)} · std=
+        {(result.std ?? 0).toFixed(3)}
       </p>
       <GroupedRenderer
         plotType={plotType}
@@ -453,17 +590,6 @@ function toViolinGroup(g: DistributionGroupedResponse['groups'][number]): Violin
   };
 }
 
-/**
- * Friendly empty-state placeholder rendered inside the Quick Plot
- * card when the user hasn't yet picked enough columns to render a
- * plot, or when the table has no numeric columns at all.
- *
- * The dashed border + min-height makes the empty state feel like
- * "the place where the plot will go" rather than a stray sentence
- * of helper text. The description gives a one-line "what is Quick
- * Plot" hand-off so first-time users understand the feature
- * without leaving the page (team-review feedback 2026-04-28).
- */
 function QuickPlotEmptyState({
   title,
   description,
