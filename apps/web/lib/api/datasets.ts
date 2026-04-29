@@ -159,6 +159,25 @@ export function useMyDatasets(enabled: boolean, scope: MyScope = 'mine') {
  * is never bound by these client-side numbers.
  */
 const DETAIL_TIMEOUT_MS = 60_000;
+/**
+ * Class-counts gets a longer ceiling than the rest of the per-dataset
+ * detail hooks. Round-3 team review surfaced a real timeout on Haley
+ * (78,687 docs, ~88s) and Dabrowska-CRH-3 (~90s) — both exceed the
+ * default 60s window. Production probe across the 8 published
+ * datasets:
+ *
+ *   < 1k docs:   <1s
+ *   12-15k:      8-11s
+ *   66k:         13s
+ *   78k+:        88-90s
+ *
+ * Bumping to 120s covers the observed worst-case with ~30s headroom.
+ * The cloud's class-counts aggregation is the actual bottleneck (Steve
+ * is aware); this is a pragmatic frontend timeout extension that makes
+ * the Document Explorer usable for ~25% of the catalog while the
+ * server-side pre-compute lands.
+ */
+const CLASS_COUNTS_TIMEOUT_MS = 120_000;
 const NO_RETRY = 0 as const;
 
 /**
@@ -202,11 +221,16 @@ export function useClassCounts(datasetId: string | undefined) {
     queryFn: ({ signal }) =>
       apiFetch<ClassCountsResponse>(
         `/api/datasets/${datasetId}/class-counts`,
-        { signal, timeoutMs: DETAIL_TIMEOUT_MS },
+        { signal, timeoutMs: CLASS_COUNTS_TIMEOUT_MS },
       ),
     enabled: !!datasetId,
     retry: NO_RETRY,
-    staleTime: DETAIL_STALE_MS,
+    // Within-session staleTime of 5 min so navigating between sub-tabs
+    // (overview ↔ documents ↔ tables) on the same dataset doesn't
+    // re-pay the slow cloud aggregation. The default DETAIL_STALE_MS
+    // of 60s is fine for fast hooks but punishes large-dataset users
+    // who navigate around and trip the 90s aggregation again.
+    staleTime: 5 * 60_000,
   });
 }
 

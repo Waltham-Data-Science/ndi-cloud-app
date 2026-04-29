@@ -35,7 +35,7 @@
  */
 import { useSearchParams, useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import { useEffect, useMemo, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { useClassCounts } from '@/lib/api/datasets';
 import { useDocumentsInfinite } from '@/lib/api/documents';
@@ -342,6 +342,45 @@ export function DocumentExplorer({ datasetId }: { datasetId: string }) {
 }
 
 /**
+ * Round-3 team review surfaced a real timeout on Haley
+ * (`/api/datasets/682e7772.../class-counts` → 88s) and Dabrowska-CRH-3
+ * (~90s). The cloud's class-counts aggregation scales superlinearly
+ * with document count; the frontend's apiFetch timeout was bumped to
+ * 120s in `lib/api/datasets.ts` so the request actually lands. But
+ * a silent skeleton for 30-90 seconds reads as "the page is broken"
+ * to a user who doesn't know this dataset is large.
+ *
+ * `ClassCountsLoading` shows a normal skeleton for the first 10
+ * seconds (covers all sub-15s datasets — most of the catalog). After
+ * that, if the request is still pending, it overlays an explanatory
+ * note: "Large datasets can take up to ~90 seconds…". The skeleton
+ * stays so the visual loading affordance is preserved.
+ *
+ * The escalation timer is intentionally short (10s) — a normal
+ * datacenter round-trip from the user is < 2s, and any wait > 10s
+ * is far enough outside expectation to warrant explanation.
+ */
+function ClassCountsLoading() {
+  const [showSlowNotice, setShowSlowNotice] = useState(false);
+  useEffect(() => {
+    const t = setTimeout(() => setShowSlowNotice(true), 10_000);
+    return () => clearTimeout(t);
+  }, []);
+  return (
+    <div className="space-y-3">
+      <Skeleton className="h-32 w-full" />
+      {showSlowNotice && (
+        <p className="text-[11px] text-fg-muted leading-snug">
+          This is a large dataset — the document-class breakdown can take
+          up to ~90 seconds to compute. Hang tight; it&rsquo;ll appear
+          here when ready.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
  * DocumentClassesAside — the sidebar that lists each document class
  * + its count. At lg+ widths it sits in the left column and is always
  * visible. Below lg, it stacks above the table.
@@ -393,7 +432,9 @@ function DocumentClassesAside({
             </CardDescription>
           </CardHeader>
           <CardBody>
-            {counts.isLoading && <Skeleton className="h-32 w-full" />}
+            {counts.isLoading && (
+              <ClassCountsLoading />
+            )}
             {counts.isError && (
               <ErrorState error={counts.error} onRetry={() => counts.refetch()} />
             )}

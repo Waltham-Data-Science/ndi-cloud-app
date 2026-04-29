@@ -161,6 +161,11 @@ describe('DatasetOverviewCard — Associated publications (round 2)', () => {
   });
 
   it('renders the DOI chip with the bare doi value as a doi.org hyperlink', () => {
+    // 2026-04-29 (round 3) — chip refactored: the DOI/PMID/PMC labels
+    // now sit OUTSIDE the link as gray text, so the link's accessible
+    // name is the bare value only (e.g. "10.1016/j.celrep.2025.115768").
+    // This makes the field boundaries visually clearer when multiple
+    // chips render side-by-side.
     render(
       <DatasetOverviewCard
         ds={baseDataset({
@@ -172,11 +177,14 @@ describe('DatasetOverviewCard — Associated publications (round 2)', () => {
       />,
     );
     const doiChip = screen.getByRole('link', {
-      name: /^DOI 10\.1016\/j\.celrep\.2025\.115768$/,
+      name: /^10\.1016\/j\.celrep\.2025\.115768$/,
     });
     expect(doiChip.getAttribute('href')).toBe(
       'https://doi.org/10.1016/j.celrep.2025.115768',
     );
+    // The "DOI" label sits adjacent to (but outside) the link.
+    const doiLabel = screen.getAllByText('DOI');
+    expect(doiLabel.length).toBeGreaterThan(0);
   });
 
   it('renders the PMID chip linking to pubmed.ncbi.nlm.nih.gov', () => {
@@ -188,16 +196,20 @@ describe('DatasetOverviewCard — Associated publications (round 2)', () => {
         datasetId="DS1"
       />,
     );
-    const pmidLink = screen.getByRole('link', { name: 'PMID 40471787' });
+    // Link's accessible name is the bare PMID value; "PMID" is a
+    // separate gray label adjacent to it.
+    const pmidLink = screen.getByRole('link', { name: '40471787' });
     expect(pmidLink.getAttribute('href')).toBe(
       'https://pubmed.ncbi.nlm.nih.gov/40471787/',
     );
+    expect(screen.getByText('PMID')).toBeInTheDocument();
   });
 
   it('force-prefixes PMC into the PMC URL when the field omits it', () => {
     // Round-2 review: PMC chip URL must always include the `PMC`
     // prefix so the link resolves; the cloud ships some records with
-    // bare numeric PMCIDs.
+    // bare numeric PMCIDs. The visible link label is the BARE
+    // numeric portion (the `PMC` is the gray label outside).
     render(
       <DatasetOverviewCard
         ds={baseDataset({
@@ -206,10 +218,11 @@ describe('DatasetOverviewCard — Associated publications (round 2)', () => {
         datasetId="DS1"
       />,
     );
-    const pmcLink = screen.getByRole('link', { name: 'PMC12294564' });
+    const pmcLink = screen.getByRole('link', { name: '12294564' });
     expect(pmcLink.getAttribute('href')).toBe(
       'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12294564/',
     );
+    expect(screen.getByText('PMC')).toBeInTheDocument();
   });
 
   it('does not double-prefix when the cloud already ships PMC<n>', () => {
@@ -221,7 +234,7 @@ describe('DatasetOverviewCard — Associated publications (round 2)', () => {
         datasetId="DS1"
       />,
     );
-    const pmcLink = screen.getByRole('link', { name: 'PMC12294564' });
+    const pmcLink = screen.getByRole('link', { name: '12294564' });
     expect(pmcLink.getAttribute('href')).toBe(
       'https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12294564/',
     );
@@ -256,7 +269,9 @@ describe('DatasetOverviewCard — Associated publications (round 2)', () => {
     const section = heading.parentElement;
     expect(section).not.toBeNull();
     const sectionScope = within(section as HTMLElement);
-    expect(sectionScope.getByText(/PMID 40471787/)).toBeInTheDocument();
-    expect(sectionScope.getByText('PMC12294564')).toBeInTheDocument();
+    // Section contains the bare-value link AND the gray label;
+    // both should resolve via querying the section.
+    expect(sectionScope.getByText('40471787')).toBeInTheDocument();
+    expect(sectionScope.getByText('12294564')).toBeInTheDocument();
   });
 });

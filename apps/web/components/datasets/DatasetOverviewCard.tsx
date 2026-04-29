@@ -333,30 +333,46 @@ function PublicationRow({ p }: { p: AssociatedPublication }) {
       ) : (
         <span className="block truncate text-fg-secondary">{title}</span>
       )}
+      {/*
+        Round-3 team review: split the chip text into a gray label
+        (`DOI` / `PMID` / `PMC`) + a blue link value, so adjacent IDs
+        read as distinct fields. Pre-fix the whole `DOI 10.1016/...`
+        token was a single blue underlined string, making it visually
+        ambiguous where one field ended and the next began.
+      */}
       <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-mono">
         {paperHref && p.DOI && (
-          <ExternalAnchor
-            href={paperHref}
-            label={`DOI ${p.DOI.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '')}`}
-            iconSize={10}
-            className="text-[10px]"
-          />
+          <span className="inline-flex items-baseline gap-1 text-fg-muted">
+            <span>DOI</span>
+            <ExternalAnchor
+              href={paperHref}
+              label={p.DOI.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '')}
+              iconSize={10}
+              className="text-[10px]"
+            />
+          </span>
         )}
         {p.PMID && (
-          <ExternalAnchor
-            href={`https://pubmed.ncbi.nlm.nih.gov/${p.PMID}/`}
-            label={`PMID ${p.PMID}`}
-            iconSize={10}
-            className="text-[10px]"
-          />
+          <span className="inline-flex items-baseline gap-1 text-fg-muted">
+            <span>PMID</span>
+            <ExternalAnchor
+              href={`https://pubmed.ncbi.nlm.nih.gov/${p.PMID}/`}
+              label={p.PMID}
+              iconSize={10}
+              className="text-[10px]"
+            />
+          </span>
         )}
         {pmcId && (
-          <ExternalAnchor
-            href={`https://www.ncbi.nlm.nih.gov/pmc/articles/${pmcId}/`}
-            label={pmcId}
-            iconSize={10}
-            className="text-[10px]"
-          />
+          <span className="inline-flex items-baseline gap-1 text-fg-muted">
+            <span>PMC</span>
+            <ExternalAnchor
+              href={`https://www.ncbi.nlm.nih.gov/pmc/articles/${pmcId}/`}
+              label={pmcId.replace(/^PMC/, '')}
+              iconSize={10}
+              className="text-[10px]"
+            />
+          </span>
         )}
       </div>
     </li>
