@@ -76,6 +76,9 @@ import { Input } from '@/components/ui/Input';
 import { VirtualizedTable } from '@/components/ui/VirtualizedTable';
 import { OntologyPopover } from '@/components/ontology/OntologyPopover';
 import { isOntologyTerm } from '@/components/ontology/ontology-utils';
+import { ontologyUrl } from '@/lib/ontology/url-builder';
+import { safeHref } from '@/lib/safe-href';
+import { ExternalLink } from 'lucide-react';
 import {
   getColumnDefinition,
   resolveDefaultColumns,
@@ -327,7 +330,26 @@ export function SummaryTableView({
               )}
             </div>
           ),
-          cell: ({ getValue }) => <TableCell value={getValue()} formatter={formatter} />,
+          cell: ({ row, getValue }) => {
+            // Round-3 (round 4 of team review): make ontology *names* clickable
+            // — same provider URL as the sibling Ontology chip's external-link
+            // icon. The reviewer asked for `N2` itself to land on Wormbase
+            // (not just the adjacent `WBStrain:00000001` chip). Universal
+            // rule: any `<X>Name` column whose row carries a resolvable
+            // `<X>Ontology` sibling becomes a hyperlink. See
+            // `resolveSiblingOntologyUrl` for the rationale.
+            const ontologyHref = resolveSiblingOntologyUrl(
+              col.key,
+              row.original as Record<string, unknown>,
+            );
+            return (
+              <TableCell
+                value={getValue()}
+                formatter={formatter}
+                ontologyHref={ontologyHref}
+              />
+            );
+          },
           filterFn: 'includesString' as const,
         };
       }),
@@ -657,15 +679,76 @@ function ColumnInfoTip({
   );
 }
 
+/**
+ * Round-3 follow-up (team review round 4) — resolve a sibling-ontology
+ * URL for a Name-style column.
+ *
+ * The team asked for ontology *names* (e.g. the `N2` rendered in the
+ * Strain column) to be clickable in addition to the adjacent
+ * `WBStrain:00000001` chip's external-link icon. PR #144 added the icon
+ * but only on cells that render the ontology ID directly — Name cells
+ * are plain text resolved via the strain-name join, so a click on `N2`
+ * itself didn't go anywhere.
+ *
+ * Universal pattern across grains: every `<X>Name` column whose row
+ * carries a sibling `<X>Ontology` field with a resolvable provider URL
+ * becomes a link. Rule covers:
+ *
+ *   - `strainName` ↔ `strainOntology` (subject grain)
+ *   - `backgroundStrainName` ↔ `backgroundStrainOntology` (subject grain)
+ *   - `speciesName` ↔ `speciesOntology` (subject grain)
+ *   - `biologicalSexName` ↔ `biologicalSexOntology` (subject grain)
+ *   - `probeLocationName` ↔ `probeLocationOntology` (probe / probe_location grains)
+ *   - `cellTypeName` ↔ `cellTypeOntology` (probe / element grains)
+ *   - `<TreatmentName>Name` ↔ `<TreatmentName>Ontology` (dynamic
+ *     treatment-join columns from `joinTreatmentsToSubjects`)
+ *
+ * Pure function. Returns the provider URL when:
+ *   - The column key ends in `Name`
+ *   - The same row has a sibling key (`<key without 'Name'>Ontology`)
+ *     that's a non-empty string
+ *   - That sibling string resolves via `ontologyUrl` (i.e. one of the 8
+ *     mapped prefixes — WBStrain, NCBITaxon, UBERON, PATO, CHEBI, NCIT,
+ *     RRID, EFO)
+ *   - The resolved URL passes the `safeHref` guard (rejects javascript:
+ *     / data: schemes if a future resolver mapping is misconfigured)
+ *
+ * Returns `null` otherwise — caller renders the cell as plain text.
+ */
+function resolveSiblingOntologyUrl(
+  columnKey: string,
+  row: Record<string, unknown>,
+): string | null {
+  if (!columnKey.endsWith('Name')) return null;
+  const siblingKey = columnKey.slice(0, -4) + 'Ontology';
+  const siblingValue = row[siblingKey];
+  if (typeof siblingValue !== 'string' || !siblingValue) return null;
+  const url = ontologyUrl(siblingValue);
+  if (!url) return null;
+  // Same defensive guard as OntologyPopover — refuse anything not http(s).
+  // safeHref returns `undefined` for unsafe input; normalize to `null`
+  // to match this helper's contract.
+  return safeHref(url) ?? null;
+}
+
 function TableCell({
   value,
   formatter,
+  ontologyHref,
 }: {
   value: unknown;
   /** Optional column-level formatter — e.g. CSV-join for array cells. If
    * it returns a string, that replaces the default rendering; returning
    * `undefined` falls through to the default branches below. */
   formatter?: ColumnFormatter;
+  /** When non-null, the rendered string (single-string values only)
+   * becomes an external link to this URL. See
+   * `resolveSiblingOntologyUrl` — we only pass a non-null href when the
+   * column is a Name-style column AND the row carries a resolvable
+   * Ontology sibling. Array cells and object cells skip this branch
+   * (rendering an array as a single link would be ambiguous since
+   * multiple ontology IDs may apply). */
+  ontologyHref?: string | null;
 }) {
   if (value === null || value === undefined) {
     // aria-hidden: the em-dash is a visual null-placeholder, not content.
@@ -703,6 +786,29 @@ function TableCell({
     // ontology_name, treatment ontologyName, and ontologyTableRow nodes).
     const findEverywherePath = `/query?op=contains_string&field=openminds.fields.preferredOntologyIdentifier&param1=${encodeURIComponent(trimmed)}`;
     return <OntologyPopover termId={trimmed} findEverywherePath={findEverywherePath} />;
+  }
+  // Round-3 follow-up — Name cells with a resolvable sibling Ontology
+  // become hyperlinks (e.g. clicking `N2` opens
+  // `wormbase.org/.../WBStrain00000001`). Visual treatment matches the
+  // OntologyPopover external-link icon: blue text + small icon. The
+  // anchor stops propagation so a click doesn't also fire the table
+  // row's onRowClick handler.
+  if (typeof value === 'string' && ontologyHref) {
+    return (
+      <a
+        href={ontologyHref}
+        target="_blank"
+        rel="noopener noreferrer"
+        onClick={(e) => e.stopPropagation()}
+        className="font-mono text-xs text-brand-600 hover:text-brand-700 underline decoration-dotted inline-flex items-center gap-1 max-w-[300px] md:max-w-[440px] lg:max-w-[600px]"
+        title={`Open ${str} on the provider site`}
+        aria-label={`Open ${str} on the provider site (new tab)`}
+        data-ontology-name-link={str}
+      >
+        <span className="truncate">{str}</span>
+        <ExternalLink className="h-3 w-3 shrink-0 opacity-70" aria-hidden />
+      </a>
+    );
   }
   return (
     <span className="font-mono text-xs truncate max-w-[300px] md:max-w-[440px] lg:max-w-[600px] block">

@@ -146,6 +146,179 @@ describe('SummaryTableView', () => {
   });
 });
 
+/**
+ * Round-3 follow-up (team review round 4) — making ontology *names* clickable.
+ *
+ * Pre-fix: `N2` was rendered as plain monospace text in the Strain column;
+ * the only clickable element was the adjacent `WBStrain:00000001` chip's
+ * external-link icon. Reviewer asked for the name itself to land on
+ * Wormbase too, so users don't have to scan over to the ID column to
+ * click through.
+ *
+ * Universal rule applied at the cell renderer: any `<X>Name` column
+ * whose row carries a sibling `<X>Ontology` value with a resolvable
+ * provider URL becomes an `<a>` to that URL. Same href as the chip's
+ * icon next to it. Visual treatment matches OntologyPopover (blue +
+ * dotted underline + small external-link icon).
+ */
+describe('SummaryTableView — name cells link to ontology provider (round-3 follow-up)', () => {
+  it('renders strainName as a clickable link to wormbase.org when strainOntology resolves', () => {
+    const { container } = render(
+      withProviders(<SummaryTableView data={tutorialHaleyTable} tableType="subject" />),
+    );
+    const link = container.querySelector('a[data-ontology-name-link="N2"]');
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe(
+      'https://wormbase.org/species/c_elegans/strain/WBStrain00000001',
+    );
+    expect(link?.getAttribute('target')).toBe('_blank');
+    expect(link?.getAttribute('rel')).toBe('noopener noreferrer');
+  });
+
+  it('renders speciesName as a clickable link to NCBI Taxonomy when speciesOntology resolves', () => {
+    const { container } = render(
+      withProviders(<SummaryTableView data={tutorialHaleyTable} tableType="subject" />),
+    );
+    const link = container.querySelector(
+      'a[data-ontology-name-link="Caenorhabditis elegans"]',
+    );
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe(
+      'https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=6239',
+    );
+  });
+
+  it('renders biologicalSexName as a clickable link to OLS4 when biologicalSexOntology resolves', () => {
+    const { container } = render(
+      withProviders(<SummaryTableView data={tutorialHaleyTable} tableType="subject" />),
+    );
+    const link = container.querySelector(
+      'a[data-ontology-name-link="hermaphrodite"]',
+    );
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe(
+      'https://www.ebi.ac.uk/ols4/ontologies/pato/classes?obo_id=PATO%3A0001340',
+    );
+  });
+
+  it('renders backgroundStrainName as a SciCrunch link when backgroundStrainOntology is RRID:', () => {
+    // Francesconi fixture pairs `backgroundStrainName: 'WI'` with
+    // `backgroundStrainOntology: 'RRID:RGD_13508588'` — the SciCrunch
+    // resolver path of the URL builder.
+    const { container } = render(
+      withProviders(
+        <SummaryTableView data={francesconiSubjectTable} tableType="subject" />,
+      ),
+    );
+    const link = container.querySelector('a[data-ontology-name-link="WI"]');
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe(
+      'https://scicrunch.org/resolver/RRID:RGD_13508588',
+    );
+  });
+
+  it('does NOT linkify a name whose sibling ontology is an array (multi-value)', () => {
+    // Francesconi fixture: `strainName: ['CRF-Cre', 'OTR-IRES-Cre']`
+    // paired with `strainOntology: []`. Array values render via the
+    // CSV-join formatter and skip the ontology-name link branch — a
+    // single hyperlink for "CRF-Cre, OTR-IRES-Cre" pointing at one
+    // ontology would be ambiguous.
+    const { container } = render(
+      withProviders(
+        <SummaryTableView data={francesconiSubjectTable} tableType="subject" />,
+      ),
+    );
+    expect(
+      container.querySelector('a[data-ontology-name-link="CRF-Cre, OTR-IRES-Cre"]'),
+    ).toBeNull();
+  });
+
+  it('does NOT linkify a name whose sibling ontology is missing or unmapped', () => {
+    // `geneticStrainTypeName: 'wildtype'` has no
+    // `geneticStrainTypeOntology` sibling in the Haley fixture — the
+    // helper returns null and the cell renders as plain text.
+    const { container } = render(
+      withProviders(<SummaryTableView data={tutorialHaleyTable} tableType="subject" />),
+    );
+    // No link element with the wildtype name attribute.
+    expect(
+      container.querySelector('a[data-ontology-name-link="wildtype"]'),
+    ).toBeNull();
+  });
+
+  it('renders an external-link icon adjacent to the name inside the same <a>', () => {
+    // The icon visually communicates "click → external page". Pinned
+    // here so a future style refactor doesn't accidentally drop it.
+    const { container } = render(
+      withProviders(<SummaryTableView data={tutorialHaleyTable} tableType="subject" />),
+    );
+    const link = container.querySelector('a[data-ontology-name-link="N2"]');
+    expect(link).not.toBeNull();
+    expect(link?.querySelector('svg')).not.toBeNull();
+  });
+
+  it('stops click propagation so an enclosing row-click handler does not fire', () => {
+    // The name-link MUST not double-trigger the row's onRowClick
+    // (which navigates to the document detail page). Without
+    // stopPropagation the user's click on `N2` would both navigate
+    // AND open WormBase — confusing.
+    const onRowClick = vi.fn();
+    const { container } = render(
+      withProviders(
+        <SummaryTableView
+          data={tutorialHaleyTable}
+          tableType="subject"
+          onRowClick={onRowClick}
+        />,
+      ),
+    );
+    const link = container.querySelector(
+      'a[data-ontology-name-link="N2"]',
+    ) as HTMLAnchorElement | null;
+    expect(link).not.toBeNull();
+    // Prevent the actual `target=_blank` navigation from being attempted in jsdom
+    link?.addEventListener('click', (e) => e.preventDefault());
+    fireEvent.click(link!);
+    expect(onRowClick).not.toHaveBeenCalled();
+  });
+
+  it('linkifies dynamic treatment-join name columns when their Ontology sibling resolves', () => {
+    // Treatment-join columns follow the same `<X>Name`/`<X>Ontology`
+    // convention as the canonical subject columns — the universal
+    // suffix rule covers them automatically. A dataset that joins a
+    // treatment with a UBERON ontology gets a link from the name
+    // straight to the OLS4 page.
+    const treatmentJoinTable: TableResponse = {
+      columns: [
+        { key: 'subjectDocumentIdentifier', label: 'Subject Doc ID' },
+        {
+          key: 'OptogeneticTetanusStimulationTargetLocationName',
+          label: 'Optogenetic Tetanus Stimulation Target Location Name',
+        },
+        {
+          key: 'OptogeneticTetanusStimulationTargetLocationOntology',
+          label: 'Optogenetic Tetanus Stimulation Target Location Ontology',
+        },
+      ],
+      rows: [
+        {
+          subjectDocumentIdentifier: 'subj1',
+          OptogeneticTetanusStimulationTargetLocationName: 'BNST',
+          OptogeneticTetanusStimulationTargetLocationOntology: 'UBERON:0001880',
+        },
+      ],
+    };
+    const { container } = render(
+      withProviders(<SummaryTableView data={treatmentJoinTable} tableType="subject" />),
+    );
+    const link = container.querySelector('a[data-ontology-name-link="BNST"]');
+    expect(link).not.toBeNull();
+    expect(link?.getAttribute('href')).toBe(
+      'https://www.ebi.ac.uk/ols4/ontologies/uberon/classes?obo_id=UBERON%3A0001880',
+    );
+  });
+});
+
 describe('SummaryTableView XLS export', () => {
   beforeEach(() => {
     writeFileMock.mockClear();
