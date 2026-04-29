@@ -18,11 +18,13 @@ import { useState } from 'react';
 
 import { CiteModal } from '@/components/datasets/CiteModal';
 import { UseThisDataModal } from '@/components/datasets/UseThisDataModal';
+import { CopyButton } from '@/components/ui/CopyButton';
 import { ExternalAnchor } from '@/components/ui/ExternalAnchor';
 import { Badge } from '@/components/ui/Badge';
 import { Button } from '@/components/ui/Button';
 import { Card, CardBody, CardHeader } from '@/components/ui/Card';
 import { isDefaultBranch } from '@/lib/dataset-filters';
+import { toDoiUrl } from '@/lib/doi-url';
 import { cleanAbstract, formatDate } from '@/lib/format';
 import { normalizeLicense } from '@/lib/license-normalize';
 import { normalizeOrcid } from '@/lib/orcid';
@@ -135,12 +137,34 @@ export function DatasetOverviewCard({
           </div>
         )}
 
+        {/* Associated publications.
+            2026-04-28 (round 2) — section restructured per team review
+            mock-up. The previous render shipped:
+              - title hyperlink with raw `p.DOI` href (which `safeHref`
+                resolved against the local origin → broke to
+                `ndi-cloud.com/10.1016/...` whenever the cloud emitted a
+                bare DOI rather than a doi.org URL — the "broken paper
+                link" the team flagged)
+              - tiny `DOI` token with no link
+              - `PMID` chip linking to pubmed
+              - `PMCID` chip linking to PMC, with the PMC prefix passed
+                through verbatim from the cloud (some records lack the
+                `PMC` prefix, breaking the URL)
+            New shape:
+              - Paper title links via `toDoiUrl(p.DOI)` so a bare DOI
+                gets wrapped in `https://doi.org/...`
+              - DOI / PMID / PMC each render as a labeled blue link with
+                the value (e.g. `DOI 10.1016/j.celrep.2025.115768`)
+              - PMC URL force-prefixed with `PMC` if the field doesn't
+                already include it
+            Hidden entirely when `associatedPublications` is empty —
+            matches the design mock and avoids an empty header. */}
         {(ds.associatedPublications?.length ?? 0) > 0 && (
           <div className="space-y-1.5">
             <h3 className="text-xs font-semibold text-fg-muted flex items-center gap-1 uppercase tracking-wide">
               <BookOpen className="h-3 w-3" /> Associated publications
             </h3>
-            <ul className="space-y-1 text-xs">
+            <ul className="space-y-2 text-xs">
               {ds.associatedPublications!.map((p, i) => (
                 <PublicationRow key={p.DOI ?? p.PMID ?? i} p={p} />
               ))}
@@ -148,27 +172,40 @@ export function DatasetOverviewCard({
           </div>
         )}
 
-        {/* Identifiers row */}
-        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1 text-[11px] text-fg-muted font-mono border-t border-border-subtle pt-3">
+        {/* Identifiers row.
+            2026-04-28 (round 2) — restructured per team review mock-up:
+              - DOI first (blue hyperlink to https://doi.org/<value>),
+                normalized via `toDoiUrl` so bare DOIs wrap correctly
+              - NDI ID second (gray monospace + copy button — relocated
+                from the OverviewContent footer so the dataset's
+                permanent identifier sits alongside the DOI rather than
+                outside the card)
+              - Created
+              - Updated
+            PubMed dropped from this block — it described a paper-level
+            identifier that didn't belong on the dataset; that
+            information now lives in the Associated publications section
+            above. */}
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] items-center gap-x-3 gap-y-1.5 text-[11px] text-fg-muted font-mono border-t border-border-subtle pt-3">
           {ds.doi && (
             <>
               <dt>DOI</dt>
-              <dd className="truncate">
-                <ExternalAnchor href={ds.doi} label={ds.doi} />
+              <dd className="truncate min-w-0">
+                <ExternalAnchor href={toDoiUrl(ds.doi) ?? ds.doi} label={ds.doi} />
               </dd>
             </>
           )}
-          {ds.pubMedId && (
-            <>
-              <dt>PubMed</dt>
-              <dd>
-                <ExternalAnchor
-                  href={`https://pubmed.ncbi.nlm.nih.gov/${ds.pubMedId}/`}
-                  label={ds.pubMedId}
-                />
-              </dd>
-            </>
-          )}
+          <dt>NDI</dt>
+          <dd className="flex min-w-0 items-center gap-1.5">
+            <code className="font-mono text-fg-secondary truncate">
+              {datasetId}
+            </code>
+            <CopyButton
+              value={datasetId}
+              ariaLabel={`Copy NDI dataset ID ${datasetId}`}
+              className="shrink-0"
+            />
+          </dd>
           {/*
             Audit 2026-04-27 #23 — pre-fix the row read "Org
             649b1b1bea20f31db68d4f9f" (a Mongo ObjectId) which is
@@ -268,23 +305,43 @@ function ContributorRow({ c }: { c: Contributor }) {
 
 function PublicationRow({ p }: { p: AssociatedPublication }) {
   const title = p.title || p.DOI || p.PMID || 'Publication';
-  // `min-w-0 overflow-hidden` on the <li> so the ExternalAnchor / long
-  // title can truncate with ellipsis rather than pushing the sidebar
-  // card wider. Publication titles are a full sentence; DOIs are long
-  // URLs. Same class of bug Steve caught on the dataset DOI row.
+  // Resolve the paper DOI to an absolute https://doi.org URL — the
+  // cloud's `associatedPublications[].DOI` is sometimes a bare DOI
+  // (`10.1016/j.celrep.2025.115768`) which `safeHref` would otherwise
+  // resolve against the current origin, producing the broken
+  // `ndi-cloud.com/10.1016/...` link the round-2 team review flagged.
+  const paperHref = toDoiUrl(p.DOI);
+  // PMC ids in the cloud field are inconsistent: some records ship
+  // `PMC12294564`, some ship the bare numeric `12294564`. The PMC URL
+  // shape REQUIRES the `PMC` prefix, so we force it. Stripping any
+  // existing prefix first prevents the double-prefix `PMCPMC...` case.
+  const pmcId = p.PMCID
+    ? `PMC${p.PMCID.replace(/^PMC/i, '')}`
+    : undefined;
   return (
-    <li className="min-w-0 space-y-0.5 overflow-hidden">
-      {p.DOI ? (
+    // `min-w-0 overflow-hidden` on the <li> so the ExternalAnchor / long
+    // title can truncate with ellipsis rather than pushing the sidebar
+    // card wider. Publication titles are a full sentence; DOIs are long
+    // URLs. Same class of bug Steve caught on the dataset DOI row.
+    <li className="min-w-0 space-y-1 overflow-hidden">
+      {paperHref ? (
         <ExternalAnchor
-          href={p.DOI}
+          href={paperHref}
           label={title}
           className="text-xs leading-snug"
         />
       ) : (
         <span className="block truncate text-fg-secondary">{title}</span>
       )}
-      <div className="flex flex-wrap gap-2 text-[10px] text-fg-muted font-mono">
-        {p.DOI && <span>DOI</span>}
+      <div className="flex flex-wrap gap-x-3 gap-y-1 text-[10px] font-mono">
+        {paperHref && p.DOI && (
+          <ExternalAnchor
+            href={paperHref}
+            label={`DOI ${p.DOI.replace(/^https?:\/\/(?:dx\.)?doi\.org\//i, '').replace(/^doi:\s*/i, '')}`}
+            iconSize={10}
+            className="text-[10px]"
+          />
+        )}
         {p.PMID && (
           <ExternalAnchor
             href={`https://pubmed.ncbi.nlm.nih.gov/${p.PMID}/`}
@@ -293,10 +350,10 @@ function PublicationRow({ p }: { p: AssociatedPublication }) {
             className="text-[10px]"
           />
         )}
-        {p.PMCID && (
+        {pmcId && (
           <ExternalAnchor
-            href={`https://www.ncbi.nlm.nih.gov/pmc/articles/${p.PMCID}/`}
-            label={p.PMCID}
+            href={`https://www.ncbi.nlm.nih.gov/pmc/articles/${pmcId}/`}
+            label={pmcId}
             iconSize={10}
             className="text-[10px]"
           />

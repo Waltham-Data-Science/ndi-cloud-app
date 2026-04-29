@@ -46,7 +46,6 @@ import { DatasetProvenanceCard } from '@/components/datasets/DatasetProvenanceCa
 import { DatasetSummaryCard } from '@/components/datasets/DatasetSummaryCard';
 import { ErrorState } from '@/components/errors/ErrorState';
 import { CardSkeleton } from '@/components/ui/Skeleton';
-import { CopyButton } from '@/components/ui/CopyButton';
 import { enrichDegradedSummary, isDegraded } from '@/lib/data/summary-fallback';
 
 export function OverviewContent({ datasetId }: { datasetId: string }) {
@@ -192,25 +191,12 @@ export function OverviewContent({ datasetId }: { datasetId: string }) {
         )}
       </aside>
     </div>
-    {/* 2026-04-28 — Dataset ID footer (team review feedback). The
-        Mongo-shaped UUID is the dataset's permanent identifier (used
-        in URLs and external references) but was previously buried in
-        the URL bar. Surfacing it at the bottom of the Overview tab
-        with a copy button makes it easy to grab for support tickets,
-        cross-referencing in papers, or sharing with collaborators.
-        Mono font + muted styling so it reads as metadata, not a
-        primary affordance. */}
-    <footer className="flex items-center gap-2 pt-3 border-t border-border-subtle text-xs text-fg-muted">
-      <span className="uppercase tracking-wide">Dataset ID</span>
-      <code className="font-mono text-fg-secondary text-[11.5px] select-all break-all">
-        {datasetId}
-      </code>
-      <CopyButton
-        value={datasetId}
-        ariaLabel={`Copy dataset ID ${datasetId}`}
-        className="ml-1"
-      />
-    </footer>
+    {/* 2026-04-28 (round 2) — Dataset ID footer relocated INTO the
+        DatasetOverviewCard's metadata block (DOI / NDI / Created /
+        Updated) per team review mock-up. The previous footer
+        duplicated the same value the URL bar already shows; folding
+        it into the identifier block alongside DOI keeps the metadata
+        in one place and gives the copy button a stronger context. */}
     </div>
   );
 }

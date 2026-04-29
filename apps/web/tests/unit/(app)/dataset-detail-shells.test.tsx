@@ -125,6 +125,88 @@ describe('TableShell', () => {
     expect(elementLink.getAttribute('aria-current')).toBeNull();
   });
 
+  it('omits Treatments / OpenMINDS subjects / Combined from the default tab strip even when the dataset has rows', async () => {
+    // 2026-04-28 (round 2) — team review feedback: those three tabs
+    // are redundant with the Subjects tab (treatments now joined per-
+    // subject) and the Combined join is empty for most datasets. They
+    // remain reachable by direct URL but are filtered out of the
+    // default sub-tab strip. Pin the contract so a future
+    // ALWAYS_VISIBLE_CLASSES change doesn't accidentally promote them
+    // back.
+    mockedApiFetch.mockImplementation((url: string) => {
+      if (url.includes('/class-counts')) {
+        return Promise.resolve({
+          datasetId: 'd1',
+          totalDocuments: 99,
+          classCounts: {
+            subject: 5,
+            element: 3,
+            element_epoch: 2,
+            treatment: 4,
+            probe_location: 2,
+            openminds_subject: 5,
+            // `combined` is gated on element_epoch; element_epoch=2
+            // would historically have shown the tab, but
+            // HIDDEN_DEFAULT_TABS now blocks it from the default strip
+            // regardless.
+          },
+        });
+      }
+      return new Promise(() => {});
+    });
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <TableShell datasetId="d1" className="subject" />
+      </Wrapper>,
+    );
+    // Wait for class-counts to land — the strip recomputes once data
+    // arrives.
+    await waitFor(() => {
+      expect(screen.getByRole('link', { name: 'Subjects' })).toBeInTheDocument();
+    });
+    expect(screen.queryByRole('link', { name: 'Treatments' })).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole('link', { name: 'OpenMINDS subjects' }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Combined' })).not.toBeInTheDocument();
+    // The visible primary grains are still there.
+    expect(screen.getByRole('link', { name: 'Elements' })).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Epochs' })).toBeInTheDocument();
+    // Mappings (formerly Ontology) is in ALWAYS_VISIBLE_CLASSES so it
+    // shows up regardless of count.
+    expect(screen.getByRole('link', { name: 'Mappings' })).toBeInTheDocument();
+  });
+
+  it('surfaces a hidden-default tab in the strip when the user is currently on it (direct-URL bookmark fallback)', async () => {
+    // The route at /datasets/[id]/tables/treatment must still resolve
+    // even though `treatment` is in HIDDEN_DEFAULT_TABS. To keep the
+    // active-tab state visible, the strip surfaces the active tab
+    // even when it's a hidden default.
+    mockedApiFetch.mockImplementation((url: string) => {
+      if (url.includes('/class-counts')) {
+        return Promise.resolve({
+          datasetId: 'd1',
+          totalDocuments: 99,
+          classCounts: { subject: 5, treatment: 4 },
+        });
+      }
+      // Leave the table fetch pending so we focus on the nav contract.
+      return new Promise(() => {});
+    });
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <TableShell datasetId="d1" className="treatment" />
+      </Wrapper>,
+    );
+    await waitFor(() => {
+      const treatmentLink = screen.queryByRole('link', { name: 'Treatments' });
+      expect(treatmentLink).not.toBeNull();
+      expect(treatmentLink?.getAttribute('aria-current')).toBe('page');
+    });
+  });
+
   it('renders the empty-state message when the table has no rows', async () => {
     mockedApiFetch.mockResolvedValueOnce({ columns: [], rows: [] });
     const Wrapper = withClient();

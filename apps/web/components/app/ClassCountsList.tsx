@@ -68,16 +68,31 @@ export function ClassCountsList({ datasetId, data }: ClassCountsListProps) {
                 href={href}
                 className="flex items-center gap-2 hover:text-ndi-teal transition-colors"
               >
-                {/* Phase 6.6 PR-H polish: dropped `truncate` — class names
-                 * (`subject`, `element_epoch`, `openminds_subject`,
-                 * `probe_location`, etc.) need to be fully visible since
-                 * they're the entry point to the documents tab and the
-                 * tables grid. The list is in a fixed-width column;
-                 * `break-words` lets a long class name wrap if needed
-                 * rather than getting cut off mid-name. */}
-                <span className="font-mono break-words flex-1">{cls}</span>
-                <span className="text-fg-muted">{formatNumber(n)}</span>
-                <FileText className="h-3 w-3 text-fg-muted" aria-hidden />
+                {/* 2026-04-28 (round 2) — class names are truncated with
+                 * an ellipsis when they overflow the sidebar column.
+                 * Reverts the Phase 6.6 PR-H "show full name; wrap if
+                 * needed" choice (team review feedback): long class
+                 * names like `stimulus_response_scalar_parameters_…`
+                 * pushed the document-count number off-screen and
+                 * stacked rows onto multiple visual lines, breaking
+                 * the dense at-a-glance scan the list is meant to
+                 * support. The truncated cell shows `…` at overflow,
+                 * the full name is in `title=` for hover, and the
+                 * count + icon are now `shrink-0` so they always
+                 * remain visible regardless of name length.
+                 *
+                 * `min-w-0` on the truncating span is required because
+                 * flex children default to min-content min-width, which
+                 * would otherwise let the long name push past the row's
+                 * available width. */}
+                <span
+                  className="font-mono truncate min-w-0 flex-1"
+                  title={cls}
+                >
+                  {cls}
+                </span>
+                <span className="text-fg-muted shrink-0">{formatNumber(n)}</span>
+                <FileText className="h-3 w-3 text-fg-muted shrink-0" aria-hidden />
               </Link>
               <div
                 className="mt-0.5 h-1 rounded bg-bg-muted overflow-hidden"
