@@ -94,3 +94,78 @@ describe('ClassCountsList — long-name truncation (round 2)', () => {
     expect(nameSpan.getAttribute('title')).toBe('subject');
   });
 });
+
+describe('ClassCountsList — hide internal wrapper classes (round-2 team review)', () => {
+  it('does not render session_in_a_dataset in the sidebar list', () => {
+    // Real-world fixture from Bhar (`69bc5ca11d547b1f6d083761`):
+    // production class-counts shows session=2 alongside the wrapper
+    // class session_in_a_dataset=1. Pre-fix the sidebar listed them
+    // as two adjacent rows, which the team read as "3 sessions"
+    // (session 2 + session_in_a_dataset 1). The wrapper is a
+    // bookkeeping-only class; hide it from the sidebar so the eye
+    // scan matches the hero (which already excludes it via PR #129).
+    render(
+      <ClassCountsList
+        datasetId="d1"
+        data={{
+          totalDocuments: 66533,
+          classCounts: {
+            subject: 5314,
+            session: 2,
+            session_in_a_dataset: 1,
+            element: 100,
+          },
+        }}
+      />,
+    );
+    expect(screen.queryByText('session_in_a_dataset')).toBeNull();
+    // The other classes still render normally.
+    expect(screen.getByText('subject')).toBeInTheDocument();
+    expect(screen.getByText('session')).toBeInTheDocument();
+    expect(screen.getByText('element')).toBeInTheDocument();
+  });
+
+  it('keeps the total-documents heading honest (does not subtract wrapper count)', () => {
+    // The "N documents total" label at the top is the dataset's
+    // true total — including wrapper classes. Hiding the wrapper
+    // from the per-class breakdown shouldn't make the total appear
+    // to disagree with the catalog's "documents" facet on the
+    // overview hero.
+    render(
+      <ClassCountsList
+        datasetId="d1"
+        data={{
+          totalDocuments: 66533,
+          classCounts: {
+            subject: 5314,
+            session: 2,
+            session_in_a_dataset: 1,
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText('66,533 documents total')).toBeInTheDocument();
+  });
+
+  it('renders normally when the dataset has no wrapper class (e.g. Haley)', () => {
+    // Verified against production: Haley (`682e7772cdf3f24938176fac`)
+    // has session=3 and NO session_in_a_dataset class. The filter is
+    // a no-op on such datasets — every class still renders.
+    render(
+      <ClassCountsList
+        datasetId="d1"
+        data={{
+          totalDocuments: 78687,
+          classCounts: {
+            subject: 100,
+            session: 3,
+            element: 50,
+          },
+        }}
+      />,
+    );
+    expect(screen.getByText('subject')).toBeInTheDocument();
+    expect(screen.getByText('session')).toBeInTheDocument();
+    expect(screen.getByText('element')).toBeInTheDocument();
+  });
+});
