@@ -153,33 +153,54 @@ export function ViolinPlot({
                   <path d={pathRight} fill={color} fillOpacity={0.25} stroke={color} strokeWidth={1} />
                 )}
                 <rect
+                  data-testid="violin-iqr-box"
                   x={-4}
                   y={yScale(group.q3)}
                   width={8}
                   height={Math.max(1, yScale(group.q1) - yScale(group.q3))}
-                  fill={color}
-                  fillOpacity={0.5}
+                  fill="#1f2937"
+                  fillOpacity={0.85}
                   rx={1}
                 />
                 <line
-                  x1={-6}
-                  x2={6}
-                  y1={yScale(group.median)}
-                  y2={yScale(group.median)}
-                  stroke="white"
-                  strokeWidth={2}
+                  x1={0}
+                  x2={0}
+                  y1={yScale(group.min)}
+                  y2={yScale(group.q1)}
+                  stroke="#1f2937"
+                  strokeOpacity={0.6}
+                  strokeWidth={1}
                 />
-                {group.values.length <= 100 &&
-                  group.values.map((v, j) => (
+                <line
+                  x1={0}
+                  x2={0}
+                  y1={yScale(group.q3)}
+                  y2={yScale(group.max)}
+                  stroke="#1f2937"
+                  strokeOpacity={0.6}
+                  strokeWidth={1}
+                />
+                <circle
+                  data-testid="violin-median-dot"
+                  cx={0}
+                  cy={yScale(group.median)}
+                  r={2.5}
+                  fill="white"
+                  stroke="#1f2937"
+                  strokeWidth={0.75}
+                />
+                <g data-testid="violin-points">
+                  {group.values.map((v, j) => (
                     <circle
                       key={j}
                       cx={_hashJitter(group.name, j)}
                       cy={yScale(v)}
                       r={1.5}
                       fill={color}
-                      fillOpacity={0.5}
+                      fillOpacity={group.values.length > 100 ? 0.25 : 0.5}
                     />
                   ))}
+                </g>
                 <text y={innerH + 16} textAnchor="middle" fill="currentColor" fillOpacity={0.7}>
                   {group.name.length > 12 ? group.name.slice(0, 12) + '…' : group.name}
                 </text>
