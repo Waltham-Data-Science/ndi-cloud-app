@@ -75,6 +75,9 @@ function installCanvasMock() {
 const HEIGHT = 4;
 const WIDTH = 4;
 const CHANNELS = 3;
+// Canonical YXCZT params with all five axes — pinned by parseDimensions
+// to `{H, W, C, Z, T}`. The viewer no longer destructures the size
+// directly; it parses through `parseDimensions(order, size)`.
 const PARAMS_RGB: ImageStackParameters = {
   dimension_size: [HEIGHT, WIDTH, CHANNELS, 1, 1],
   dimension_order: 'YXCZT',
@@ -191,5 +194,83 @@ describe('ImageStackCanvasViewer', () => {
     expect(imageData.data[1]).toBe(128);
     expect(imageData.data[2]).toBe(128);
     expect(imageData.data[3]).toBe(255);
+  });
+
+  // -------------------------------------------------------------------------
+  // dim_order-aware decoding (Step 2 of the format-aware viewer rework)
+  // -------------------------------------------------------------------------
+  //
+  // Pre-fix the viewer destructured `[H, W, C, Z, T] = dimension_size`
+  // unconditionally — fine for the canonical YXCZT shape, but every
+  // production imageStack ships YX or YXT (Haley / Bhar). Pin both
+  // shapes so a future destructure regression is caught here.
+
+  it('parses a 2D YX layout (Haley dataset PNG masks) — single grayscale frame, no slider', () => {
+    // 256x256 grayscale frame, no time / no z. nFrames === 1 → the
+    // frame stepper is hidden.
+    const yxParams: ImageStackParameters = {
+      dimension_size: [4, 4],
+      dimension_order: 'YX',
+      data_type: 'uint8',
+      data_limits: [0, 255],
+    };
+    const buf = new ArrayBuffer(4 * 4); // grayscale: 16 bytes
+    const u8 = new Uint8Array(buf);
+    u8[0] = 200;
+
+    render(<ImageStackCanvasViewer buffer={buf} params={yxParams} />);
+
+    // Single-frame stack — slider is hidden.
+    expect(screen.queryByRole('slider')).toBeNull();
+    // putImageData fires with the 4x4 RGBA shape; the grayscale value
+    // is broadcast across R, G, B.
+    expect(canvasMock.putImageData).toHaveBeenCalledTimes(1);
+    const imageData = canvasMock.putImageData.mock.calls[0]![0] as ImageData;
+    expect(imageData.width).toBe(4);
+    expect(imageData.height).toBe(4);
+    expect(imageData.data[0]).toBe(200);
+    expect(imageData.data[1]).toBe(200);
+    expect(imageData.data[2]).toBe(200);
+    expect(imageData.data[3]).toBe(255);
+  });
+
+  it('parses a 3D YXT layout (Bhar dataset frame stacks) — T frames with slider visible', () => {
+    // 4x4 grayscale frames, 6 time steps. The frame stepper renders
+    // because nFrames > 1.
+    const yxtParams: ImageStackParameters = {
+      dimension_size: [4, 4, 6],
+      dimension_order: 'YXT',
+      data_type: 'uint8',
+      data_limits: [0, 255],
+    };
+    const buf = new ArrayBuffer(4 * 4 * 6);
+    render(<ImageStackCanvasViewer buffer={buf} params={yxtParams} />);
+
+    // Slider exposes T-1 as max (zero-indexed frames).
+    const slider = screen.getByRole('slider') as HTMLInputElement;
+    expect(slider).toBeInTheDocument();
+    expect(slider.max).toBe('5');
+    // Frame counter copy uses the 1-based "1 / 6" form.
+    expect(screen.getByText(/1 \/ 6/)).toBeInTheDocument();
+    // Channel label collapses to grayscale because YXT has no C axis.
+    expect(screen.getByText(/grayscale/i)).toBeInTheDocument();
+  });
+
+  it('renders the canvas without crashing when params dont parse (length mismatch)', () => {
+    // dimension_size length != dimension_order length — `parseDimensions`
+    // returns null. The component should mount the canvas (so the info
+    // bar still shows) but not call putImageData.
+    const malformedParams: ImageStackParameters = {
+      dimension_size: [10, 20], // 2 numbers
+      dimension_order: 'YXCZT', // 5 letters
+      data_type: 'uint8',
+      data_limits: [0, 255],
+    };
+    const buf = new ArrayBuffer(0);
+    render(<ImageStackCanvasViewer buffer={buf} params={malformedParams} />);
+    expect(screen.getByTestId('imagestack-canvas')).toBeInTheDocument();
+    // No paint when params don't parse — we don't want to render a
+    // misleading frame.
+    expect(canvasMock.putImageData).not.toHaveBeenCalled();
   });
 });

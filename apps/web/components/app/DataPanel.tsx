@@ -18,10 +18,15 @@ import {
   useVideoUrl,
 } from '@/lib/api/binary';
 import { useDocument } from '@/lib/api/documents';
+import {
+  isRawBytesFormat,
+  isVideoFormat,
+} from '@/lib/imageStack/format';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
 
 import { ImageStackCanvasViewer, ImageViewer } from './ImageViewer';
+import { ImageStackVideoViewer } from './ImageStackVideoViewer';
 import { VideoPlayer } from './VideoPlayer';
 
 // CQ5: Dynamic imports for the uPlot-backed chart components. uPlot is
@@ -75,60 +80,85 @@ export function DataPanel({ datasetId, documentId }: DataPanelProps) {
   const isVideo = kind === 'video';
   const isFitcurve = kind === 'fitcurve';
 
-  // Doc-level fetch — needed to detect class `imageStack` and grab the
-  // ndiId for the partner-doc lookup. Only enabled on the image branch
-  // (the document-detail page already fetches the same doc, so this is
-  // a TanStack-Query cache hit in the common path; the `enabled` here
-  // keeps it from firing on non-image branches where we don't need it).
+  // Doc-level fetch — needed to detect class `imageStack`, surface
+  // inline `imageStack_parameters`, and read the `formatOntology` that
+  // routes us between video / canvas / PIL. Only enabled on the image
+  // branch (the document-detail page already fetches the same doc, so
+  // this is a TanStack-Query cache hit in the common path).
   const docDetail = useDocument(
     isImage ? datasetId : undefined,
     isImage ? documentId : undefined,
   );
   const isImageStack = isImage && docDetail.data?.className === 'imageStack';
-  const imageStackNdiId = isImageStack ? docDetail.data?.ndiId : undefined;
 
-  // Sidecar parameters lookup. `useImageStackParameters` returns null
-  // params when no partner doc resolves — DataPanel falls back to the
-  // PIL `/data/image` path in that case so non-imageStack image-class
-  // docs (and any imageStack lacking a sidecar) still work.
+  // Resolve `imageStack_parameters`. The hook is inline-first: it
+  // pulls the parameters block off the doc itself (the production
+  // pathway — see binary.ts) and only falls back to a partner-class
+  // query when the inline block is absent. We pass the full doc so
+  // the inline path is reachable; pre-fix this took only `ndiId` and
+  // never resolved on production data.
   const stackParams = useImageStackParameters(
     datasetId,
-    imageStackNdiId,
+    isImageStack ? docDetail.data : undefined,
     isImageStack,
   );
-  // Only canvas-decode when we have uint8 data + valid params. uint16 /
-  // float32 / logical fall through to the PIL path (and from there
-  // typically to "preview not supported"). Window/level sliders for
-  // those formats are a separate v2 PR.
-  const canCanvasDecode =
-    isImageStack && stackParams.params?.data_type === 'uint8';
+
+  // `formatOntology` lives under `data.imageStack` on the doc itself.
+  // We use it to route between the video viewer (MP4 container), the
+  // PIL pipeline (PNG / TIFF / similar), and the canvas decode (raw
+  // byte stack). See `lib/imageStack/format.ts` for the allowlist.
+  const docData = docDetail.data?.data as
+    | { imageStack?: { formatOntology?: string } }
+    | undefined;
+  const formatOntology = docData?.imageStack?.formatOntology;
+
+  // Three render modes for an imageStack doc:
+  //   - 'video'  → ImageStackVideoViewer against /data/raw (Bhar MP4)
+  //   - 'canvas' → ImageStackCanvasViewer against /data/raw (raw bytes)
+  //   - 'pil'    → existing /data/image PIL pipeline (PNG, TIFF, etc.)
+  //
+  // Default is 'pil' when the format ontology isn't recognized — that
+  // preserves existing behavior for the long tail of unobserved values
+  // (Haley dataset's PNGs land here).
+  const isVideo_ImageStack = isImageStack && isVideoFormat(formatOntology);
+  const isRawBytes_ImageStack =
+    isImageStack &&
+    isRawBytesFormat(formatOntology) &&
+    stackParams.params?.data_type === 'uint8';
 
   // Raw bytes for the canvas decode. Cache key is distinct from the
   // PIL path's so the two endpoints don't fight over a key.
-  const raw = useRawImageData(datasetId, documentId, canCanvasDecode);
+  const raw = useRawImageData(datasetId, documentId, isRawBytes_ImageStack);
 
   const ts = useTimeseries(datasetId, documentId, isTimeseries);
   // PIL `/data/image` is enabled only when we know we're not going
-  // through the canvas path. The dependent gate:
+  // through the video / canvas paths. The dependent gate:
   //
   //   - If kind isn't image → never fire PIL.
   //   - If kind is image but the doc-class lookup is still in flight →
   //     wait. Otherwise we'd fire PIL on every imageStack while the
-  //     partner-doc lookup is racing (a wasted round-trip that
-  //     surfaces as `BINARY_DECODE_FAILED` for the cases this PR is
-  //     meant to fix).
-  //   - If image AND not imageStack → fire PIL (no canvas to wait on).
-  //   - If imageStack AND uint8 partner found → never fire PIL
-  //     (canvas path took over).
-  //   - If imageStack AND partner not found / not uint8 → fire PIL
-  //     (canvas path can't help; PIL might still succeed for
-  //     non-uint8 stacks the backend has special-cased).
-  //   - If imageStack AND partner lookup still in flight → wait.
+  //     format ontology + parameters are racing.
+  //   - If image AND not imageStack → fire PIL (no special routing).
+  //   - If imageStack AND format ontology is video → never fire PIL
+  //     (the `<video>` viewer streams /data/raw directly).
+  //   - If imageStack AND format ontology is raw bytes (and uint8) →
+  //     never fire PIL (canvas decode handles it).
+  //   - If imageStack AND format is anything else → fire PIL. This
+  //     includes Haley-style PNG / TIFF and unknown ontologies — PIL
+  //     handles known image formats; unknown gets the friendly
+  //     "preview not supported" fallback via BINARY_DECODE_FAILED.
+  //   - If imageStack AND parameter lookup still in flight → wait,
+  //     because `isRawBytes_ImageStack` depends on `data_type` which
+  //     comes from the params.
   const docResolved = !!docDetail.data || docDetail.isError;
-  const partnerLookupSettled =
+  const paramsSettled =
     !isImageStack || stackParams.params !== null || !stackParams.isLoading;
   const enableImg =
-    isImage && !canCanvasDecode && docResolved && partnerLookupSettled;
+    isImage &&
+    !isVideo_ImageStack &&
+    !isRawBytes_ImageStack &&
+    docResolved &&
+    paramsSettled;
   const img = useImageData(datasetId, documentId, enableImg);
   const vid = useVideoUrl(datasetId, documentId, isVideo);
   const fit = useFitcurve(datasetId, documentId, isFitcurve);
@@ -175,12 +205,23 @@ export function DataPanel({ datasetId, documentId }: DataPanelProps) {
             <TimeseriesChart data={tsData} />
           ) : null)}
         {isImage && (
-          canCanvasDecode ? (
+          isVideo_ImageStack ? (
+            // Video container path (Bhar MP4 imageStacks). Native
+            // `<video>` element streams /data/raw; the companion
+            // backend PR adds Range support + Content-Type sniffing.
+            // No params / raw-bytes wait — the `<video>` element does
+            // its own loading.
+            <ImageStackVideoViewer
+              datasetId={datasetId}
+              documentId={documentId}
+            />
+          ) : isRawBytes_ImageStack ? (
             // Canvas-decode path for raw uint8 imageStacks. Sidesteps
             // PIL on the backend (`/data/image` returns
             // BINARY_DECODE_FAILED on these); paints frames from the
             // octet-stream `/data/raw` bytes onto a `<canvas>` using
-            // the layout from the partner `imageStack_parameters` doc.
+            // the layout from `imageStack_parameters`. Empty
+            // allowlist by default — see lib/imageStack/format.ts.
             raw.isLoading || stackParams.isLoading ? (
               <Skeleton className="h-64 w-full" />
             ) : raw.isError ? (
@@ -192,9 +233,9 @@ export function DataPanel({ datasetId, documentId }: DataPanelProps) {
               />
             ) : null
           ) : !enableImg ? (
-            // Doc / partner lookups still in flight — show a skeleton
-            // instead of letting the panel collapse to nothing while
-            // we figure out which decode path to take.
+            // Doc / parameter lookups still in flight — show a
+            // skeleton instead of letting the panel collapse to
+            // nothing while we figure out which decode path to take.
             <Skeleton className="h-64 w-full" />
           ) : img.isLoading ? (
             <Skeleton className="h-64 w-full" />
