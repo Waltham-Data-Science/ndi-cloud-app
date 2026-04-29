@@ -92,17 +92,20 @@ export function QuickPlot({ datasetId, className, table }: QuickPlotProps) {
     [table, numericCols, categoricalCols],
   );
 
-  // First expand seeds the controls from the primary suggestion so the
-  // user sees a real plot, not blank dropdowns. Subsequent column
+  // First expand seeds the controls from the primary suggestion so
+  // the user sees a real plot, not blank dropdowns. Subsequent column
   // changes don't re-seed — once the user has touched the controls
-  // they own them.
-  useEffect(() => {
-    if (!open || seeded || !suggestions.primary) return;
-    setYField(suggestions.primary.yField);
-    setXField(suggestions.primary.xField);
-    setPlotTypeOverride(null);
-    setSeeded(true);
-  }, [open, seeded, suggestions]);
+  // they own them. Seeding fires from the open-click handler rather
+  // than an effect to avoid the cascading-render lint rule.
+  const handleOpenToggle = () => {
+    if (!open && !seeded && suggestions.primary) {
+      setYField(suggestions.primary.yField);
+      setXField(suggestions.primary.xField);
+      setPlotTypeOverride(null);
+      setSeeded(true);
+    }
+    setOpen(!open);
+  };
 
   const inferred = useMemo(
     () =>
@@ -268,7 +271,7 @@ export function QuickPlot({ datasetId, className, table }: QuickPlotProps) {
       <CardHeader className="py-3">
         <button
           type="button"
-          onClick={() => setOpen(!open)}
+          onClick={handleOpenToggle}
           className="w-full flex items-center justify-between gap-2"
           aria-expanded={open}
         >
