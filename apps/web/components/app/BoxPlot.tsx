@@ -163,6 +163,21 @@ export function BoxPlot({
                   stroke={color}
                   strokeWidth={2}
                 />
+                {/* Jittered raw points — drawn to the right of the box so
+                    they don't visually merge with the box outline. Cap-free
+                    (opacity-attenuated for large N) per the redesign spec. */}
+                <g data-testid="box-points">
+                  {group.values.map((v, j) => (
+                    <circle
+                      key={j}
+                      cx={halfW + 4 + _hashJitter(group.name, j, halfW * 0.4)}
+                      cy={yScale(v)}
+                      r={1.5}
+                      fill={color}
+                      fillOpacity={group.values.length > 100 ? 0.25 : 0.5}
+                    />
+                  ))}
+                </g>
                 <text y={innerH + 16} textAnchor="middle" fill="currentColor" fillOpacity={0.7}>
                   {group.name.length > 12 ? group.name.slice(0, 12) + '…' : group.name}
                 </text>
@@ -192,4 +207,17 @@ export function BoxPlot({
       </svg>
     </div>
   );
+}
+
+/** Deterministic hash-based jitter scaled to ±maxAbs px. Stable across
+ *  re-renders so the points don't reshuffle when the user changes
+ *  unrelated controls. Mirrors the helper in `ViolinPlot.tsx`. */
+function _hashJitter(key: string, i: number, maxAbs: number): number {
+  const s = `${key}_${i}`;
+  let h = 0;
+  for (let c = 0; c < s.length; c++) {
+    h = (h * 31 + s.charCodeAt(c)) | 0;
+  }
+  const norm = ((h % 2000) + 2000) % 2000;
+  return (norm / 1000 - 1) * maxAbs;
 }
