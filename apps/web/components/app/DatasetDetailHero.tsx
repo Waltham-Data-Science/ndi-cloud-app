@@ -181,19 +181,25 @@ export function DatasetDetailHero({ datasetId }: { datasetId: string }) {
                 + a top border in white/10. Only fact-keys with a value
                 render — no empty placeholders.
 
-                Audit 2026-04-27 #18 (design call) — pre-fix, datasets
-                with few populated facts (e.g. Reikersdorfer: just
-                Documents + Size) sat awkwardly aligned-left while
-                wider datasets spanned the full row. The layout looked
-                ragged across the catalog. Picked the lighter of the
-                audit's two options: count the rendered facts and
-                center-justify when there are fewer than 4 (so the
-                row visually balances) and keep the natural
-                `justify-start` for ≥4 facts (which already span
-                enough width to look intentional). The alternative —
-                a fixed 6-cell grid with hide-on-empty — would
-                introduce hard layout for a strip that's purely
-                informational and varies by dataset. */}
+                Team review 2026-04-28 — datasets like Griswold and
+                Bhar (3 facts: Documents / Size / License — no
+                `numberOfSubjects` populated on the cloud record) were
+                shipping with `justify-center` from a prior audit
+                (#18). Because the `<dl>` itself is `max-w-3xl` and
+                left-aligned with the h1, centering the items WITHIN
+                that 768px box made the row appear "indented and
+                floating" — items started ~250px right of the title
+                rather than at the title's left edge. Fix: always
+                left-justify so the strip lines up with the h1
+                regardless of fact count. Looks consistent across the
+                catalog (verified Griswold/Bhar @ 3 facts and
+                Francesconi @ 4 facts on production).
+                The earlier #18 concern (Reikersdorfer's 2-fact row
+                "sitting awkwardly aligned-left") is addressed by
+                the natural left-alignment matching the rest of the
+                hero copy — the row reads as part of the same
+                content column rather than as a centered strip
+                grafted on. */}
             {(() => {
               const facts: ReactNode[] = [];
               // 2026-04-28 — Species + Region dropped from the hero
@@ -254,20 +260,17 @@ export function DatasetDetailHero({ datasetId }: { datasetId: string }) {
                 );
               }
               if (facts.length === 0) return null;
-              // Center-justify when sparse so the row doesn't sit
-              // awkwardly aligned-left next to the wide hero. With
-              // ≥4 facts, the row spans enough width to look
-              // intentional with the natural left-justify. The
-              // visual breakpoint matches what the audit observer
-              // saw: Reikersdorfer (2 facts) felt asymmetric;
-              // Sophie Griswold (5 facts) didn't.
-              const justify =
-                facts.length < 4 ? 'justify-center' : 'justify-start';
+              // Always left-justify. The `<dl>` is left-aligned with
+              // the h1; the items sit at the same start-edge as the
+              // hero title regardless of fact count. The previous
+              // count-based justify swap (justify-center for <4)
+              // caused the Griswold-style 3-fact rows to render
+              // visually indented inside the 768px-wide dl box.
               return (
                 <dl
                   className={
                     `flex flex-wrap gap-x-8 gap-y-3 mt-5 pt-4 border-t border-white/10 ` +
-                    `text-[11.5px] max-w-3xl ${justify}`
+                    `text-[11.5px] max-w-3xl justify-start`
                   }
                   data-fact-count={facts.length}
                 >
