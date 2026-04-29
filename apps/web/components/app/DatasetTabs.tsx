@@ -45,7 +45,7 @@ import {
 } from 'lucide-react';
 
 import { cn } from '@/lib/cn';
-import { hasTutorial } from '@/lib/data/tutorials';
+import { useTutorialAvailability } from '@/lib/data/tutorials';
 
 interface TabSpec {
   id: 'overview' | 'tables' | 'documents' | 'tutorials';
@@ -63,13 +63,6 @@ interface TabSpec {
    * intentionally non-overlapping.
    */
   isActive: (pathname: string, datasetId: string) => boolean;
-  /**
-   * Optional gate: if present, the tab only renders when the predicate
-   * returns true for the active dataset id. Used by the Tutorials tab,
-   * which only ships on the two datasets with published tutorial HTMLs
-   * (see `DATASETS_WITH_TUTORIALS` in `lib/data/tutorials.ts`).
-   */
-  isAvailable?: (datasetId: string) => boolean;
 }
 
 const TABS: readonly TabSpec[] = [
@@ -103,25 +96,35 @@ const TABS: readonly TabSpec[] = [
     },
   },
   {
-    // 2026-04-28 — Tutorials tab (team review feedback). Only renders
-    // for datasets in the published-tutorials allowlist. The tab's
-    // `isAvailable` predicate hides it on every other dataset; the
-    // page route at `/datasets/[id]/tutorials/page.tsx` shows a soft
-    // empty state for direct navigations on non-allowlisted datasets.
-    // See `lib/data/tutorials.ts` for the allowlist; see
-    // `components/app/TutorialView.tsx` for the iframe render.
+    // 2026-04-28 — Tutorials tab. Initial PR #130 gated visibility on
+    // a hardcoded set of two dataset ids; this PR replaces that with
+    // a HEAD probe against the tutorials S3 bucket so any dataset the
+    // data team uploads to `ndi-cloud-tutorials.s3.us-east-2.amazonaws.com`
+    // lights up automatically. The probe runs in
+    // `useTutorialAvailability` (see `lib/data/tutorials.ts`) and the
+    // gate fires below in the render path — `isAvailable` is gone
+    // because the predicate is async now and lives inside the
+    // component body. See `components/app/TutorialView.tsx` for the
+    // iframe render and the post-resolve language-pill behavior.
     id: 'tutorials',
     label: 'Tutorial',
     icon: BookOpen,
     href: (id) => `/datasets/${id}/tutorials`,
     isActive: (path, id) => path.startsWith(`/datasets/${id}/tutorials`),
-    isAvailable: (id) => hasTutorial(id),
   },
 ];
 
 export function DatasetTabs({ datasetId }: { datasetId: string }) {
   const pathname = usePathname() ?? '';
   const tablistRef = useRef<HTMLDivElement>(null);
+  // Async tutorial availability — when the probe hasn't resolved yet
+  // or returned `hasAny: false`, the Tutorials tab is hidden. No
+  // skeleton/placeholder by design: a flickering tab that vanishes
+  // when the probe 404s reads worse than a tab that simply appears
+  // once we know it's real. Probe is cached for 5 minutes per dataset
+  // id (see `useTutorialAvailability`).
+  const { data: tutorialAvailability } = useTutorialAvailability(datasetId);
+  const showTutorialTab = tutorialAvailability?.hasAny ?? false;
 
   const onKeyDown = (e: KeyboardEvent<HTMLDivElement>) => {
     if (!tablistRef.current) return;
@@ -154,9 +157,12 @@ export function DatasetTabs({ datasetId }: { datasetId: string }) {
         onKeyDown={onKeyDown}
         className="mx-auto flex max-w-[1200px] items-center gap-1 px-7"
       >
-        {TABS.filter((tab) =>
-          tab.isAvailable ? tab.isAvailable(datasetId) : true,
-        ).map((tab) => {
+        {TABS.filter((tab) => {
+          // Tutorials tab is the only tab with conditional visibility.
+          // Every other tab always renders.
+          if (tab.id === 'tutorials') return showTutorialTab;
+          return true;
+        }).map((tab) => {
           const active = tab.isActive(pathname, datasetId);
           const Icon = tab.icon;
           return (

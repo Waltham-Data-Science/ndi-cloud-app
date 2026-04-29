@@ -174,6 +174,15 @@ function getAllowedOrigins(): Set<string> {
 }
 
 const RAILWAY_API = 'https://ndb-v2-production.up.railway.app';
+/**
+ * Public S3 bucket holding pre-rendered tutorial HTMLs and source
+ * files. Allowlisted in `frame-src` (iframe load) and `connect-src`
+ * (HEAD probe from `useTutorialAvailability`). Keeping the literal in
+ * one constant means a future bucket rename / region change is a
+ * single-edit in `proxy.ts` plus the `TUTORIAL_BUCKET` constant in
+ * `lib/data/tutorials.ts`.
+ */
+const TUTORIALS_S3_BUCKET = 'https://ndi-cloud-tutorials.s3.us-east-2.amazonaws.com';
 
 /**
  * Route slug aliases. Two motivations:
@@ -287,7 +296,14 @@ const CSP_POLICY = [
   "script-src 'self' https://www.googletagmanager.com https://www.google-analytics.com",
   "style-src 'self' 'unsafe-inline'",
   "img-src 'self' data: https://*.ndi-cloud.com",
-  `connect-src 'self' ${RAILWAY_API} https://www.google-analytics.com https://vitals.vercel-insights.com`,
+  // 2026-04-28 — Tutorials S3 bucket added to `connect-src` for the
+  // `useTutorialAvailability` HEAD probe (see `lib/data/tutorials.ts`).
+  // The hook runs `fetch(..., { method: 'HEAD', mode: 'cors' })` from
+  // the browser to discover whether a given dataset ships a tutorial;
+  // without this allowance, every dataset detail page emits a CSP
+  // violation report (Report-Only mode) and post-cutover the probe
+  // fails outright (enforced mode). Same bucket as `frame-src` below.
+  `connect-src 'self' ${RAILWAY_API} https://www.google-analytics.com https://vitals.vercel-insights.com ${TUTORIALS_S3_BUCKET}`,
   "font-src 'self' data:",
   "frame-ancestors 'none'",
   // 2026-04-28 — `frame-src` added for the dataset tutorials S3 bucket.
@@ -298,7 +314,7 @@ const CSP_POLICY = [
   // enforced — at that point a missing `frame-src` falls back to
   // `default-src 'self'`, and the iframe blocks. Allowlist the bucket
   // explicitly so the cutover doesn't break the Tutorials tab.
-  "frame-src 'self' https://ndi-cloud-tutorials.s3.us-east-2.amazonaws.com",
+  `frame-src 'self' ${TUTORIALS_S3_BUCKET}`,
   "base-uri 'self'",
   "form-action 'self'",
 ].join('; ');

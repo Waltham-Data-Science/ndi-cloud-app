@@ -1,28 +1,33 @@
 import type { Metadata } from 'next';
 
 import { TutorialView } from '@/components/app/TutorialView';
-import { hasTutorial } from '@/lib/data/tutorials';
-import { Card, CardBody } from '@/components/ui/Card';
 
 /**
  * Dataset detail Tutorials tab — `/datasets/[id]/tutorials`.
  *
- * Renders the iframe-rendered MATLAB / Python tutorial for the two
- * datasets that ship one (see `DATASETS_WITH_TUTORIALS` in
- * `lib/data/tutorials.ts`). The Tutorials tab in `DatasetTabs.tsx`
- * only appears for those datasets, so most users hitting this page
- * arrive via that tab and see the full TutorialView.
+ * Renders the iframe-rendered MATLAB / Python tutorial. Per-dataset
+ * gating is handled inside `<TutorialView>` via the
+ * `useTutorialAvailability` HEAD-probe hook (see
+ * `lib/data/tutorials.ts`):
  *
- * Direct navigations to `/datasets/[other-id]/tutorials` (typed URL,
- * external link, etc.) hit the soft empty state below — friendlier
- * than a 404 since the URL is technically valid for the dataset, just
- * unpopulated.
+ *   - If the bucket holds a `tutorial_<id>.mlx` and/or
+ *     `tutorial_<id>.ipynb` for this dataset, render the iframe with
+ *     a language toggle.
+ *   - If neither file exists, render a soft empty state. Most users
+ *     never hit this branch because `DatasetTabs` hides the Tutorials
+ *     tab when the same probe returns `hasAny: false`. Direct typed-
+ *     URL navigations to `/datasets/[other-id]/tutorials` land here.
  *
  * Static-shell route (no fetch, no prefetch) — the iframe content is
- * served from S3 by `<TutorialView>` itself, and the per-dataset gating
- * is a synchronous lookup against the allowlist. No `revalidate` needed
+ * served from S3 by `<TutorialView>` itself, and the per-dataset
+ * gating is async and runs on the client. No `revalidate` needed
  * because there's nothing to revalidate; the page is functionally a
  * client-side router for the tutorial iframe.
+ *
+ * History note: PR #130 had this page do a synchronous allowlist
+ * check and render its own `<NoTutorialState>`. The HEAD-probe
+ * version is async-only, so the empty state moved into the client
+ * component to keep the gating in one place.
  */
 
 interface PageProps {
@@ -39,37 +44,5 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
 
 export default async function DatasetTutorialsPage({ params }: PageProps) {
   const { id } = await params;
-  if (!hasTutorial(id)) {
-    return <NoTutorialState datasetId={id} />;
-  }
   return <TutorialView datasetId={id} />;
-}
-
-/**
- * Soft empty state for direct navigations to tutorials URLs on
- * datasets without tutorials. Not a 404 — the user is on a valid
- * dataset, the tutorial just hasn't been authored. Points them at
- * the other tabs that DO have content.
- */
-function NoTutorialState({ datasetId }: { datasetId: string }) {
-  return (
-    <Card>
-      <CardBody>
-        <h2 className="text-base font-bold text-fg-primary mb-2 m-0">
-          No tutorial for this dataset
-        </h2>
-        <p className="text-sm text-fg-secondary mb-3 m-0">
-          Tutorials are authored per-dataset. Two datasets currently have
-          published walkthroughs; this one isn&rsquo;t one of them.
-        </p>
-        <p className="text-xs text-fg-muted m-0">
-          Try the Overview tab for a synthesized summary, or the Document
-          Explorer to browse the dataset&rsquo;s structured records.
-        </p>
-        <p className="text-[10.5px] text-fg-muted/70 mt-4 font-mono m-0">
-          dataset id: {datasetId}
-        </p>
-      </CardBody>
-    </Card>
-  );
 }
