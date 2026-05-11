@@ -191,7 +191,7 @@ export function QueryBuilder({
     // matching the data-browser's QueryBuilder. searchParams object
     // identity changes on every navigation; we only want this to fire
     // on the very first mount (chip-click landing).
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- mount-only, see comment above
   }, []);
   /* eslint-enable react-hooks/set-state-in-effect */
 
