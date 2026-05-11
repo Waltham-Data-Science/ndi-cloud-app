@@ -3,6 +3,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 import { MarketingButton } from '@/components/marketing/Button';
+import { SITE_LOGO_URL, SITE_ORIGIN } from '@/lib/site-config';
 
 /**
  * /about — team + partnerships.
@@ -26,14 +27,14 @@ export const metadata: Metadata = {
   title: 'About',
   description:
     'NDI Cloud is built by Waltham Data Science, commercializing the open Neuroscience Data Interface developed at the Van Hooser Lab at Brandeis.',
-  alternates: { canonical: 'https://ndi-cloud.com/about' },
+  alternates: { canonical: `${SITE_ORIGIN}/about` },
   openGraph: {
     type: 'website',
-    url: 'https://ndi-cloud.com/about',
+    url: `${SITE_ORIGIN}/about`,
     title: 'About NDI Cloud',
     description:
       'Commercializing the open Neuroscience Data Interface. Meet the team and see our partnerships.',
-    images: ['https://ndi-cloud.com/logos/ndicloud-wordmark-color.svg'],
+    images: [SITE_LOGO_URL],
     siteName: 'NDI Cloud',
   },
 };

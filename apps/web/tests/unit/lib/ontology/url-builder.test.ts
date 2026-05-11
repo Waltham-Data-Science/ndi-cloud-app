@@ -65,10 +65,42 @@ describe('ontologyUrl', () => {
     );
   });
 
+  // CL (Cell Ontology) and PubChem were added 2026-04-29 during the
+  // post-cutover resolver-consolidation sweep. Both were previously
+  // covered by a duplicate local helper in DatasetSummaryCard; folded
+  // into the canonical so coverage doesn't regress when that helper
+  // was deleted.
+  it('maps CL to EBI OLS4 (Cell Ontology)', () => {
+    expect(ontologyUrl('CL:0000540')).toBe(
+      'https://www.ebi.ac.uk/ols4/ontologies/cl/classes?obo_id=CL%3A0000540',
+    );
+  });
+
+  it('maps PubChem to the NCBI compound page', () => {
+    expect(ontologyUrl('PubChem:5280343')).toBe(
+      'https://pubchem.ncbi.nlm.nih.gov/compound/5280343',
+    );
+  });
+
   it('returns null for unknown prefixes (NDI-internal EMPTY: not externally resolvable)', () => {
     expect(ontologyUrl('EMPTY:0000001')).toBeNull();
-    expect(ontologyUrl('CL:0000540')).toBeNull(); // CL not in the mapping yet
     expect(ontologyUrl('UNKNOWN:12345')).toBeNull();
+  });
+
+  // Cloud-emitted casing is mostly canonical (`WBStrain`, `NCBITaxon`),
+  // but legacy records ship uppercased (`WBSTRAIN`) or lowercased
+  // prefixes. Case-insensitive matching prevents a resolver link from
+  // being dropped over a casing inconsistency.
+  it('matches the prefix case-insensitively (legacy / lowercased input)', () => {
+    expect(ontologyUrl('wbstrain:00000001')).toBe(
+      'https://wormbase.org/species/c_elegans/strain/WBStrain00000001',
+    );
+    expect(ontologyUrl('NCBITAXON:6239')).toBe(
+      'https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=6239',
+    );
+    expect(ontologyUrl('uberon:0002436')).toBe(
+      'https://www.ebi.ac.uk/ols4/ontologies/uberon/classes?obo_id=UBERON%3A0002436',
+    );
   });
 
   it('returns null for malformed input', () => {

@@ -48,11 +48,10 @@ import type {
   Contributor,
   DatasetRecord,
 } from '@/lib/api/datasets';
+import { toDoiUrl } from '@/lib/doi-url';
 import { cleanDatasetName } from '@/lib/format';
 import { normalizeLicense } from '@/lib/license-normalize';
-
-/** Site origin used for absolute URLs in the JSON-LD output. */
-const SITE_ORIGIN = 'https://ndi-cloud.com';
+import { SITE_ORIGIN } from '@/lib/site-config';
 
 /**
  * Map normalized SPDX license identifiers → canonical license URLs that
@@ -79,28 +78,25 @@ function licenseUrl(spdx: string | null): string | null {
 }
 
 /**
- * Normalize a DOI string to an absolute https URL. Accepts:
- *   - `10.63884/ndic.2025.jyxfer8m` (bare DOI) → `https://doi.org/...`
- *   - `https://doi.org/10.63884/...` (full URL) → unchanged
- *   - `doi.org/10.63884/...` (no scheme) → `https://...`
+ * Strict variant of the canonical `toDoiUrl` for JSON-LD use. The
+ * canonical helper (in `lib/doi-url.ts`) is intentionally permissive
+ * — it returns the trimmed input as-is for unrecognized shapes so
+ * downstream `safeHref` can decide. JSON-LD has no `safeHref` hop, so
+ * we need to emit ONLY absolute `https://` URLs (otherwise Google's
+ * structured-data validator rejects the document).
  *
- * Returns `null` for empty / clearly malformed inputs (no `10.` prefix
- * either bare or in the URL path).
+ * This wrapper calls the canonical helper, then validates the result
+ * is an absolute https URL — anything else returns `undefined` so the
+ * caller short-circuits and omits the field from the JSON-LD entirely.
+ *
+ * Replaces a previously-duplicated local helper that re-implemented
+ * the same logic with a different `null` return type (post-cutover
+ * cleanup sweep 2026-04-29 — see `lib/doi-url.ts` for the canonical).
  */
-function toDoiUrl(raw: string | null | undefined): string | null {
-  if (!raw) return null;
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  if (trimmed.startsWith('https://') || trimmed.startsWith('http://')) {
-    return trimmed.replace(/^http:\/\//, 'https://');
-  }
-  if (trimmed.startsWith('doi.org/')) {
-    return `https://${trimmed}`;
-  }
-  if (trimmed.startsWith('10.')) {
-    return `https://doi.org/${trimmed}`;
-  }
-  return null;
+function toJsonLdDoiUrl(raw: string | null | undefined): string | undefined {
+  const candidate = toDoiUrl(raw ?? undefined);
+  if (!candidate) return undefined;
+  return candidate.startsWith('https://') ? candidate : undefined;
 }
 
 /**
@@ -143,7 +139,7 @@ function scholarlyArticleFromPublication(
   p: AssociatedPublication,
 ): Record<string, unknown> | null {
   const title = p.title?.trim();
-  const doiUrl = toDoiUrl(p.DOI);
+  const doiUrl = toJsonLdDoiUrl(p.DOI);
   const pmid = p.PMID?.trim();
   const pmcid = p.PMCID?.trim();
   if (!title && !doiUrl && !pmid) return null;
@@ -223,7 +219,7 @@ export function datasetJsonLd(
   const canonicalUrl = `${SITE_ORIGIN}/datasets/${datasetId}/overview`;
   const name = cleanDatasetName(dataset.name);
   const description = dataset.abstract?.trim() || dataset.description?.trim();
-  const doiUrl = toDoiUrl(dataset.doi);
+  const doiUrl = toJsonLdDoiUrl(dataset.doi);
   const license = licenseUrl(normalizeLicense(dataset.license));
   const keywords = keywordsFromRecord(dataset);
   const creators = (dataset.contributors ?? [])

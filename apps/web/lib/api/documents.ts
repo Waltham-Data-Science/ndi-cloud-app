@@ -6,6 +6,7 @@
  */
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { apiFetch } from './client';
+import { DOCUMENTS_TIMEOUT_MS } from './timeouts';
 
 export interface DocumentSummary {
   id?: string;
@@ -30,7 +31,7 @@ export interface DocumentListResponse {
  * `lib/api/datasets.ts` for the full rationale; this hook is the
  * Document-Explorer-tab equivalent.
  */
-const DOCUMENTS_TIMEOUT_MS = 60_000;
+// DOCUMENTS_TIMEOUT_MS now lives in `./timeouts.ts` (post-cutover sweep).
 const DOCUMENTS_STALE_MS = 60_000;
 
 export function useDocuments(

@@ -46,6 +46,8 @@ import {
   type DegradedFields,
 } from '@/lib/data/summary-degradation';
 import { formatBytes, formatDate } from '@/lib/format';
+import { ontologyUrl } from '@/lib/ontology/url-builder';
+import { safeHref } from '@/lib/safe-href';
 import type {
   DatasetSummary,
   OntologyTerm,
@@ -510,8 +512,23 @@ export function OntologyTermPill({
   // table scroll container when a pill sat in an ontology table cell.
   const anchorRef = useRef<HTMLSpanElement>(null);
 
+  // Resolver URL flows through:
+  //   1. `ontologyUrl(termId)` — canonical helper in lib/ontology/url-builder.ts,
+  //      mapping `PROVIDER:ID` strings to the provider's human-readable
+  //      lookup page (WormBase, NCBI Taxonomy, EBI OLS4, etc.)
+  //   2. `safeHref(...)` — defense-in-depth scheme guard: refuses anything
+  //      that isn't http/https/mailto. Same guard the OntologyPopover
+  //      external-link icon uses, brought here during the post-cutover
+  //      resolver-consolidation sweep (was a documented gap: this pill's
+  //      `<a href>` previously bypassed safeHref).
+  // Returns `null` when noLink is set (catalog cards wrap the whole tile
+  // in a Link — nested anchors are invalid HTML), when there's no
+  // ontologyId on the term, or when neither ontologyUrl nor safeHref
+  // accepted the input.
   const resolverHref =
-    !noLink && term.ontologyId ? resolverUrl(term.ontologyId) : null;
+    !noLink && term.ontologyId
+      ? (safeHref(ontologyUrl(term.ontologyId) ?? undefined) ?? null)
+      : null;
 
   function onEnter() {
     hoveringRef.current = true;
@@ -587,42 +604,16 @@ export function OntologyTermPill({
   );
 }
 
-/**
- * Resolver URL for PROVIDER:ID style ontology references. Falls back to the
- * raw ID when we don't know a canonical resolver.
- */
-export function resolverUrl(ontologyId: string): string | null {
-  if (!ontologyId.includes(':')) return null;
-  const [provider, rest] = ontologyId.split(':', 2) as [string, string];
-  const id = rest.trim();
-  if (!provider || !id) return null;
-  const upper = provider.toUpperCase();
-  switch (upper) {
-    case 'NCBITAXON':
-    case 'UBERON':
-    case 'CL':
-    case 'CHEBI':
-    case 'PATO':
-    case 'EFO':
-      return `http://purl.obolibrary.org/obo/${upper}_${id}`;
-    case 'RRID':
-      return `https://scicrunch.org/resolver/RRID:${id}`;
-    case 'WBSTRAIN':
-      // The WormBase strain page URL needs the `WBStrain` prefix
-      // concatenated onto the numeric suffix (e.g.
-      // `WBStrain:00000001` → `.../strain/WBStrain00000001`). Round-5
-      // team review (2026-04-29): pre-fix this dropped the prefix and
-      // emitted `.../strain/00000001` which 404s on wormbase.org —
-      // matches Steve's "neither the links nor the names are resolved"
-      // complaint on the Bhar Overview's Strains pills. Aligns with
-      // `lib/ontology/url-builder.ts`'s WBStrain case for consistency.
-      return `https://wormbase.org/species/c_elegans/strain/WBStrain${id}`;
-    case 'PUBCHEM':
-      return `https://pubchem.ncbi.nlm.nih.gov/compound/${id}`;
-    default:
-      return null;
-  }
-}
+// Pre-2026-04-29 this file exported a local `resolverUrl` helper that
+// mapped `PROVIDER:ID` to the canonical resolver page. It diverged
+// from `lib/ontology/url-builder.ts:ontologyUrl()` over time — round-5
+// review caught a WBStrain prefix bug where this local version emitted
+// `wormbase.org/.../strain/00000001` (missing the `WBStrain` prefix,
+// 404'd on WormBase) while the canonical was correct. The
+// post-cutover sweep folded all callsites onto the canonical helper +
+// safeHref guard so a future divergence can't happen again. CL and
+// PubChem cases (which were unique to this local) moved into the
+// canonical at the same time so coverage doesn't regress.
 
 // ---------------------------------------------------------------------------
 // Footer — computedAt + extractionWarnings debug tooltip

@@ -56,35 +56,15 @@ import { env } from '@/lib/env';
  * production with a runtime "client/server boundary" throw.
  */
 
-/**
- * Per-prefetch hard ceiling. 8s is generous enough that warm Railway
- * responses (~0.1-0.5s typical) always make it into the dehydrated
- * state, but tight enough that a cold endpoint can't stall a single
- * fetch indefinitely. The group-level deadline below races the whole
- * batch against a tighter ceiling.
- */
-const PREFETCH_TIMEOUT_MS = 8_000;
-
-/**
- * Group-level deadline for the SECONDARY prefetches (summary,
- * provenance, class-counts). 3s is sized for cold-but-not-pathological
- * Railway responses. Whatever lands in the queryClient by deadline
- * gets dehydrated; the rest fall through to client-side fetches with
- * their own (60s, zero-retry) timeouts and a Retry button on error.
- */
-const PREFETCH_GROUP_DEADLINE_MS = 3_000;
-
-/**
- * Tight ceiling for the existence check specifically. The dataset
- * record is the FIRST thing we block on, so its latency is the lower
- * bound on time-to-loading-skeleton. 1.5s is tight enough to bail
- * fast on cold-cache visits AND generous enough to capture warm-cache
- * cases (Reikersdorfer ~300ms; Sophie's getDataset ~2.5s on cold
- * cache — beyond budget, so we time out and let the client hook
- * fetch). On timeout, the existence check returns `{ status: 0 }`
- * which the caller treats as transient (NOT as not-found).
- */
-const EXISTENCE_CHECK_TIMEOUT_MS = 1_500;
+// Timeout budgets for this module live in `./timeouts.ts`:
+//   - PREFETCH_TIMEOUT_MS — per-prefetch hard ceiling (secondary endpoints)
+//   - PREFETCH_GROUP_DEADLINE_MS — group race for the secondary batch
+//   - EXISTENCE_CHECK_TIMEOUT_MS — tight ceiling for the initial dataset gate
+import {
+  EXISTENCE_CHECK_TIMEOUT_MS,
+  PREFETCH_GROUP_DEADLINE_MS,
+  PREFETCH_TIMEOUT_MS,
+} from './timeouts';
 
 /**
  * Anonymous-public detail endpoints we prefetch on the server. Cookies

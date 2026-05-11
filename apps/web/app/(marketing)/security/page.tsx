@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 
 import { MarketingButton } from '@/components/marketing/Button';
+import { SITE_LOGO_URL, SITE_ORIGIN } from '@/lib/site-config';
 
 /**
  * /security — security & compliance page.
@@ -23,14 +24,14 @@ export const metadata: Metadata = {
   title: 'Security & Compliance',
   description:
     'NDI Cloud is HIPAA-aware by design. Per-tenant isolation, encryption at rest and in transit, audit logs without PHI. Built on AWS Cognito, MongoDB, and AWS KMS.',
-  alternates: { canonical: 'https://ndi-cloud.com/security' },
+  alternates: { canonical: `${SITE_ORIGIN}/security` },
   openGraph: {
     type: 'website',
-    url: 'https://ndi-cloud.com/security',
+    url: `${SITE_ORIGIN}/security`,
     title: 'Security & Compliance — NDI Cloud',
     description:
       'HIPAA-aware by design. Per-tenant isolation, encryption at rest and in transit, audit logs without PHI.',
-    images: ['https://ndi-cloud.com/logos/ndicloud-wordmark-color.svg'],
+    images: [SITE_LOGO_URL],
     siteName: 'NDI Cloud',
   },
 };

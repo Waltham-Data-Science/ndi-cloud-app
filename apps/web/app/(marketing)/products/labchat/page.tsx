@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 
 import { MarketingButton } from '@/components/marketing/Button';
+import { SITE_LOGO_URL, SITE_ORIGIN } from '@/lib/site-config';
 
 /**
  * /products/labchat — LabChat product page.
@@ -16,14 +17,14 @@ export const metadata: Metadata = {
   title: 'LabChat — Private AI for your lab',
   description:
     "LabChat is a retrieval-augmented AI deployed per lab, trained on your papers, protocols, and NDI Cloud datasets. Cited answers grounded in real research — never the open web.",
-  alternates: { canonical: 'https://ndi-cloud.com/products/labchat' },
+  alternates: { canonical: `${SITE_ORIGIN}/products/labchat` },
   openGraph: {
     type: 'website',
-    url: 'https://ndi-cloud.com/products/labchat',
+    url: `${SITE_ORIGIN}/products/labchat`,
     title: 'LabChat — NDI Cloud',
     description:
       "Retrieval-augmented AI trained on your lab's papers, protocols, and NDI Cloud datasets. Cited answers, never the open web.",
-    images: ['https://ndi-cloud.com/logos/ndicloud-wordmark-color.svg'],
+    images: [SITE_LOGO_URL],
     siteName: 'NDI Cloud',
   },
 };

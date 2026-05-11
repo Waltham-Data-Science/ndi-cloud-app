@@ -27,6 +27,10 @@
  * it carry their own `'use client'` directive.
  */
 import { ApiError } from './errors';
+import {
+  DEFAULT_MUTATION_TIMEOUT_MS,
+  DEFAULT_READ_TIMEOUT_MS,
+} from './timeouts';
 
 export { ApiError };
 export type { ApiErrorBody, ErrorCode, Recovery } from './errors';
@@ -49,8 +53,9 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  * surfaces a typed timeout error for the cold-start case (instead of
  * the previous "skeleton forever" UX).
  */
-const DEFAULT_READ_TIMEOUT_MS = 15_000;
-const DEFAULT_MUTATION_TIMEOUT_MS = 30_000;
+// Per-method defaults now live in `./timeouts.ts` (post-cutover sweep).
+// See the named constants there: `DEFAULT_READ_TIMEOUT_MS` and
+// `DEFAULT_MUTATION_TIMEOUT_MS`.
 
 function readCookie(name: string): string | null {
   if (typeof document === 'undefined') return null;

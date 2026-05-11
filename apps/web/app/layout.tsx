@@ -5,6 +5,7 @@ import { Analytics } from '@vercel/analytics/next';
 import { SpeedInsights } from '@vercel/speed-insights/next';
 
 import { Providers } from './providers';
+import { SITE_ORIGIN } from '@/lib/site-config';
 import './globals.css';
 
 /**
@@ -12,7 +13,7 @@ import './globals.css';
  * generateMetadata exports; this is the site-wide default + template.
  */
 export const metadata: Metadata = {
-  metadataBase: new URL('https://ndi-cloud.com'),
+  metadataBase: new URL(SITE_ORIGIN),
   title: {
     default: 'NDI Cloud',
     template: '%s · NDI Cloud',

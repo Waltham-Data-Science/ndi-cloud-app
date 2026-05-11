@@ -1,6 +1,7 @@
 import type { Metadata } from 'next';
 
 import { MarketingButton } from '@/components/marketing/Button';
+import { SITE_LOGO_URL, SITE_ORIGIN } from '@/lib/site-config';
 import { commonsSearchUrl } from '@/lib/urls';
 
 /**
@@ -32,14 +33,14 @@ export const metadata: Metadata = {
   title: 'How NDI works',
   description:
     'How NDI Cloud is built: the data model, the storage, the apps, and the open standards behind them.',
-  alternates: { canonical: 'https://ndi-cloud.com/platform' },
+  alternates: { canonical: `${SITE_ORIGIN}/platform` },
   openGraph: {
     type: 'website',
-    url: 'https://ndi-cloud.com/platform',
+    url: `${SITE_ORIGIN}/platform`,
     title: 'How NDI works — NDI Cloud',
     description:
       'Three ways of looking at the same machine: the data graph, the replacement for lab filesystems, and the four-layer architecture.',
-    images: ['https://ndi-cloud.com/logos/ndicloud-wordmark-color.svg'],
+    images: [SITE_LOGO_URL],
     siteName: 'NDI Cloud',
   },
 };
