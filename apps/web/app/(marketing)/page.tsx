@@ -3,6 +3,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 import { MarketingButton } from '@/components/marketing/Button';
+import { SITE_LOGO_URL, SITE_ORIGIN } from '@/lib/site-config';
 import { commonsSearchUrl } from '@/lib/urls';
 import { HomeSearchForm } from './home-search-form';
 
@@ -36,14 +37,14 @@ export const metadata: Metadata = {
   },
   description:
     'A public, FAIR-compliant search across every dataset published on NDI Cloud. Filter by species, region, probe, year. Every entry carries a DOI and openMINDS and NDI metadata.',
-  alternates: { canonical: 'https://ndi-cloud.com' },
+  alternates: { canonical: SITE_ORIGIN },
   openGraph: {
     type: 'website',
-    url: 'https://ndi-cloud.com/',
+    url: `${SITE_ORIGIN}/`,
     title: 'NDI Data Commons — Neuroscience datasets, discoverable',
     description:
       'A public, FAIR-compliant search across every dataset published on NDI Cloud. Every entry carries a DOI and openMINDS and NDI metadata.',
-    images: ['https://ndi-cloud.com/logos/ndicloud-wordmark-color.svg'],
+    images: [SITE_LOGO_URL],
     siteName: 'NDI Cloud',
   },
   twitter: {
@@ -51,7 +52,7 @@ export const metadata: Metadata = {
     title: 'NDI Data Commons — Neuroscience datasets, discoverable',
     description:
       'A public, FAIR-compliant search across every dataset published on NDI Cloud.',
-    images: ['https://ndi-cloud.com/logos/ndicloud-wordmark-color.svg'],
+    images: [SITE_LOGO_URL],
   },
 };
 
@@ -62,8 +63,8 @@ const jsonLd = {
       '@type': 'Organization',
       name: 'NDI Cloud',
       legalName: 'Waltham Data Science LLC',
-      url: 'https://ndi-cloud.com',
-      logo: 'https://ndi-cloud.com/logos/ndicloud-wordmark-color.svg',
+      url: SITE_ORIGIN,
+      logo: SITE_LOGO_URL,
       description:
         'NDI Cloud is a neuroscience data platform for storing, standardizing, and publishing lab recordings.',
       foundingDate: '2022',
@@ -75,11 +76,11 @@ const jsonLd = {
     {
       '@type': 'WebSite',
       name: 'NDI Cloud',
-      url: 'https://ndi-cloud.com',
+      url: SITE_ORIGIN,
       potentialAction: {
         '@type': 'SearchAction',
         // Same-origin post-unification — no more cross-domain SearchAction.
-        target: 'https://ndi-cloud.com/datasets?q={search_term_string}',
+        target: `${SITE_ORIGIN}/datasets?q={search_term_string}`,
         'query-input': 'required name=search_term_string',
       },
     },

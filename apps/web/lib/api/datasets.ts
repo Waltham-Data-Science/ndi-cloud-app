@@ -158,26 +158,15 @@ export function useMyDatasets(enabled: boolean, scope: MyScope = 'mine') {
  * server (no client-side timeout), so the Suspense-streamed RSC path
  * is never bound by these client-side numbers.
  */
-const DETAIL_TIMEOUT_MS = 60_000;
-/**
- * Class-counts gets a longer ceiling than the rest of the per-dataset
- * detail hooks. Round-3 team review surfaced a real timeout on Haley
- * (78,687 docs, ~88s) and Dabrowska-CRH-3 (~90s) — both exceed the
- * default 60s window. Production probe across the 8 published
- * datasets:
- *
- *   < 1k docs:   <1s
- *   12-15k:      8-11s
- *   66k:         13s
- *   78k+:        88-90s
- *
- * Bumping to 120s covers the observed worst-case with ~30s headroom.
- * The cloud's class-counts aggregation is the actual bottleneck (Steve
- * is aware); this is a pragmatic frontend timeout extension that makes
- * the Document Explorer usable for ~25% of the catalog while the
- * server-side pre-compute lands.
- */
-const CLASS_COUNTS_TIMEOUT_MS = 120_000;
+// DATASET_DETAIL_TIMEOUT_MS + CLASS_COUNTS_TIMEOUT_MS live in
+// `./timeouts.ts` (post-cutover sweep — centralized all api/ timeouts).
+// Round-3 review surfaced production timeouts on Haley (78k docs, ~88s)
+// and Dabrowska-CRH-3 (~90s); the 120s budget there is the safety net.
+import {
+  CLASS_COUNTS_TIMEOUT_MS,
+  DATASET_DETAIL_TIMEOUT_MS,
+} from './timeouts';
+
 const NO_RETRY = 0 as const;
 
 /**
@@ -207,7 +196,7 @@ export function useDataset(datasetId: string | undefined) {
       apiFetch<DatasetRecord>(`/api/datasets/${datasetId}`, {
         schema: DatasetRecordSchema,
         signal,
-        timeoutMs: DETAIL_TIMEOUT_MS,
+        timeoutMs: DATASET_DETAIL_TIMEOUT_MS,
       }),
     enabled: !!datasetId,
     retry: NO_RETRY,
@@ -243,7 +232,7 @@ export function useDatasetSummary(datasetId: string | undefined) {
     queryFn: ({ signal }) =>
       apiFetch<DatasetSummary>(`/api/datasets/${datasetId}/summary`, {
         signal,
-        timeoutMs: DETAIL_TIMEOUT_MS,
+        timeoutMs: DATASET_DETAIL_TIMEOUT_MS,
       }),
     enabled: !!datasetId,
     retry: NO_RETRY,
@@ -260,7 +249,7 @@ export function useDatasetProvenance(datasetId: string | undefined) {
     queryFn: ({ signal }) =>
       apiFetch<DatasetProvenance>(`/api/datasets/${datasetId}/provenance`, {
         signal,
-        timeoutMs: DETAIL_TIMEOUT_MS,
+        timeoutMs: DATASET_DETAIL_TIMEOUT_MS,
       }),
     enabled: !!datasetId,
     retry: NO_RETRY,

@@ -6,6 +6,7 @@
  */
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch } from './client';
+import { TABLE_TIMEOUT_MS } from './timeouts';
 
 export interface TableColumn {
   key: string;
@@ -49,7 +50,7 @@ export interface OntologyTablesResponse {
  * in-flight fetch instead of holding the connection open until the
  * timeout fires.
  */
-const TABLE_TIMEOUT_MS = 60_000;
+// TABLE_TIMEOUT_MS now lives in `./timeouts.ts` (post-cutover sweep).
 const TABLE_STALE_MS = 60_000;
 
 /** Table of a single NDI class. */

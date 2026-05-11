@@ -1,6 +1,7 @@
 import type { MetadataRoute } from 'next';
 
 import { fetchPublishedDatasetsForSitemap } from '@/lib/api/datasets-server';
+import { SITE_ORIGIN } from '@/lib/site-config';
 
 /**
  * Sitemap for marketing routes + per-dataset URLs.
@@ -40,7 +41,7 @@ import { fetchPublishedDatasetsForSitemap } from '@/lib/api/datasets-server';
  * but below the home + catalog index).
  */
 export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
-  const baseUrl = 'https://ndi-cloud.com';
+  const baseUrl = SITE_ORIGIN;
   const now = new Date();
 
   const marketingRoutes: MetadataRoute.Sitemap = [

@@ -48,29 +48,49 @@ export function ontologyUrl(termId: string): string | null {
   if (idx <= 0 || idx === trimmed.length - 1) return null;
   const prefix = trimmed.slice(0, idx);
   const suffix = trimmed.slice(idx + 1);
-  switch (prefix) {
-    case 'WBStrain':
+  // Case-insensitive prefix match — the cloud's compact summary mostly
+  // emits the canonical openMINDS casing (`WBStrain`, `NCBITaxon`),
+  // but some legacy records ship uppercased (`WBSTRAIN`, `NCBITAXON`)
+  // or lowercased prefixes. Normalize at the switch so we don't lose
+  // a resolver link to a casing inconsistency.
+  const normalized = prefix.toLowerCase();
+  switch (normalized) {
+    case 'wbstrain':
       // Wormbase strain pages. The URL slug is `WBStrain` + the suffix
       // joined together (no colon in the URL path), e.g.
       // `WBStrain:00000001` → `.../strain/WBStrain00000001`.
       return `https://wormbase.org/species/c_elegans/strain/WBStrain${suffix}`;
-    case 'NCBITaxon':
+    case 'ncbitaxon':
       // NCBI Taxonomy Browser. The numeric suffix IS the taxon ID
       // (e.g. 6239 = C. elegans, 10090 = Mus musculus).
       return `https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=${suffix}`;
-    case 'UBERON':
+    case 'uberon':
       return `https://www.ebi.ac.uk/ols4/ontologies/uberon/classes?obo_id=UBERON%3A${suffix}`;
-    case 'PATO':
+    case 'pato':
       return `https://www.ebi.ac.uk/ols4/ontologies/pato/classes?obo_id=PATO%3A${suffix}`;
-    case 'CHEBI':
+    case 'chebi':
       return `https://www.ebi.ac.uk/ols4/ontologies/chebi/classes?obo_id=CHEBI%3A${suffix}`;
-    case 'NCIT':
+    case 'cl':
+      // Cell Ontology — same OLS4 pattern as the other OBO terms.
+      // Added 2026-04-29 during the resolver consolidation sweep (the
+      // previously-duplicate local `resolverUrl` covered CL but the
+      // canonical didn't; folded together so future ontology additions
+      // happen in one place).
+      return `https://www.ebi.ac.uk/ols4/ontologies/cl/classes?obo_id=CL%3A${suffix}`;
+    case 'ncit':
       return `https://www.ebi.ac.uk/ols4/ontologies/ncit/classes?obo_id=NCIT%3A${suffix}`;
-    case 'RRID':
-      // SciCrunch resolves the FULL `RRID:...` token.
-      return `https://scicrunch.org/resolver/${trimmed}`;
-    case 'EFO':
+    case 'rrid':
+      // SciCrunch resolves the FULL `RRID:...` token. The cloud-side
+      // casing may vary (RRID vs rrid); SciCrunch's resolver is
+      // case-insensitive on the prefix, so passing `trimmed` through
+      // unchanged works regardless.
+      return `https://scicrunch.org/resolver/RRID:${suffix}`;
+    case 'efo':
       return `https://www.ebi.ac.uk/ols4/ontologies/efo/classes?obo_id=EFO%3A${suffix}`;
+    case 'pubchem':
+      // NCBI's PubChem compound page. Same as the canonical-elsewhere
+      // helper that the resolver-consolidation sweep folded in.
+      return `https://pubchem.ncbi.nlm.nih.gov/compound/${suffix}`;
     default:
       return null;
   }

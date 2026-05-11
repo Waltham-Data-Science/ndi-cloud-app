@@ -9,7 +9,6 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import {
   DatasetSummaryCard,
   OntologyTermPill,
-  resolverUrl,
 } from '@/components/datasets/DatasetSummaryCard';
 import type { DatasetSummary } from '@/lib/types/dataset-summary';
 
@@ -130,7 +129,11 @@ describe('DatasetSummaryCard — null vs [] distinction', () => {
 });
 
 describe('OntologyTermPill', () => {
-  it('wraps the label in an anchor targeting the OBO resolver URL', () => {
+  it('wraps the label in an anchor targeting the OLS4 resolver URL', () => {
+    // Post-2026-04-29 cleanup: the pill now routes through the canonical
+    // `ontologyUrl()` helper + `safeHref`. UBERON terms resolve to
+    // EBI OLS4 (better human-readable UI than the OBO purl), matching
+    // the rest of the app's ontology link surfaces.
     render(
       <OntologyTermPill
         term={{ label: 'primary visual cortex', ontologyId: 'UBERON:0002436' }}
@@ -138,7 +141,7 @@ describe('OntologyTermPill', () => {
     );
     const link = screen.getByTestId('ontology-term-link');
     expect(link.getAttribute('href')).toBe(
-      'http://purl.obolibrary.org/obo/UBERON_0002436',
+      'https://www.ebi.ac.uk/ols4/ontologies/uberon/classes?obo_id=UBERON%3A0002436',
     );
     expect(link.getAttribute('target')).toBe('_blank');
     expect(link.getAttribute('rel')).toBe('noopener noreferrer');
@@ -218,31 +221,13 @@ describe('OntologyTermPill — hover-timing stale-closure guard', () => {
   });
 });
 
-describe('resolverUrl', () => {
-  it.each([
-    ['NCBITaxon:10116', 'http://purl.obolibrary.org/obo/NCBITAXON_10116'],
-    ['UBERON:0002436', 'http://purl.obolibrary.org/obo/UBERON_0002436'],
-    ['CL:0000598', 'http://purl.obolibrary.org/obo/CL_0000598'],
-    ['CHEBI:73328', 'http://purl.obolibrary.org/obo/CHEBI_73328'],
-    ['PATO:0000383', 'http://purl.obolibrary.org/obo/PATO_0000383'],
-    ['RRID:RGD_70508', 'https://scicrunch.org/resolver/RRID:RGD_70508'],
-    // Round-5 fix (2026-04-29): WBStrain URLs require the `WBStrain` prefix
-    // concatenated onto the suffix; pre-fix the URL was bare-numeric and
-    // 404'd on wormbase.org.
-    ['WBStrain:00000001', 'https://wormbase.org/species/c_elegans/strain/WBStrain00000001'],
-    ['PubChem:5280343', 'https://pubchem.ncbi.nlm.nih.gov/compound/5280343'],
-  ])('builds the canonical resolver URL for %s', (id, expected) => {
-    expect(resolverUrl(id)).toBe(expected);
-  });
-
-  it('returns null for IDs without a recognized provider', () => {
-    expect(resolverUrl('nonsense:id')).toBeNull();
-  });
-
-  it('returns null for malformed IDs (no colon)', () => {
-    expect(resolverUrl('NCBITaxon10116')).toBeNull();
-  });
-});
+// `resolverUrl` was removed on 2026-04-29 — the local helper diverged
+// from the canonical `lib/ontology/url-builder.ts:ontologyUrl()` and
+// caused the round-5 WBStrain prefix bug (URL was `.../strain/00000001`
+// instead of `.../strain/WBStrain00000001`). All callsites now go
+// through `ontologyUrl()` + `safeHref()`. The provider-URL coverage
+// previously enforced here (CL, PubChem, case-insensitive matching)
+// has moved to `tests/unit/lib/ontology/url-builder.test.ts`.
 
 describe('DatasetSummaryCard — warnings footer', () => {
   it('does not show the warnings button when the list is empty', () => {

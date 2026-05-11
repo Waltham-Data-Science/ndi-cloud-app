@@ -1,5 +1,7 @@
 import type { MetadataRoute } from 'next';
 
+import { SITE_ORIGIN } from '@/lib/site-config';
+
 /**
  * Crawler directives. Allow public marketing routes + the public
  * dataset catalog (Phase 3a); disallow authenticated workspaces
@@ -15,6 +17,6 @@ export default function robots(): MetadataRoute.Robots {
         disallow: ['/api/', '/my/', '/my-account/', '/account-exists', '/login', '/create-account'],
       },
     ],
-    sitemap: 'https://ndi-cloud.com/sitemap.xml',
+    sitemap: `${SITE_ORIGIN}/sitemap.xml`,
   };
 }

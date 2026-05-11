@@ -8,6 +8,7 @@ import { useMemo } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { apiFetch, apiFetchBinary, type BinaryFetchResult } from './client';
 import { useDocuments, type DocumentSummary } from './documents';
+import { RAW_FETCH_TIMEOUT_MS } from './timeouts';
 
 export type BinaryKind = 'timeseries' | 'image' | 'video' | 'fitcurve' | 'unknown';
 
@@ -151,7 +152,7 @@ export function useFitcurve(
  * the wire — Railway cold-start + a 50MB S3 fetch can blow past the
  * 15s read timeout that's tuned for JSON responses.
  */
-const RAW_FETCH_TIMEOUT_MS = 60_000;
+// RAW_FETCH_TIMEOUT_MS lives in `./timeouts.ts` (post-cutover sweep).
 
 export function useRawImageData(
   datasetId: string | undefined,

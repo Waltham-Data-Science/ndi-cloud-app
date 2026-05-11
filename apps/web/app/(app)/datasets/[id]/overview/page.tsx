@@ -40,6 +40,7 @@ import { safeFetchDataset } from '@/lib/api/datasets-server';
 import { env } from '@/lib/env';
 import { cleanDatasetName } from '@/lib/format';
 import { datasetJsonLd } from '@/lib/seo/dataset-jsonld';
+import { SITE_LOGO_URL, SITE_ORIGIN } from '@/lib/site-config';
 
 export const revalidate = 60;
 
@@ -162,7 +163,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const dataset = await safeFetchDataset(id);
   const name = dataset?.name ? cleanDatasetName(dataset.name) : null;
   const description = descriptionForMetadata(dataset);
-  const canonical = `https://ndi-cloud.com/datasets/${id}/overview`;
+  const canonical = `${SITE_ORIGIN}/datasets/${id}/overview`;
   return {
     // Root layout's `title.template: '%s · NDI Cloud'` adds the
     // suffix automatically. Pass the bare dataset name; never include
@@ -176,13 +177,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       title: name ?? 'Dataset',
       description,
       siteName: 'NDI Cloud',
-      images: ['https://ndi-cloud.com/logos/ndicloud-wordmark-color.svg'],
+      images: [SITE_LOGO_URL],
     },
     twitter: {
       card: 'summary',
       title: name ?? 'Dataset',
       description,
-      images: ['https://ndi-cloud.com/logos/ndicloud-wordmark-color.svg'],
+      images: [SITE_LOGO_URL],
     },
   };
 }

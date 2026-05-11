@@ -3,6 +3,7 @@ import Image from 'next/image';
 import Link from 'next/link';
 
 import { MarketingButton } from '@/components/marketing/Button';
+import { SITE_LOGO_URL, SITE_ORIGIN } from '@/lib/site-config';
 
 /**
  * /products/private-cloud — "For Labs" product page (NDI Data Browser).
@@ -22,14 +23,14 @@ export const metadata: Metadata = {
   title: 'For Labs — NDI Data Browser',
   description:
     'The NDI Data Browser is where your lab works. Upload sessions from MATLAB or Python, track sync status, publish datasets with a DOI.',
-  alternates: { canonical: 'https://ndi-cloud.com/products/private-cloud' },
+  alternates: { canonical: `${SITE_ORIGIN}/products/private-cloud` },
   openGraph: {
     type: 'website',
-    url: 'https://ndi-cloud.com/products/private-cloud',
+    url: `${SITE_ORIGIN}/products/private-cloud`,
     title: 'NDI Data Browser — NDI Cloud',
     description:
       'Upload sessions from MATLAB or Python, track sync status, publish with a DOI.',
-    images: ['https://ndi-cloud.com/logos/ndicloud-wordmark-color.svg'],
+    images: [SITE_LOGO_URL],
     siteName: 'NDI Cloud',
   },
 };
