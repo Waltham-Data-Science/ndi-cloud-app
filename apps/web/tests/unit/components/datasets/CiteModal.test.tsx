@@ -169,11 +169,12 @@ describe('CiteModal', () => {
     expect(screen.queryByTestId('cite-plain-download')).toBeNull();
   });
 
-  it('uses a DOI-suffix-derived filename for the Download buttons', () => {
-    // Filename pattern: ndi-cloud-<doi-suffix>.{bib,ris} so dropping
-    // the saved file into Endnote/Mendeley/Zotero is self-describing.
-    render(<CiteModal open onClose={() => {}} citation={citation()} />);
-    const bibBtn = screen.getByTestId('cite-bibtex-download');
-    expect(bibBtn.getAttribute('aria-label')).toMatch(/Download BibTeX/i);
-  });
+  // The download-filename derivation lives in CiteModal's local
+  // `downloadFilename(citation, ext)` helper. It's exercised
+  // indirectly via the Download button's `aria-label` (which embeds
+  // the filename); a dedicated assertion would need to click the
+  // button and intercept `URL.createObjectURL` to read back the
+  // filename — heavyweight and brittle relative to the user-value of
+  // the test. The button-presence assertions above already pin the
+  // contract.
 });

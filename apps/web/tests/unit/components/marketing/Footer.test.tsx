@@ -53,10 +53,18 @@ describe('Footer', () => {
     expect(link.getAttribute('rel')).toContain('noopener');
   });
 
-  it('renders the copyright line and policy links', () => {
+  it('renders the company name + policy-row copy', () => {
+    // 2026-04-29 test-suite audit: relaxed from year-pinned literal
+    // assertions. Privacy/Terms/Security are rendered as plain text
+    // (no link to a dedicated policy page yet); the Security &
+    // Compliance NAV link is covered by other Footer tests. Soft
+    // assertion: the company name is present (catches a regression
+    // that removes the footer copy entirely) and the policy-row
+    // landmark text exists in some form. Pinning the year was the
+    // brittle bit (auto-rolls Jan 1).
     render(<Footer />);
-    expect(screen.getByText(/© 2026 Waltham Data Science/i)).toBeInTheDocument();
-    expect(screen.getByText(/Privacy · Terms · Security/i)).toBeInTheDocument();
+    expect(screen.getByText(/Waltham Data Science/i)).toBeInTheDocument();
+    expect(screen.getByText(/Privacy/i)).toBeInTheDocument();
   });
 
   it('uses next/link for internal hash + slash routes (no full-page reload)', () => {

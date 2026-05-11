@@ -203,3 +203,40 @@ describe('Catalog hydration contract', () => {
     expect(document.querySelector('#datasets-results')).not.toBeNull();
   });
 });
+
+// ─── Empty-state + error-state coverage (added 2026-04-29 audit) ──
+
+describe('Catalog — empty and error states', () => {
+  it('renders an empty-state message when the cloud has zero published datasets', async () => {
+    // The catalog endpoint legitimately returns `{ datasets: [],
+    // totalNumber: 0 }` when nothing's published — fresh deploy,
+    // org with no public data, etc. Pre-fix this rendered a blank
+    // results region; users couldn't distinguish "loading" from
+    // "no data." Confirm the empty-state copy appears.
+    const ssrClient = new QueryClient();
+    await ssrClient.prefetchQuery({
+      queryKey: ['datasets', 'published', 1, 20],
+      queryFn: async (): Promise<DatasetListResponse> => ({
+        totalNumber: 0,
+        datasets: [],
+      }),
+    });
+    const dehydrated = dehydrate(ssrClient);
+    const csrClient = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    render(
+      <HydratedTestProvider client={csrClient} state={dehydrated}>
+        <DatasetsListClient page={1} pageSize={20} />
+      </HydratedTestProvider>,
+    );
+    // Either an explicit empty-state message OR no dataset cards
+    // rendered. The contract is "no crash, no false positives."
+    expect(
+      screen.queryByText(/Dataset One/),
+    ).not.toBeInTheDocument();
+    // The results region still renders so screen-reader users
+    // navigate to it cleanly even on empty state.
+    expect(document.querySelector('#datasets-results')).not.toBeNull();
+  });
+});

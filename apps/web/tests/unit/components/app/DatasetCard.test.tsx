@@ -260,24 +260,11 @@ describe('DatasetCard — wide-format card', () => {
     });
   });
 
-  it('lifts the card with a brand-tinted ring + shadow on hover', () => {
-    const { container } = render(
-      <DatasetCard dataset={baseDataset({ summary: compactSummary() })} />,
-    );
-    // The Card primitive renders the inner div; its class list carries
-    // the hover variants. Walk down from the link to the first card-
-    // root child and assert the ring + shadow utilities are present.
-    const link = screen.getByRole('link', {
-      name: /open dataset A Testing Dataset/i,
-    });
-    const card = link.querySelector('[data-slot="card"], div');
-    expect(card).not.toBeNull();
-    // Use the link as a fallback if the slot attribute differs — the
-    // hover utilities live on a child of the link, but `container.html`
-    // gives us the fully rendered tree to scan in one pass.
-    const html = container.innerHTML;
-    expect(html).toMatch(/group-hover:ring-2/);
-    expect(html).toMatch(/group-hover:shadow-lg/);
-    expect(html).toMatch(/group-hover:-translate-y-\[2px\]/);
-  });
+  // Hover-lift Tailwind-class assertions removed (test-suite audit
+  // 2026-04-29). The previous test pinned `group-hover:ring-2`,
+  // `group-hover:shadow-lg`, and `group-hover:-translate-y-[2px]`
+  // against rendered HTML — visual-polish details that change every
+  // Tailwind config tweak without affecting the user-visible
+  // affordance contract. The `cursor-pointer` test above already
+  // pins the clickable affordance; that's the load-bearing one.
 });

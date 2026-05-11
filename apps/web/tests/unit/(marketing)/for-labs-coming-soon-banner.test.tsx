@@ -21,16 +21,17 @@ import { render, screen } from '@testing-library/react';
 import { ComingSoonBanner } from '@/app/(marketing)/products/private-cloud/page';
 
 describe('For Labs — ComingSoonBanner', () => {
-  it('renders the pre-release notice copy', () => {
+  it('renders the pre-release "Coming soon" landmark', () => {
+    // Relaxed in the 2026-04-29 test-suite audit. Pre-fix this
+    // asserted three exact-copy substrings ("Coming soon", "in
+    // development", "Nansen"). Each is the kind of marketing copy
+    // that gets revised every review round; the load-bearing
+    // contract is "the banner exists and signals pre-release
+    // state." The `role="note"` + aria-label test below pins the
+    // component-identity gate that prevents the original audit-#15
+    // bug (a banner disappearing without a copy revision).
     render(<ComingSoonBanner />);
-    // The user-visible copy. Pinning the exact "Coming soon —"
-    // prefix and the "in development" / "Nansen" landmarks. If a
-    // future copy edit drops any of these, the user will end up
-    // staring at an unchanged hero with no signal — same bug class
-    // that prompted this hotfix in the first place.
     expect(screen.getByText(/Coming soon/i)).toBeInTheDocument();
-    expect(screen.getByText(/in development/i)).toBeInTheDocument();
-    expect(screen.getByText(/Nansen/i)).toBeInTheDocument();
   });
 
   it('exposes the banner with role="note" and an aria-label', () => {
