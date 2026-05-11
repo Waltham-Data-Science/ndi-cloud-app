@@ -272,111 +272,12 @@ export function useFacets() {
   });
 }
 
-/**
- * Plain async function (no hook wrapper) — the catalog RSC at
- * `app/(app)/datasets/page.tsx` server-side prefetches via this so the
- * `<HydrationBoundary>` ships pre-warmed cache to the client island.
- *
- * The RSC bypasses the Vercel rewrite via `INTERNAL_API_URL` to avoid a
- * double-hop; the URL is composed by the caller. This stays
- * client-fetch-shaped so the same `usePublishedDatasets` hook hydrates
- * the same data.
- */
-export async function fetchPublishedDatasets(
-  baseUrl: string,
-  page: number,
-  pageSize: number,
-): Promise<DatasetListResponse> {
-  const res = await fetch(
-    `${baseUrl}/api/datasets/published?page=${page}&pageSize=${pageSize}`,
-    {
-      headers: { Accept: 'application/json' },
-      // Server-side fetch — no cookies. Anonymous-public reads only.
-      cache: 'no-store',
-    },
-  );
-  if (!res.ok) {
-    throw new Error(`Catalog prefetch failed (${res.status})`);
-  }
-  return (await res.json()) as DatasetListResponse;
-}
-
-/**
- * Phase 6.7 A2 — server-side dataset fetch for `generateMetadata`.
- *
- * Used by `/datasets/[id]/layout.tsx` to set the document title to
- * `${dataset.name} · NDI Cloud`. Closes audit follow-up #67 (the
- * source SPA's `useDocumentTitle` per-route title was not yet ported
- * into the App Router metadata API).
- *
- * Forwards the caller's cookies so authenticated org-private datasets
- * resolve correctly (otherwise they 401 and we fall back to a generic
- * title). Returns `null` on any failure — generateMetadata callers
- * use that to choose between specific and fallback titles. Failure
- * is intentionally non-throwing because metadata generation is a
- * best-effort enhancement, never a page-blocker.
- */
-export async function fetchDatasetServer(
-  baseUrl: string,
-  id: string,
-  cookieHeader?: string,
-): Promise<DatasetRecord | null> {
-  const result = await fetchDatasetServerWithStatus(baseUrl, id, cookieHeader);
-  return result.data;
-}
-
-/**
- * Variant of :func:`fetchDatasetServer` that surfaces the HTTP
- * status alongside the parsed body. Layouts use this to call
- * Next.js's :func:`notFound` on a clean 404 (audit 2026-04-27 #10 —
- * a bad `[id]` shouldn't render the dataset chrome with the bare
- * id as h1).
- *
- * Status `0` means "network/timeout/parse error, status unknown" —
- * callers should treat this as transient and fall through to client
- * fetch, NOT as a 404. We never speculate-return 404 from a non-404
- * failure mode because that would silently swap a bad-network
- * detail page for a not-found page on a real network blip.
- */
-export async function fetchDatasetServerWithStatus(
-  baseUrl: string,
-  id: string,
-  cookieHeader?: string,
-): Promise<{ status: number; data: DatasetRecord | null }> {
-  const headers: Record<string, string> = { Accept: 'application/json' };
-  if (cookieHeader) headers['Cookie'] = cookieHeader;
-  try {
-    const res = await fetch(`${baseUrl}/api/datasets/${id}`, {
-      headers,
-      // Server-side fetch from the layout's RSC prefetch path. Use
-      // Next's request memo (`force-cache` + revalidate) so concurrent
-      // RSC renders of the same dataset within a single Vercel
-      // function invocation dedupe to one upstream call. The 60s
-      // revalidate matches the leaf overview page's `revalidate`
-      // export, so the dataset record stays warm across the same
-      // ISR generation.
-      cache: 'force-cache',
-      next: { revalidate: 60 },
-    });
-    if (!res.ok) return { status: res.status, data: null };
-    const raw = await res.json();
-    // Apply the schema so the cloud's `_id`-only responses get
-    // transformed to `id`-bearing records, matching the shape the
-    // client-side `useDataset` hook receives via `apiFetch + schema`.
-    // Without this transform, a hydrated cache would carry `_id`
-    // but the client's render code reads `id`, breaking cards.
-    const parsed = DatasetRecordSchema.safeParse(raw);
-    if (!parsed.success) {
-      // 2xx body that doesn't match the schema → treat as no data
-      // but preserve the 200 status so the caller doesn't 404-route
-      // on a backend shape drift. Logged via the existing
-      // RESPONSE_SHAPE_INVALID path on the client.
-      return { status: res.status, data: null };
-    }
-    return { status: res.status, data: parsed.data as DatasetRecord };
-  } catch {
-    // Network blip / Railway flap — status unknown. Caller should
-    // NOT 404-route on this (it's transient).
-    return { status: 0, data: null };
-  }
-}
+// Note: the plain async helpers `fetchPublishedDatasets`,
+// `fetchDatasetServer`, and `fetchDatasetServerWithStatus` live in
+// `lib/api/datasets-server.ts` (which has `import 'server-only'`).
+// Keeping them out of this `'use client'` module is what unblocks
+// `generateStaticParams` from calling them at build time — Next.js
+// 16 hard-fails the build when a server-side function call resolves
+// to a 'use client' source. The types `DatasetRecord` and
+// `DatasetListResponse` defined above are erased at compile time, so
+// importing them server-side from this file is safe.

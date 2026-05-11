@@ -31,12 +31,12 @@ import type { Metadata } from 'next';
 import { HydrationBoundary } from '@tanstack/react-query';
 
 import { OverviewContent } from './overview-content';
+import type { DatasetListResponse } from '@/lib/api/datasets';
+import { prefetchDatasetForPage } from '@/lib/api/datasets-prefetch';
 import {
   fetchPublishedDatasets,
-  type DatasetListResponse,
-} from '@/lib/api/datasets';
-import { prefetchDatasetForPage } from '@/lib/api/datasets-prefetch';
-import { safeFetchDataset } from '@/lib/api/datasets-server';
+  safeFetchDataset,
+} from '@/lib/api/datasets-server';
 import { env } from '@/lib/env';
 import { cleanDatasetName } from '@/lib/format';
 import { datasetJsonLd } from '@/lib/seo/dataset-jsonld';

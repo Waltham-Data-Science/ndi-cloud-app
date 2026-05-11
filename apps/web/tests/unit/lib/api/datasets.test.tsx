@@ -20,6 +20,8 @@ vi.mock('@/lib/api/client', () => ({
 import {
   fetchDatasetServer,
   fetchPublishedDatasets,
+} from '@/lib/api/datasets-server';
+import {
   useClassCounts,
   useDataset,
   useDatasetProvenance,
