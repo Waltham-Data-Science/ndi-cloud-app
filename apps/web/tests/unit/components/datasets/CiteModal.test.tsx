@@ -96,12 +96,30 @@ describe('CiteModal', () => {
     expect(arg).toContain('doi:10.63884/abc');
   });
 
-  it('visually distinguishes dataset DOI (primary) from paper DOI (secondary)', () => {
+  it('shows both DOI blocks with their parallel-purpose subtitles', () => {
+    // Round-5 review (2026-04-29): the original "preferred / secondary"
+    // framing was confusing — both DOIs are valid; they just serve
+    // different purposes. New copy makes that explicit via subtitles
+    // ("Cite when specifically referencing the dataset" /
+    // "...the paper") and drops the preferred/secondary language.
     render(<CiteModal open onClose={() => {}} citation={citation()} />);
-    const primary = screen.getByTestId('cite-dataset-doi');
-    expect(within(primary).getByText(/Dataset DOI \(preferred\)/)).toBeInTheDocument();
-    const secondary = screen.getByTestId('cite-paper-dois');
-    expect(within(secondary).getByText('Paper DOI')).toBeInTheDocument();
+    const datasetBlock = screen.getByTestId('cite-dataset-doi');
+    expect(within(datasetBlock).getByText('Dataset DOI')).toBeInTheDocument();
+    expect(
+      within(datasetBlock).getByText(
+        /Cite when specifically referencing the dataset/i,
+      ),
+    ).toBeInTheDocument();
+    const paperBlock = screen.getByTestId('cite-paper-dois');
+    expect(within(paperBlock).getByText('Paper DOI')).toBeInTheDocument();
+    expect(
+      within(paperBlock).getByText(
+        /Cite when specifically referencing the paper/i,
+      ),
+    ).toBeInTheDocument();
+    // The preferred/secondary language must be gone from both blocks.
+    expect(within(datasetBlock).queryByText(/preferred/i)).toBeNull();
+    expect(within(paperBlock).queryByText(/secondary/i)).toBeNull();
   });
 
   it('renders only paper DOI block when no dataset DOI is on record', () => {
@@ -132,5 +150,30 @@ describe('CiteModal', () => {
     render(<CiteModal open onClose={onClose} citation={citation()} />);
     fireEvent.click(screen.getByTestId('modal-backdrop'));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  // Round-5 review (2026-04-29): Endnote-style importers benefit from
+  // direct file downloads instead of round-trip through clipboard.
+  // BibTeX (.bib) and RIS (.ris) get a Download button alongside Copy;
+  // Plain text doesn't (paste-able is the natural shape).
+  it('renders Download buttons next to Copy on BibTeX and RIS blocks', () => {
+    render(<CiteModal open onClose={() => {}} citation={citation()} />);
+    expect(screen.getByTestId('cite-bibtex-download')).toBeInTheDocument();
+    expect(screen.getByTestId('cite-ris-download')).toBeInTheDocument();
+  });
+
+  it('does NOT render a Download button on the Plain-text block', () => {
+    // Plain text is meant for paste-into-prose use; a downloaded .txt
+    // is awkward. Copy is the right affordance there.
+    render(<CiteModal open onClose={() => {}} citation={citation()} />);
+    expect(screen.queryByTestId('cite-plain-download')).toBeNull();
+  });
+
+  it('uses a DOI-suffix-derived filename for the Download buttons', () => {
+    // Filename pattern: ndi-cloud-<doi-suffix>.{bib,ris} so dropping
+    // the saved file into Endnote/Mendeley/Zotero is self-describing.
+    render(<CiteModal open onClose={() => {}} citation={citation()} />);
+    const bibBtn = screen.getByTestId('cite-bibtex-download');
+    expect(bibBtn.getAttribute('aria-label')).toMatch(/Download BibTeX/i);
   });
 });

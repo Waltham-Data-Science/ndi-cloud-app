@@ -608,7 +608,15 @@ export function resolverUrl(ontologyId: string): string | null {
     case 'RRID':
       return `https://scicrunch.org/resolver/RRID:${id}`;
     case 'WBSTRAIN':
-      return `https://wormbase.org/species/c_elegans/strain/${id}`;
+      // The WormBase strain page URL needs the `WBStrain` prefix
+      // concatenated onto the numeric suffix (e.g.
+      // `WBStrain:00000001` → `.../strain/WBStrain00000001`). Round-5
+      // team review (2026-04-29): pre-fix this dropped the prefix and
+      // emitted `.../strain/00000001` which 404s on wormbase.org —
+      // matches Steve's "neither the links nor the names are resolved"
+      // complaint on the Bhar Overview's Strains pills. Aligns with
+      // `lib/ontology/url-builder.ts`'s WBStrain case for consistency.
+      return `https://wormbase.org/species/c_elegans/strain/WBStrain${id}`;
     case 'PUBCHEM':
       return `https://pubchem.ncbi.nlm.nih.gov/compound/${id}`;
     default:
