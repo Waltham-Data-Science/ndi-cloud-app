@@ -1,7 +1,6 @@
 'use client';
 
 import MenuIcon from '@mui/icons-material/Menu';
-import { useMediaQuery } from '@mui/material';
 import IconButton from '@mui/material/IconButton';
 import Menu from '@mui/material/Menu';
 import MenuItem from '@mui/material/MenuItem';
@@ -89,7 +88,14 @@ export function Header() {
   const router = useRouter();
   const pathname = usePathname();
   const queryClient = useQueryClient();
-  const isMobile = useMediaQuery('(max-width:900px)');
+  // Responsive nav uses CSS media-query classes (Tailwind `min-[900px]:*`)
+  // rather than MUI's `useMediaQuery`. The latter returns `false` during
+  // SSR (no `window.matchMedia`) and then the real value after hydration,
+  // which used to produce a React hydration mismatch (#418) on every
+  // page paint — the server rendered the desktop tree, the client
+  // hydrated as the mobile tree (or vice versa) and React tore them
+  // apart. CSS-only responsiveness renders both trees in the SSR HTML
+  // and hides one via `display: none`; no JS branch involved.
   const [anchorMobileNav, setAnchorMobileNav] = useState<HTMLElement | null>(null);
   const [anchorUser, setAnchorUser] = useState<HTMLElement | null>(null);
 
@@ -158,8 +164,7 @@ export function Header() {
           />
         </Link>
 
-        {!isMobile && (
-          <div className="flex gap-1.5 ml-3 items-center">
+        <div className="hidden min-[900px]:flex gap-1.5 ml-3 items-center">
             {navLinks.map((link) =>
               link.external ? (
                 // `inline-flex items-center gap-1` so the trailing
@@ -238,12 +243,10 @@ export function Header() {
               </>
             )}
           </div>
-        )}
 
         <div className="flex-1" />
 
-        {isMobile ? (
-          <>
+        <div className="min-[900px]:hidden">
             <IconButton
               onClick={openMobileMenu}
               sx={{ color: 'white' }}
@@ -318,9 +321,9 @@ export function Header() {
                 </>
               )}
             </Menu>
-          </>
-        ) : (
-          <div className="flex gap-2.5 items-center">
+        </div>
+
+        <div className="hidden min-[900px]:flex gap-2.5 items-center">
             {user ? (
               <>
                 <button
@@ -378,7 +381,6 @@ export function Header() {
               </>
             )}
           </div>
-        )}
       </div>
     </nav>
   );
