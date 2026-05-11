@@ -60,6 +60,13 @@ export function Footer() {
             info@walthamdatascience.com
           </FooterLink>
           <FooterLink
+            href="https://www.linkedin.com/company/ndi-cloud/"
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            LinkedIn
+          </FooterLink>
+          <FooterLink
             href="https://vh-lab.github.io/NDI-matlab/"
             target="_blank"
             rel="noopener noreferrer"
