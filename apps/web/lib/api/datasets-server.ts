@@ -38,12 +38,34 @@ import type { DatasetRecord } from './datasets';
 import { env } from '@/lib/env';
 
 /**
- * Tight ceiling for metadata + sitemap fetches. The page's existence
- * check uses 1.5s; we reuse the same budget here so cold-cache visits
- * don't stall metadata generation (which would block the SSR'd HTML
- * from emitting until the timeout fires).
+ * Detail-fetch ceiling for the hero / metadata / JSON-LD path.
+ *
+ * # Why 8s (not the 1.5s the existence-check helper uses)
+ *
+ * Empirical: some published datasets ship oversized records that
+ * legitimately take 1.5-3 seconds to serialize on the cloud side.
+ * Bhar/Francesconi: ~300ms. Reikersdorfer: ~700ms.
+ * **Griswold/Premature-vision (`68839b1fbf243809c0800a01`): 2.9 MB / 2.08s** —
+ * the team-review round-5 reproduction case: hero rendered bare
+ * `68839b1fbf243809c0800a01` because `safeFetchDataset` was timing
+ * out at 1.5s and falling back to the id-only header. The
+ * tree-shrew dataset (`66140c237dbc358954ddffb9`) is even larger
+ * (2.85 MB / ~19s on cold cache); slimming that one is on the cloud
+ * team's plate (see `datasets-prefetch.ts` audit follow-up #25).
+ *
+ * 8s covers the realistic ceiling for ~99% of datasets. The hero is
+ * wrapped in `<Suspense>` at the layout, so a slower await doesn't
+ * block the page below — the skeleton stays visible until the hero
+ * resolves. After a successful fetch, Next's request cache +
+ * `revalidate: 60` mean subsequent visits within the window are
+ * instant.
+ *
+ * The existence-check helper in `datasets-prefetch.ts` keeps a tighter
+ * 1.5s timeout — its purpose is different (gate the route on dataset
+ * existence ahead of `loading.tsx`). Conflating the two budgets would
+ * either over-stall loading.tsx or under-fetch the hero.
  */
-const FETCH_TIMEOUT_MS = 1_500;
+const FETCH_TIMEOUT_MS = 8_000;
 
 /**
  * Fetch a single dataset record by id. Returns `null` on:

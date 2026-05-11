@@ -226,7 +226,10 @@ describe('resolverUrl', () => {
     ['CHEBI:73328', 'http://purl.obolibrary.org/obo/CHEBI_73328'],
     ['PATO:0000383', 'http://purl.obolibrary.org/obo/PATO_0000383'],
     ['RRID:RGD_70508', 'https://scicrunch.org/resolver/RRID:RGD_70508'],
-    ['WBStrain:00000001', 'https://wormbase.org/species/c_elegans/strain/00000001'],
+    // Round-5 fix (2026-04-29): WBStrain URLs require the `WBStrain` prefix
+    // concatenated onto the suffix; pre-fix the URL was bare-numeric and
+    // 404'd on wormbase.org.
+    ['WBStrain:00000001', 'https://wormbase.org/species/c_elegans/strain/WBStrain00000001'],
     ['PubChem:5280343', 'https://pubchem.ncbi.nlm.nih.gov/compound/5280343'],
   ])('builds the canonical resolver URL for %s', (id, expected) => {
     expect(resolverUrl(id)).toBe(expected);
