@@ -44,27 +44,22 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  * Compose the set of allowed `Origin` values for `/api/*` mutations.
  *
  * - **Production**: strict allowlist of `ndi-cloud.com` + `www.ndi-cloud.com`
- *   only. The Phase 7 cutover targets. No `*.vercel.app` URLs admitted by
- *   default — production traffic carries the apex Origin and that's the
- *   only surface that should mutate.
+ *   only. The post-Phase-7 steady state. No `*.vercel.app` URLs admitted —
+ *   production traffic carries the apex Origin and that's the only surface
+ *   that should mutate.
  * - **Preview** (`VERCEL_ENV === 'preview'`): the static apex pair PLUS
  *   the per-deployment `VERCEL_URL` and the canonical `VERCEL_BRANCH_URL`.
  *   Without these, every preview deploy on `*.vercel.app` 403s its own
  *   login flow because the Origin header doesn't match the production
  *   allowlist.
- * - **Pre-Phase-7 production** (opt-in via `ALLOW_PROJECT_PRODUCTION_URL_ORIGIN`):
- *   while `ndi-cloud.com` still resolves to the OLD Vercel project, the
- *   new app's production traffic lands on `ndi-cloud-app-web.vercel.app`
- *   (the project's stable production alias from `VERCEL_PROJECT_PRODUCTION_URL`).
- *   Without admitting that specific origin, every mutation surface on the
- *   new project (login, Quick Plot, account creation, search submit) 403s
- *   before the application sees it — making end-to-end QA before cutover
- *   impossible. Gated behind an explicit env flag so the addition is a
- *   single Vercel-dashboard toggle that disappears at Phase 7: delete
- *   `ALLOW_PROJECT_PRODUCTION_URL_ORIGIN` from the project env and the
- *   strict apex-only allowlist returns. This admits ONLY the project's
- *   stable production alias — arbitrary `*.vercel.app` URLs (e.g., another
- *   project's preview) still 403.
+ *
+ * The Pre-Phase-7 hardcode for `ndi-cloud-app-web.vercel.app` and the
+ * `ALLOW_PROJECT_PRODUCTION_URL_ORIGIN` env-var escape hatch were
+ * removed at cutover (see git log for the cleanup PR). They existed
+ * only to admit the project's stable Vercel alias while `ndi-cloud.com`
+ * was still routed to the old project; once the apex points at this
+ * project, the alias becomes a redundant mutation surface that should
+ * not be admitted.
  *
  * Vercel auto-injects the system env vars on every Vercel build (see
  * https://vercel.com/docs/environment-variables/system-environment-variables);
@@ -74,76 +69,14 @@ const MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
  * Computed per request so tests can flip `process.env.VERCEL_ENV` without
  * `vi.resetModules()`. The function is O(1) and runs at the edge — cheap.
  */
-/**
- * Read `process.env[key]` through a function rather than direct property
- * access. Why: Next.js + Turbopack can statically constant-fold
- * `process.env.X === 'literal'` comparisons at build time, then dead-
- * code-eliminate any branch that folds to `false`. This is documented
- * for `NODE_ENV` (Next.js inlines it explicitly) and empirically applies
- * to other env vars when Turbopack can determine their value at build.
- *
- * For Vercel "Sensitive" env vars and any var not exposed during the
- * build phase, the build-time read returns `undefined`, so
- * `undefined === 'true'` folds to `false` and the entire branch
- * disappears from the deployed bundle — even though at runtime the var
- * IS available.
- *
- * Function indirection through `readEnv()` prevents the optimizer from
- * tracing the access back to a static `process.env` reference; the
- * comparison stays in the bundle and is evaluated at request time on
- * the Edge runtime where the env var is actually populated.
- *
- * Verified empirically against Vercel deploy 2026-04-28: direct
- * `process.env.ALLOW_PROJECT_PRODUCTION_URL_ORIGIN === 'true'` was
- * eliminated by Turbopack; bracket-access via `readEnv()` is preserved.
- */
 function readEnv(key: string): string | undefined {
   return process.env[key];
-}
-
-/**
- * `'true'` / `'TRUE'` / `' true '` all admit. Sensitive env vars hide
- * their value in the Vercel dashboard, so a stray space or capital is
- * easy to introduce undetected; lenient parse beats silent failure.
- */
-function envFlagOn(key: string): boolean {
-  const v = readEnv(key);
-  if (!v) return false;
-  return v.trim().toLowerCase() === 'true';
 }
 
 function getAllowedOrigins(): Set<string> {
   const allowed = new Set<string>([
     'https://ndi-cloud.com',
     'https://www.ndi-cloud.com',
-    // ⚠️ PRE-PHASE-7-CUTOVER ONLY — REMOVE AT CUTOVER ⚠️
-    //
-    // Hardcoding the project's stable Vercel production alias here
-    // because the env-var-driven path (PR #116's `readEnv()` +
-    // `envFlagOn()` indirection) was empirically still being eliminated
-    // by Turbopack's build-time optimizer despite the function
-    // wrapper. Live evidence at deploy `dpl_FjhxJVrnmHeq6PA9N67uqVXvSQp8`
-    // (commit c9e81d2):
-    //   - Origin: https://ndi-cloud.com         → admitted (CSRF check
-    //     hits backend)
-    //   - Origin: https://ndi-cloud-app-web.vercel.app → middleware
-    //     "Origin not allowed" 403, even with
-    //     ALLOW_PROJECT_PRODUCTION_URL_ORIGIN=true set on Vercel and a
-    //     cache-off rebuild
-    //
-    // The env-var read returns undefined inside the deployed bundle.
-    // Most likely cause: Turbopack inlines `readEnv()` and folds the
-    // resulting `process.env[X]` against the build-phase env (where
-    // Sensitive vars are absent), eliminating the conditional branch.
-    // Defeating that without restructuring the entire Edge build is
-    // not worth it — pre-cutover is a finite window.
-    //
-    // Hardcoding the URL string is unambiguous, immune to optimizer
-    // tricks, and removable in a single one-line PR at Phase 7
-    // cutover when `ndi-cloud.com` finally points at this project
-    // and the alias becomes a redundant surface that should NOT be
-    // a mutation target. Search for "PRE-PHASE-7-CUTOVER" to find this.
-    'https://ndi-cloud-app-web.vercel.app',
   ]);
   if (readEnv('VERCEL_ENV') === 'preview') {
     const previewUrl = readEnv('VERCEL_URL');
@@ -153,21 +86,6 @@ function getAllowedOrigins(): Set<string> {
     const branchUrl = readEnv('VERCEL_BRANCH_URL');
     if (branchUrl) {
       allowed.add(`https://${branchUrl}`);
-    }
-  }
-  // Pre-Phase-7 env-var escape hatch — kept as a defense-in-depth
-  // belt for *any* additional alias that VERCEL_PROJECT_PRODUCTION_URL
-  // might surface (Vercel preserves the system env var across renames /
-  // custom-domain swaps). The hardcode above is the working path; this
-  // branch is best-effort and may be eliminated by Turbopack — it does
-  // no harm if it dies. Removable at cutover alongside the hardcode.
-  if (
-    readEnv('VERCEL_ENV') === 'production' &&
-    envFlagOn('ALLOW_PROJECT_PRODUCTION_URL_ORIGIN')
-  ) {
-    const projectProdUrl = readEnv('VERCEL_PROJECT_PRODUCTION_URL');
-    if (projectProdUrl) {
-      allowed.add(`https://${projectProdUrl}`);
     }
   }
   return allowed;
