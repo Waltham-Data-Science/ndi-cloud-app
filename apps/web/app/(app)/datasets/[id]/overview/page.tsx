@@ -31,12 +31,12 @@ import type { Metadata } from 'next';
 import { HydrationBoundary } from '@tanstack/react-query';
 
 import { OverviewContent } from './overview-content';
+import type { DatasetListResponse } from '@/lib/api/datasets';
+import { prefetchDatasetForPage } from '@/lib/api/datasets-prefetch';
 import {
   fetchPublishedDatasets,
-  type DatasetListResponse,
-} from '@/lib/api/datasets';
-import { prefetchDatasetForPage } from '@/lib/api/datasets-prefetch';
-import { safeFetchDataset } from '@/lib/api/datasets-server';
+  safeFetchDataset,
+} from '@/lib/api/datasets-server';
 import { env } from '@/lib/env';
 import { cleanDatasetName } from '@/lib/format';
 import { datasetJsonLd } from '@/lib/seo/dataset-jsonld';
@@ -57,7 +57,7 @@ export async function generateStaticParams() {
     // log line below makes the misconfiguration visible in Vercel
     // build logs (audit follow-up #5 — silent return [] in production
     // dropped the top-20 prerender with no signal).
-    if (process.env.VERCEL_ENV === 'production') {
+    if (env.VERCEL_ENV === 'production') {
       console.error(
         '[generateStaticParams] INTERNAL_API_URL unset in production — top-20 dataset prerender SKIPPED. Every dataset detail will fall through to runtime ISR (slower first paint). Set INTERNAL_API_URL in the Vercel project env.',
       );
@@ -86,7 +86,7 @@ export async function generateStaticParams() {
     // hard error condition: the deploy still ships, but ALL detail
     // pages fall through to runtime ISR with cold-cache penalty.
     const message = err instanceof Error ? err.message : String(err);
-    if (process.env.VERCEL_ENV === 'production') {
+    if (env.VERCEL_ENV === 'production') {
       console.error(
         `[generateStaticParams] Failed to fetch /api/datasets/published for prerender: ${message}. Top-20 dataset prerender SKIPPED — every dataset detail will fall through to runtime ISR.`,
       );

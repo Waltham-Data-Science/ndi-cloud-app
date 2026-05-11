@@ -40,6 +40,8 @@
  */
 import { NextResponse } from 'next/server';
 
+import { env } from '@/lib/env';
+
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
@@ -144,26 +146,35 @@ async function warmEndpoint(origin: string, path: string): Promise<WarmResult> {
 }
 
 export async function GET(req: Request) {
-  // Vercel cron auth: requests carry `Authorization: Bearer
-  // ${CRON_SECRET}` when the env is set in the project. We check
-  // both the typed env and the legacy x-vercel-cron header (older
-  // signature scheme) for forward-compatibility.
-  const cronSecret = process.env.CRON_SECRET;
+  // Cron auth. Two valid invokers:
+  //   (a) Vercel's own cron scheduler, which the platform marks by
+  //       setting `x-vercel-cron: 1` at the edge (header is stripped
+  //       from incoming external requests so spoofing is blocked at
+  //       the Vercel network).
+  //   (b) An explicit bearer match against `CRON_SECRET` for any
+  //       out-of-band invocation (e.g. an ops engineer warming cache
+  //       after a Vercel cron outage).
+  //
+  // Fail-closed: if neither matches, return 401. Previously this
+  // handler returned 200 to any caller when `CRON_SECRET` was unset
+  // (because the only auth gate was nested inside `if (cronSecret)`),
+  // which let anyone burn Vercel function invocations and Railway
+  // compute by spamming the route. Now the unset-env case still works
+  // for Vercel's own cron (via the `x-vercel-cron` header) but
+  // rejects everything else.
   const authHeader = req.headers.get('authorization');
   const isVercelCron = req.headers.get('x-vercel-cron') === '1';
-  if (cronSecret) {
-    if (
-      authHeader !== `Bearer ${cronSecret}` &&
-      !isVercelCron
-    ) {
-      return new NextResponse('unauthorized', { status: 401 });
-    }
+  const validBearer = Boolean(
+    env.CRON_SECRET && authHeader === `Bearer ${env.CRON_SECRET}`,
+  );
+  if (!validBearer && !isVercelCron) {
+    return new NextResponse('unauthorized', { status: 401 });
   }
 
   const origin = req.headers.get('host')
     ? `https://${req.headers.get('host')}`
-    : process.env.VERCEL_URL
-      ? `https://${process.env.VERCEL_URL}`
+    : env.VERCEL_URL
+      ? `https://${env.VERCEL_URL}`
       : null;
   if (!origin) {
     return NextResponse.json(

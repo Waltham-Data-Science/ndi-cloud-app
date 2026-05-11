@@ -36,10 +36,8 @@ import {
 } from '@tanstack/react-query';
 import type { Metadata } from 'next';
 
-import {
-  fetchPublishedDatasets,
-  type DatasetListResponse,
-} from '@/lib/api/datasets';
+import type { DatasetListResponse } from '@/lib/api/datasets';
+import { fetchPublishedDatasets } from '@/lib/api/datasets-server';
 import { env } from '@/lib/env';
 import { DatasetsHero } from '@/components/datasets/DatasetsHero';
 import { DatasetsListClient } from './datasets-client';

@@ -102,6 +102,15 @@ export interface CacheWindow {
  *      the only failure is "we forgot to set the var."
  */
 function resolveUpstream(): string {
+  // Read `process.env` directly here (CLAUDE.md exception). The
+  // zod-validated `env` object in `lib/env.ts` parses at module-load
+  // time and is frozen for the process lifetime; this helper is
+  // called per-request AND is exercised by unit tests that mutate
+  // `process.env.INTERNAL_API_URL` to assert URL composition. A
+  // frozen `env` would lose the per-test override. Both env vars
+  // ARE declared in the zod schema for documentation + the build-
+  // time presence check, but the read at request time goes through
+  // `process.env` for runtime-mutable semantics.
   return (
     process.env.INTERNAL_API_URL ||
     process.env.UPSTREAM_API_URL ||

@@ -98,7 +98,7 @@ const config: NextConfig = {
       // (A) auth route case migration
       { source: '/accountExists', destination: '/account-exists', permanent: true },
       { source: '/accountVerification', destination: '/account-verification', permanent: true },
-      { source: '/accountNotConfrimed', destination: '/account-not-confirmed', permanent: true },
+      { source: '/accountNotConfirmed', destination: '/account-not-confirmed', permanent: true },
       { source: '/createAccount', destination: '/create-account', permanent: true },
       { source: '/forgotPassword', destination: '/forgot-password', permanent: true },
       { source: '/myAccount', destination: '/my-account', permanent: true },

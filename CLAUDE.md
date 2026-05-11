@@ -14,7 +14,7 @@ rendering, and edge-cached delivery via Vercel.
 
 ## Migration status
 
-**Phase 6.7 complete; awaiting Phase 7 atomic domain swap.** The codebase is feature-complete for the unified deploy; what remains is the cutover ceremony itself (DNS swap + session-key rotation + CSP enforce flip after soak).
+**Phase 7 atomic domain swap SHIPPED 2026-05-11 at 00:00 EDT.** `https://ndi-cloud.com` now serves the unified monorepo. LOGIN GATE passed in incognito browser test; the 60-minute watch window closed clean. Post-cutover steady state: strict apex-only Origin allowlist at Vercel edge, `SESSION_ENCRYPTION_KEY` rotated on Railway, all 9 legacy camelCase auth-route redirects live, www → apex 308. Phase 8 (archiving legacy repos + dropping FastAPI static-files mount) waits for the 30-day burn-in window to close (~2026-06-10).
 
 Phases that have landed (chronological, by lead PR):
 
@@ -31,6 +31,8 @@ Phases that have landed (chronological, by lead PR):
 - PR #103 — `useLinkStatus` pending pill for catalog-card click feedback
 - PR #104 — architectural fix: existence check moved layout→page so `loading.tsx` Suspense fires + `notFound()` resolves dataset-scoped `not-found.tsx`
 - PR #105 — cache-poisoning hotfix: don't write `null` to TanStack Query cache when prefetch times out (caught during pre-cutover audit; tree-shrew dataset was rendering bare-id)
+- PRs #147–155 — round-4 + round-5 team review polish (Steve's feedback): ontology Name-cell linkification, marketing copy without Crossref branding, dataset-DOI restructure with PMID/PMC pills, QuickPlot column-first redesign, SEO upgrades (Dataset JSON-LD, per-dataset sitemap), Griswold timeout bump, Cite modal copy + Download buttons, test-suite audit (+106 tests)
+- PR #156 — Phase 7 cleanup: restore strict apex-only Origin allowlist (drop pre-cutover hardcode + env-var escape hatch), shipped immediately post-swap
 
 Reference plans:
 - High-level: see Audri's plan file at `/Users/audribhowmick/.claude/plans/sharded-puzzling-dragonfly.md`
@@ -41,12 +43,12 @@ Reference plans:
 
 ## Stack
 
-- **Framework:** Next.js 15.5 App Router, React 19
+- **Framework:** Next.js 16.2.4 App Router (Turbopack), React 19
 - **Styling:** Tailwind v4 with `@theme` design tokens. NO SCSS Modules. NO MUI in `components/app/` (eslint enforced; MUI permitted only in `components/marketing/` for `<Menu>`/`<Modal>` where the a11y lift is real).
 - **Data:** TanStack Query 5 (with PersistQueryClient layered on top in Phase 3a). Native `fetch()` via `apiFetch<T>()`. No axios.
 - **Tests:** Vitest + Testing Library (jsdom) for unit; Playwright for E2E.
 - **Bundle gate:** `scripts/check-bundle-size.mjs` — marketing 80 KB gz, app 200 KB gz. Ratchets DOWN over time, never up.
-- **Package manager:** pnpm 9.15 via Corepack.
+- **Package manager:** pnpm 10.22 via Corepack.
 
 ## Route groups
 
@@ -100,6 +102,17 @@ Skip-hook variants (`--no-verify`, `--no-gpg-sign`) are NOT permitted. If a hook
 - ❌ Never push direct to `main`. Every change goes through a feature branch + PR + CI green.
 - ❌ Never bypass the author rule.
 
-## Phase 7 cutover authorization
+## Post-cutover operations
 
-The Vercel domain swap (Phase 7) is the only step that moves production traffic. **It REQUIRES explicit user authorization** before any agent action. The pre-swap checklist (Phase 6 verification, FastAPI cookie domain deployed, etc.) must be posted to the user; agent waits for go-ahead before detaching `ndi-cloud.com` from the old project.
+Phase 7 shipped 2026-05-11. The remaining post-cutover work is non-traffic-moving (code cleanup, archiving legacy repos, documentation). Specifically:
+
+- The 30-day burn-in window expires ~2026-06-10. After that:
+  - Archive `Waltham-Data-Science/ndi-web-app-wds` and `Waltham-Data-Science/ndi-data-browser-v2` (archive preserves history; not delete).
+  - Drop the FastAPI static-files mount in `ndi-data-browser-v2/backend/app.py` so Railway becomes API-only.
+  - Optionally delete the orphan `ndi-web-app-v2` Vercel project.
+- CSP enforce flip (Report-Only → enforced) is deferred indefinitely. A prior attempt (PR #152, closed) broke under `script-src 'self'` because Next.js App Router emits inline streaming scripts (`self.__next_f.push(...)`). Re-attempting requires either `'unsafe-inline'` (security regression) or proper nonce wiring; not urgent — Report-Only logs violations without blocking, which is fine in steady state.
+- `app.ndi-cloud.com` redirect-to-apex (CUTOVER.md step 4) was skipped because the subdomain has no DNS. Add a CNAME at Google Cloud DNS if legacy bookmark support is wanted; defer otherwise.
+
+## Rollback (read this before any production-affecting change)
+
+The full rollback procedure lives outside this repo at `~/Documents/ndi-projects/cutover-keys.md` (owner-only `chmod 600`). It contains the pre-rotation `SESSION_ENCRYPTION_KEY` for restoring decryptable sessions if a Vercel domain detach is ever needed. Move both keys to a vault after the 30-day burn-in.

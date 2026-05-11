@@ -206,14 +206,22 @@ export function proxy(req: NextRequest): NextResponse {
  * pass the policy.
  *
  * GTM/GA hosts are listed in `script-src` because Vercel Analytics +
- * Speed Insights load tagging snippets from those origins. If those
- * are dropped, narrow the directive to `'self'` only.
+ * Speed Insights load tagging snippets from those origins. Vercel's
+ * own `va.vercel-scripts.com` script bundle is also allowlisted —
+ * without it, the `<SpeedInsights />` and `<Analytics />` script tags
+ * in `app/layout.tsx` would block under enforced CSP. `img-src`
+ * separately allowlists the GA pixel beacon
+ * (`google-analytics.com`) and Vercel's web-vitals beacon
+ * (`vitals.vercel-insights.com`) — both load as `<img>` from the
+ * analytics scripts. If Vercel Analytics is ever removed, narrow
+ * both directives to `'self'` only. See
+ * https://vercel.com/docs/speed-insights/package#content-security-policy.
  */
 const CSP_POLICY = [
   "default-src 'self'",
-  "script-src 'self' https://www.googletagmanager.com https://www.google-analytics.com",
+  "script-src 'self' https://www.googletagmanager.com https://www.google-analytics.com https://va.vercel-scripts.com",
   "style-src 'self' 'unsafe-inline'",
-  "img-src 'self' data: https://*.ndi-cloud.com",
+  "img-src 'self' data: https://*.ndi-cloud.com https://www.google-analytics.com https://vitals.vercel-insights.com",
   // 2026-04-28 — Tutorials S3 bucket added to `connect-src` for the
   // `useTutorialAvailability` HEAD probe (see `lib/data/tutorials.ts`).
   // The hook runs `fetch(..., { method: 'HEAD', mode: 'cors' })` from

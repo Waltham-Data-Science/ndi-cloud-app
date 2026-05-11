@@ -249,11 +249,18 @@ describe('Header (mobile, anonymous)', () => {
   it('renders the hamburger MenuIcon trigger and hides the desktop link row', () => {
     render(<Header />);
     expect(screen.getByRole('button', { name: /open navigation menu/i })).toBeInTheDocument();
-    // Desktop link row hidden — Data Commons appears only via the MUI
-    // <Menu> popover after the hamburger is clicked. Direct query for
-    // "Data Commons" in the rendered nav root finds nothing.
+    // Both trees (desktop links + mobile hamburger) are in the DOM now
+    // (CSS-only responsive — see Header.tsx comment, removes the React
+    // #418 hydration mismatch from `useMediaQuery`). The desktop link
+    // row carries Tailwind's `hidden min-[900px]:flex` so it's
+    // display:none on mobile viewports. jsdom doesn't compute CSS, so
+    // we assert on the class string instead of visual hiddenness.
     const navRoot = screen.getByRole('navigation', { name: /primary/i });
-    expect(navRoot.querySelector('a[href="/datasets"]')).toBeNull();
+    const datasetsLink = navRoot.querySelector('a[href="/datasets"]');
+    expect(datasetsLink).not.toBeNull();
+    const linkRow = datasetsLink!.parentElement!;
+    expect(linkRow.className).toContain('hidden');
+    expect(linkRow.className).toContain('min-[900px]:flex');
   });
 
   it('opens the mobile menu and shows nav links + Log in / Create Account', async () => {
