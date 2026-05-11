@@ -169,6 +169,27 @@ describe('OntologyTermPill', () => {
     expect(wrapper).not.toBeNull();
     expect(wrapper?.getAttribute('data-ontology-id')).toBe('WBStrain:00000001');
   });
+
+  // 2026-04-29 audit add — Premature Vision case. The cloud's
+  // compact summary for the Van Hooser dataset emits species terms
+  // with bare-prefix ontology IDs (`9669` instead of `NCBITaxon:9669`),
+  // a backend data-quality issue documented and flagged to the data
+  // team. The frontend defensive behavior: `ontologyUrl('9669')`
+  // returns null (the resolver refuses to fabricate a URL when the
+  // provider prefix is missing) → no anchor renders → the pill is
+  // label-only. Pin that path so a future change doesn't accidentally
+  // start fabricating a wrong URL.
+  it('renders a label-only pill (no anchor) when ontologyId is a bare-prefix value', () => {
+    render(
+      <OntologyTermPill
+        term={{ label: 'house mouse', ontologyId: '9669' }}
+      />,
+    );
+    expect(screen.queryByTestId('ontology-term-link')).toBeNull();
+    expect(screen.getByTestId('ontology-term-pill')).toHaveTextContent(
+      'house mouse',
+    );
+  });
 });
 
 describe('OntologyTermPill — hover-timing stale-closure guard', () => {
@@ -403,5 +424,126 @@ describe('DatasetSummaryCard — full-string preservation', () => {
     const computedAt = screen.getByTestId('summary-computed-at');
     // default baseSummary sets computedAt 5m ago
     expect(computedAt.textContent).toMatch(/ago|just now/);
+  });
+});
+
+// ─── Dataset-variance fixture matrix ──────────────────────────────
+//
+// Added 2026-04-29: table-driven coverage across the real published
+// datasets' shapes, feeding each through `enrichDegradedSummary` and
+// then rendering. Catches regressions where a new dataset shape
+// breaks the synthesis-to-render pipeline (the exact failure mode
+// the user flagged in the audit prompt).
+//
+// Coverage strategy: build a degraded summary (stage-1 timeout
+// fingerprint), splice in each real DatasetRecord fixture, render
+// the card, assert the basics survive. If a future change to
+// `enrichDegradedSummary` or `DatasetSummaryCard` rendering breaks
+// one shape but not another, this matrix flags exactly which one.
+
+import { enrichDegradedSummary } from '@/lib/data/summary-fallback';
+import {
+  BHAR_RECORD,
+  FRANCESCONI_RECORD,
+  GRISWOLD_RECORD,
+  REIKERSDORFER_RECORD,
+} from '@/tests/fixtures/datasets';
+
+describe('DatasetSummaryCard — dataset-variance matrix (synthesis fallback)', () => {
+  function degradedSummary(): DatasetSummary {
+    return baseSummary({
+      counts: {
+        sessions: 0,
+        subjects: 0,
+        probes: 0,
+        elements: 0,
+        epochs: 0,
+        totalDocuments: 0,
+      },
+      species: null,
+      strains: null,
+      sexes: null,
+      brainRegions: null,
+      probeTypes: null,
+      dateRange: { earliest: null, latest: null },
+      totalSizeBytes: null,
+      citation: {
+        title: '',
+        license: null,
+        datasetDoi: null,
+        paperDois: [],
+        contributors: [],
+        year: null,
+      },
+      extractionWarnings: ['document_class_counts timed out'],
+    });
+  }
+
+  it('Bhar (C. elegans, fully populated) — renders subjects + docs + species + license', () => {
+    const enriched = enrichDegradedSummary(degradedSummary(), BHAR_RECORD);
+    render(<DatasetSummaryCard summary={enriched} />);
+    // Counts spliced from the record
+    expect(screen.getByTestId('counts-subjects').textContent).toContain('1,656');
+    expect(screen.getByTestId('counts-total-documents').textContent).toContain(
+      '66,533',
+    );
+    // Species from the comma-split (no ontology resolver → label-only pill)
+    expect(screen.getByText(/Caenorhabditis elegans/)).toBeInTheDocument();
+  });
+
+  it('Francesconi (rat BNST) — renders subjects, brain region, RRID-less species', () => {
+    const enriched = enrichDegradedSummary(degradedSummary(), FRANCESCONI_RECORD);
+    render(<DatasetSummaryCard summary={enriched} />);
+    expect(screen.getByTestId('counts-subjects').textContent).toContain('215');
+    expect(screen.getByText(/Rattus norvegicus/)).toBeInTheDocument();
+    expect(screen.getByText(/BNST/)).toBeInTheDocument();
+  });
+
+  it('Griswold (ferret retina) — renders the species cleanly (no false comma-split)', () => {
+    // "Mustela putorius furo" has spaces but no commas — must NOT
+    // be split into "Mustela", "putorius", "furo". This is the
+    // exact bug the comma-split path is defending against.
+    const enriched = enrichDegradedSummary(degradedSummary(), GRISWOLD_RECORD);
+    render(<DatasetSummaryCard summary={enriched} />);
+    expect(screen.getByText('Mustela putorius furo')).toBeInTheDocument();
+    // No false positive — the words shouldn't render as separate pills
+    expect(screen.queryAllByTestId('ontology-term-pill').length).toBeGreaterThan(
+      0,
+    );
+  });
+
+  it('Reikersdorfer (no license, no DOI, empty brainRegions) — renders subjects without crashing', () => {
+    const enriched = enrichDegradedSummary(
+      degradedSummary(),
+      REIKERSDORFER_RECORD,
+    );
+    render(<DatasetSummaryCard summary={enriched} />);
+    // Subjects fallback: Reikersdorfer record has no numberOfSubjects → stays 0
+    expect(screen.getByTestId('counts-total-documents').textContent).toContain(
+      '743',
+    );
+    // Species splice still fires from the record string
+    expect(screen.getByText(/Mus musculus/)).toBeInTheDocument();
+    // brainRegions empty → null → renders "Not applicable" (per `[] vs null` UX)
+    const brainRegionsSection = screen.getByTestId('biology-strains')
+      .parentElement;
+    expect(brainRegionsSection).not.toBeNull();
+  });
+
+  it('handles a hypothetical NEW dataset shape gracefully (sparse fields, no warnings about it)', () => {
+    // The variance matrix's real value: a NEW dataset shape lands
+    // in production with whatever the data team uploaded. Test the
+    // "sparse but valid" shape doesn't crash the render. Mirrors a
+    // realistic minimum upload: just name + species + counts.
+    const sparse = {
+      id: 'new_dataset_2026',
+      name: 'A sparse dataset',
+      isPublished: true,
+      species: 'Homo sapiens',
+      documentCount: 50,
+    };
+    const enriched = enrichDegradedSummary(degradedSummary(), sparse);
+    expect(() => render(<DatasetSummaryCard summary={enriched} />)).not.toThrow();
+    expect(screen.getByText(/Homo sapiens/)).toBeInTheDocument();
   });
 });

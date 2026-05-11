@@ -48,14 +48,11 @@ describe('ClassCountsList — long-name truncation (round 2)', () => {
       />,
     );
     const nameSpan = screen.getByText(longName);
-    // The name span is the truncating element — single-line ellipsis
-    // when overflow occurs.
-    expect(nameSpan.className).toMatch(/\btruncate\b/);
-    // `min-w-0` is required for flex children to shrink below their
-    // intrinsic min-content width — without it, `truncate` does
-    // nothing.
-    expect(nameSpan.className).toMatch(/\bmin-w-0\b/);
-    // Hover surfaces the full name via the title attribute.
+    // Hover surfaces the full name via the title attribute — this is
+    // the user-facing contract (long-class-name flagged in team review).
+    // Tailwind `truncate` / `min-w-0` assertions removed in the
+    // 2026-04-29 test-suite audit; pinning utility class names against
+    // rendered HTML falsely fails on every Tailwind config change.
     expect(nameSpan.getAttribute('title')).toBe(longName);
   });
 

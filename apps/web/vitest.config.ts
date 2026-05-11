@@ -17,6 +17,15 @@ export default defineConfig({
   resolve: {
     alias: {
       '@': path.resolve(__dirname, '.'),
+      // `server-only` is a Next.js sentinel module that throws at
+      // BUILD time when imported from a Client Component. In
+      // production Next's compiler resolves it; in vitest there's no
+      // such resolver, so static imports like
+      // `import 'server-only'` in `lib/api/datasets-server.ts` fail
+      // the vite transform pass before any vi.mock() can fire. Map
+      // it to an empty stub file so server-only modules can be
+      // imported (and unit-tested) directly.
+      'server-only': path.resolve(__dirname, 'tests/unit/server-only-stub.ts'),
     },
   },
   test: {
