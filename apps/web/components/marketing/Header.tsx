@@ -62,26 +62,46 @@ type NavLink = {
   external?: boolean;
 };
 
-const navLinks: NavLink[] = [
-  // Data Commons used to be cross-domain at https://app.ndi-cloud.com/datasets;
-  // post-unification it's same-origin /datasets. Same-tab navigation is
-  // unchanged because the apex was the goal of the migration.
+// Data Commons used to be cross-domain at https://app.ndi-cloud.com/datasets;
+// post-unification it's same-origin /datasets. Same-tab navigation is
+// unchanged because the apex was the goal of the migration.
+//
+// 2026-04-28 — "For Labs" (/products/private-cloud) hidden from the
+// top nav pre-launch (team review feedback). The page describes the
+// future Data Browser product, but the working pipeline still runs
+// on Nansen, so the team flagged the page as misleading-by-promise.
+// The page itself stays reachable at /products/private-cloud (still
+// works for direct links / search-engine crawls), it's just not
+// promoted from the marketing nav. The home-page bridge row that
+// pointed at it is also disabled with a "Coming soon" badge — see
+// BridgeRow in `app/(marketing)/page.tsx`. Restore this line when
+// the product is ready to ship.
+const baseNavLinks: NavLink[] = [
   { label: 'Data Commons', href: commonsSearchUrl() },
-  // 2026-04-28 — "For Labs" (/products/private-cloud) hidden from the
-  // top nav pre-launch (team review feedback). The page describes the
-  // future Data Browser product, but the working pipeline still runs
-  // on Nansen, so the team flagged the page as misleading-by-promise.
-  // The page itself stays reachable at /products/private-cloud (still
-  // works for direct links / search-engine crawls), it's just not
-  // promoted from the marketing nav. The home-page bridge row that
-  // pointed at it is also disabled with a "Coming soon" badge — see
-  // BridgeRow in `app/(marketing)/page.tsx`. Restore this line when
-  // the product is ready to ship.
   { label: 'LabChat', href: '/products/labchat' },
   { label: 'Platform', href: '/platform' },
   { label: 'About', href: '/about' },
   { label: 'Docs', href: 'https://vh-lab.github.io/NDI-matlab/', external: true },
 ];
+
+// 2026-05-11 — experimental "Ask" preview. Hidden behind an env
+// flag so the link only appears when explicitly enabled per
+// environment. The /ask route + /api/ask handler are separately
+// gated by ANTHROPIC_API_KEY; this flag controls just the nav
+// surface. Insertion point is between Platform and About so it
+// reads as a product surface, not a peripheral.
+const ASK_ENABLED = process.env.NEXT_PUBLIC_ASK_ENABLED === '1';
+
+const navLinks: NavLink[] = ASK_ENABLED
+  ? [
+      baseNavLinks[0]!, // Data Commons
+      baseNavLinks[1]!, // LabChat
+      baseNavLinks[2]!, // Platform
+      { label: 'Ask', href: '/ask' },
+      baseNavLinks[3]!, // About
+      baseNavLinks[4]!, // Docs
+    ]
+  : baseNavLinks;
 
 export function Header() {
   const { user } = useSession();
