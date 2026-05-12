@@ -36,4 +36,17 @@ describe('lib/ai/system-prompt', () => {
   it('flags itself as an experimental preview', () => {
     expect(SYSTEM_PROMPT).toMatch(/experimental/i);
   });
+
+  it('teaches the model about semantic_search_datasets', () => {
+    expect(SYSTEM_PROMPT).toMatch(/semantic_search_datasets/);
+  });
+
+  it('teaches semantic-vs-keyword tool selection (concept vs. substring)', () => {
+    expect(SYSTEM_PROMPT).toMatch(/concept/i);
+    expect(SYSTEM_PROMPT).toMatch(/substring|literal keyword/i);
+  });
+
+  it('instructs graceful fallback when semantic_search is unavailable', () => {
+    expect(SYSTEM_PROMPT).toMatch(/fall back|VOYAGE_API_KEY|index empty/i);
+  });
 });

@@ -18,6 +18,14 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 
+import {
+  getIndexInfo,
+  isIndexEmpty,
+  topKByVector,
+  type ScoredEntry,
+} from './index-loader';
+import { embedQuery } from './voyage-client';
+
 const TOOL_TIMEOUT_MS = 8_000;
 
 type ToolError = { error: string };
@@ -145,6 +153,95 @@ export async function getFacetsHandler(
   return fetchJson(`${base}/api/facets`);
 }
 
+// ─── semantic_search_datasets ───────────────────────────────────────
+//
+// RAG layer. Embeds the query via Voyage AI (voyage-4-large, 1024-d),
+// cosine-ranks against the pre-baked index of dataset chunks +
+// curated metadata, returns top-K. Each chunk is the same string the
+// build-time script embedded: catalog fields (name, description,
+// species, brain regions, contributors, etc.) + sidecar additions
+// (highlights, keywords, methods, PI context).
+//
+// Use this when the user's question is fuzzy / topical / synonymous
+// — when literal substring search via `list_published_datasets`
+// would miss relevant datasets. Examples: "datasets about memory"
+// (matches hippocampus work), "primate-like vision" (matches tree
+// shrew), "extracellular methods" (matches descriptions where the
+// method is mentioned but not in any structured field).
+
+export const semanticSearchDatasetsInput = z.object({
+  query: z.string().min(1, 'query is required'),
+  limit: z.number().int().positive().max(10).optional(),
+});
+
+export interface SemanticSearchResultEntry {
+  id: string;
+  name: string;
+  text: string;
+  score: number;
+  metadata: Record<string, unknown>;
+}
+
+export async function semanticSearchDatasetsHandler(
+  input: z.infer<typeof semanticSearchDatasetsInput>,
+): Promise<ToolResult<{ results: SemanticSearchResultEntry[]; indexInfo: ReturnType<typeof getIndexInfo> }>> {
+  const parsed = semanticSearchDatasetsInput.safeParse(input);
+  if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
+
+  if (isIndexEmpty()) {
+    return {
+      error:
+        'Semantic search index is empty. Run `pnpm build-ask-index` to populate.',
+    };
+  }
+  if (!process.env.VOYAGE_API_KEY) {
+    return {
+      error:
+        'Semantic search not available — VOYAGE_API_KEY not configured on this environment.',
+    };
+  }
+
+  const limit = parsed.data.limit ?? 5;
+
+  let queryVec: Float32Array;
+  try {
+    queryVec = await embedQuery(parsed.data.query);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'unknown';
+    return { error: `Embedding failed: ${message}` };
+  }
+
+  const indexInfo = getIndexInfo();
+  if (queryVec.length !== indexInfo.dim) {
+    // This would only happen if the build-script model and the
+    // runtime model drifted apart. Caught by the dim mismatch in
+    // cosineSimilarity, but we return a typed error here so Claude
+    // can communicate the situation without a stack trace.
+    return {
+      error: `Embedding dimension mismatch (query ${queryVec.length} vs index ${indexInfo.dim}). Rebuild the index.`,
+    };
+  }
+
+  let scored: ScoredEntry[];
+  try {
+    scored = topKByVector(queryVec, limit);
+  } catch (e) {
+    const message = e instanceof Error ? e.message : 'unknown';
+    return { error: `Search failed: ${message}` };
+  }
+
+  return {
+    results: scored.map((s) => ({
+      id: s.id,
+      name: s.name,
+      text: s.text,
+      score: s.score,
+      metadata: s.metadata,
+    })),
+    indexInfo,
+  };
+}
+
 // ─── Tool definitions for the AI SDK ────────────────────────────────
 
 export const tools = {
@@ -184,5 +281,19 @@ export const tools = {
       'represented?".',
     inputSchema: getFacetsInput,
     execute: getFacetsHandler,
+  }),
+  semantic_search_datasets: tool({
+    description:
+      'Semantic / topical search over the dataset catalog. Use when ' +
+      'the user asks about a CONCEPT or TOPIC that may not appear as ' +
+      'a literal substring in the catalog (e.g. "memory", "primate-like ' +
+      'vision", "extracellular methods", "datasets like Bhar"). Each ' +
+      'result includes the dataset name, full ID, and a chunk of text ' +
+      'that combines the catalog metadata with curated highlights and ' +
+      'methods notes. Returns top-K (default 5, max 10) ranked by ' +
+      'cosine similarity. Prefer this over list_published_datasets ' +
+      'whenever the query is fuzzy or synonym-heavy.',
+    inputSchema: semanticSearchDatasetsInput,
+    execute: semanticSearchDatasetsHandler,
   }),
 } as const;

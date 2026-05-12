@@ -7,14 +7,17 @@
  *   3. Body parse + minimal shape check → 400 if malformed.
  *   4. streamText with bound tools → SSE stream back to client.
  *
- * Edge runtime: streaming endpoints belong at edge (faster TTFB, no
- * cold start). Tool handlers fetch over public network to Railway,
- * which works fine from edge.
+ * Runtime: Node (not edge). Originally edge-runtime for streaming
+ * TTFB, but the RAG layer imports a multi-MB dataset-index.json
+ * (~500 datasets × 1024-d float32 embeddings + text + metadata).
+ * Bundling that into the edge function would push us against
+ * Vercel's 4 MB compressed-edge-function limit. Node serverless
+ * has a 250 MB limit and ~200-500ms cold start — fine for the
+ * demo cadence. Streaming still works the same way through the AI
+ * SDK; only the runtime label changes.
  *
  * Anonymous-only. No CSRF check (no cookies, no auth, public-data
- * only). Origin enforcement at the Vercel edge middleware still
- * applies — this is POST to a chat-only route with no DB writes,
- * documented exemption.
+ * only). Origin enforcement at the Vercel middleware still applies.
  */
 import {
   convertToModelMessages,
@@ -29,7 +32,11 @@ import { checkRateLimit } from '@/lib/ai/rate-limit';
 import { SYSTEM_PROMPT } from '@/lib/ai/system-prompt';
 import { tools } from '@/lib/ai/tools';
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
+// Allow up to 60s — gives Claude room for 4 tool roundtrips at
+// 8s each plus output streaming. Vercel default is 10s on Hobby
+// and 60s on Pro for serverless functions.
+export const maxDuration = 60;
 
 function clientIp(req: Request): string {
   // Vercel sets x-forwarded-for; first hop is the real client.
