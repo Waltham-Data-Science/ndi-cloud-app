@@ -1,0 +1,8 @@
+{
+  "schemaVersion": 1,
+  "model": null,
+  "dim": 0,
+  "createdAt": null,
+  "_note": "Placeholder. Run `pnpm --filter @ndi-cloud/web build-ask-index` with VOYAGE_API_KEY set to populate. The runtime semantic_search tool gracefully returns an empty result when entries is [], and Claude falls back to the structured tools per the system prompt.",
+  "entries": []
+}

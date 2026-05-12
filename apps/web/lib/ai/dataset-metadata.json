@@ -1,0 +1,43 @@
+{
+  "_doc": "Hand-curated metadata sidecar for the experimental /ask chat's RAG layer. Mirrors the vh-lab/shrek-lab `grant_metadata.json` pattern: a place to add facts the catalog API does NOT expose so they end up in retrievable chunks. Refresh `pnpm build-ask-index` after editing — the index reads this file at build time.",
+
+  "_schema_doc": {
+    "keys": "Dataset ID (the same id you'd pass to /api/datasets/:id).",
+    "displayName": "Optional alternative name used in chunk text alongside the catalog name. Helps when the catalog name is terse (e.g., 'Cohort 3') but the dataset is colloquially known as something more memorable.",
+    "highlights": "Array of one-line bullet points the demo should surface for this dataset. These are the 'pitch' lines for sales/demo (e.g., 'novel awake-behaving paradigm', 'first publicly available tree shrew recordings').",
+    "keywords": "Extra search terms the LLM should associate with this dataset. Use for: alternate spellings, sibling terminology, common-name → scientific-name links (e.g., add 'mouse' to a Mus musculus dataset).",
+    "notableMethods": "Distinctive techniques used. Helps semantic queries like 'studies using extracellular probes' surface even when the description doesn't say it verbatim.",
+    "piContext": "PI background that helps the model contextualize answers — affiliations, lab focus, anything useful for a 'who is X?' follow-up. Keep brief; this is augmentation, not biography."
+  },
+
+  "_examples_doc": "Below are placeholder examples. Replace dataset IDs with real ones. Each field is optional. Empty objects are fine — the dataset will still be embedded using its catalog fields.",
+
+  "_examples": {
+    "REPLACE_WITH_REAL_DATASET_ID_1": {
+      "displayName": "Bhar tree shrew visual cortex (V1 / V2)",
+      "highlights": [
+        "Awake-behaving silicon-probe recordings — rare in tree shrew literature",
+        "Tree shrew is an emerging primate-adjacent model for visual neuroscience",
+        "Open chronic-implant pipeline suitable for longitudinal studies"
+      ],
+      "keywords": [
+        "tree shrew",
+        "Tupaia",
+        "primate-like vision",
+        "V1",
+        "V2",
+        "awake behaving",
+        "chronic recordings"
+      ],
+      "notableMethods": ["chronic silicon probes", "head-fixed visual stimulation"],
+      "piContext": "Krishna Bhar — visual cortex, alternative-model species"
+    },
+    "REPLACE_WITH_REAL_DATASET_ID_2": {
+      "displayName": "",
+      "highlights": [],
+      "keywords": [],
+      "notableMethods": [],
+      "piContext": ""
+    }
+  }
+}
