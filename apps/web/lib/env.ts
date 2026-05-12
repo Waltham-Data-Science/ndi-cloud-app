@@ -38,6 +38,19 @@ export const schema = z.object({
   // rather than a stable format we'd want to validate.
   VERCEL_ENV: z.enum(['production', 'preview', 'development']).optional(),
   VERCEL_URL: z.string().optional(),
+
+  // Anthropic API key for the experimental /ask chat. Optional —
+  // when unset, the /api/ask route returns 503 and the /ask page
+  // shows a "coming soon" notice. Setting this enables the route;
+  // nav visibility is controlled separately by NEXT_PUBLIC_ASK_ENABLED.
+  ANTHROPIC_API_KEY: z.string().min(20).optional(),
+
+  // Public flag toggling the "Ask" link in the marketing nav. Set
+  // to '1' to show. Public-prefixed because it's read in the browser
+  // bundle (the Header is 'use client'). Decoupled from
+  // ANTHROPIC_API_KEY so we can deploy the key without surfacing
+  // the tab to general visitors.
+  NEXT_PUBLIC_ASK_ENABLED: z.enum(['0', '1']).optional(),
 });
 
 export type Env = z.infer<typeof schema>;
