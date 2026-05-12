@@ -64,6 +64,22 @@ export const schema = z.object({
     (v) => (v === '' ? undefined : v),
     z.enum(['0', '1']).optional(),
   ),
+
+  // Voyage AI API key for query-time embedding in the experimental
+  // /ask chat's RAG layer. Optional — when unset, the
+  // semantic_search_datasets tool returns { error } and Claude falls
+  // back to the structured catalog tools. The same Voyage key used by
+  // the vh-lab + shrek-lab chatbots works here (we're on the same
+  // voyage-4-large 1024-d embedding contract for portability).
+  //
+  // The build-time index generator (`pnpm build-ask-index`) ALSO
+  // reads this var — but the index is pre-baked + committed, so
+  // setting this var on Vercel is only needed for live query
+  // embeddings. Empty-string coercion matches the pattern above.
+  VOYAGE_API_KEY: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().min(10).optional(),
+  ),
 });
 
 export type Env = z.infer<typeof schema>;
