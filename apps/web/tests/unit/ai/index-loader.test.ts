@@ -6,7 +6,7 @@
  * unit tests we use tiny 3-d vectors with known geometry so the test
  * outputs are easy to reason about.
  */
-import { describe, expect, it, vi, beforeEach } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 
 // Mock the JSON import so we control the test fixture.
 vi.mock('@/lib/ai/dataset-index.json', () => ({
@@ -90,28 +90,28 @@ describe('lib/ai/index-loader', () => {
       const queryAlongX = new Float32Array([1, 0, 0]);
       const results = topKByVector(queryAlongX, 3);
       expect(results).toHaveLength(3);
-      expect(results[0].id).toBe('d-north'); // cos=1
-      expect(results[1].id).toBe('d-northeast'); // cos~0.707
-      expect(results[2].id).toBe('d-east'); // cos=0
+      expect(results[0]!.id).toBe('d-north'); // cos=1
+      expect(results[1]!.id).toBe('d-northeast'); // cos~0.707
+      expect(results[2]!.id).toBe('d-east'); // cos=0
     });
 
     it('honors the limit', () => {
       const queryAlongX = new Float32Array([1, 0, 0]);
       const results = topKByVector(queryAlongX, 2);
       expect(results).toHaveLength(2);
-      expect(results[0].id).toBe('d-north');
-      expect(results[1].id).toBe('d-northeast');
+      expect(results[0]!.id).toBe('d-north');
+      expect(results[1]!.id).toBe('d-northeast');
     });
 
     it('attaches a score to each result', () => {
       const queryAlongX = new Float32Array([1, 0, 0]);
       const results = topKByVector(queryAlongX, 1);
-      expect(results[0].score).toBeCloseTo(1, 6);
+      expect(results[0]!.score).toBeCloseTo(1, 6);
     });
 
     it('returns the original entry data (id, name, text, metadata)', () => {
       const queryAlongX = new Float32Array([1, 0, 0]);
-      const top = topKByVector(queryAlongX, 1)[0];
+      const top = topKByVector(queryAlongX, 1)[0]!;
       expect(top.id).toBe('d-north');
       expect(top.name).toBe('North dataset');
       expect(top.text).toBe('About the north');
