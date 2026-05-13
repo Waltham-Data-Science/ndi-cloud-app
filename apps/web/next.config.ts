@@ -167,23 +167,22 @@ const config: NextConfig = {
     // railway.app`) that runs the Phase A NDI-python integration. We
     // want the Vercel preview build for that branch to hit the
     // experimental backend so the audit can pixel-diff its rendered
-    // pages against the live site WITHOUT changing any Vercel-side
-    // env vars (we don't own all the env-var scopes from this CLI).
+    // pages against the live site.
     //
-    // Detection: Vercel auto-injects `VERCEL_GIT_COMMIT_REF` on every
-    // preview build. The override only fires when (a) the branch
-    // matches AND (b) `UPSTREAM_API_URL` was NOT explicitly set on
-    // the preview env (we don't override an explicit value).
-    //
-    // Production (main) deploys take the standard `UPSTREAM_API_URL`
-    // path. Local dev still gates on the env var being set.
-    const explicit = process.env.UPSTREAM_API_URL;
+    // Priority order (branch override BEFORE env var, since
+    // `UPSTREAM_API_URL` is set on the Vercel Preview scope and
+    // would otherwise win for every preview build):
+    //   1. Branch is `feat/experimental-ask-chat`?
+    //        → experimental Railway (Phase A under audit)
+    //   2. Else: `UPSTREAM_API_URL` env var
+    //        → production Railway for main, other previews, dev
+    //   3. Else (unset): rewrites disabled
     const branch = process.env.VERCEL_GIT_COMMIT_REF;
-    const upstream =
-      explicit ??
-      (branch === 'feat/experimental-ask-chat'
+    const branchOverride =
+      branch === 'feat/experimental-ask-chat'
         ? 'https://ndb-v2-experimental.up.railway.app'
-        : undefined);
+        : undefined;
+    const upstream = branchOverride ?? process.env.UPSTREAM_API_URL;
     if (!upstream) return [];
     return [
       {
