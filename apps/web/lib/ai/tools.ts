@@ -40,6 +40,14 @@ import {
   makeReference,
   type Reference,
 } from './references';
+import {
+  queryDocumentsHandler,
+  queryDocumentsInput,
+} from './tools/query-documents';
+import {
+  walkProvenanceHandler,
+  walkProvenanceInput,
+} from './tools/walk-provenance';
 import { embedQuery, rerank } from './voyage-client';
 
 const TOOL_TIMEOUT_MS = 8_000;
@@ -507,5 +515,32 @@ export const tools = {
       '`references` array citing each hit.',
     inputSchema: semanticSearchDatasetsInput,
     execute: semanticSearchDatasetsHandler,
+  }),
+  query_documents: tool({
+    description:
+      'Pull a table of NDI documents of a given class inside one dataset. ' +
+      'Use this for document-level scientific questions like "what probe ' +
+      'types in dataset X", "what subjects were studied", "what stimuli ' +
+      'were presented", "what brain regions were targeted". Common ' +
+      'className values: probe, subject, element, element_epoch, ' +
+      'stimulus_presentation, stimulus_response, vmspikesummary, ' +
+      'tuningcurve_calc, treatment, openminds_subject, epochid. Returns ' +
+      'columns + rows in a tabular shape, plus a `references` array — ' +
+      'one citation per row when the row has a self document ID, ' +
+      'otherwise a citation to the dataset overview.',
+    inputSchema: queryDocumentsInput,
+    execute: queryDocumentsHandler,
+  }),
+  walk_provenance: tool({
+    description:
+      'Walk the NDI depends_on graph from a starting document to ' +
+      'surface its derivation chain. Use this when the user asks how a ' +
+      'derived value was computed, where a result came from, or what ' +
+      'inputs fed into a particular analysis. Returns a graph of nodes ' +
+      '(each with class, name, and document ID) and edges (each with ' +
+      'a depends_on field name), plus a `references` array citing each ' +
+      'node. Set maxDepth between 1 and 6 (default 3).',
+    inputSchema: walkProvenanceInput,
+    execute: walkProvenanceHandler,
   }),
 } as const;

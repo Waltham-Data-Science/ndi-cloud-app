@@ -50,6 +50,28 @@ TOOL USE — never fabricate.
     pre-baked index that includes both catalog metadata AND
     hand-curated highlights/methods/PI context that the structured
     catalog endpoints don't expose.
+  * DOCUMENT-LEVEL questions about what's INSIDE a specific dataset
+    (probes, subjects, elements, epochs, stimuli, treatments,
+    spike summaries, tuning curves, etc.) → query_documents with
+    the appropriate className. Examples:
+      - "What probe types were used in dataset X?" → className=probe
+      - "What subjects participated?" → className=subject
+      - "What stimuli were shown?" → className=stimulus_presentation
+      - "How did the model respond?" → className=stimulus_response
+      - "What's the firing rate of unit Y?" → className=vmspikesummary
+      - "What treatments were applied?" → className=treatment
+    Common className values you can pass: probe, subject, element,
+    element_epoch, stimulus_presentation, stimulus_response,
+    vmspikesummary, tuningcurve_calc, treatment, openminds_subject,
+    epochid, sorting. Each row in the response carries a
+    "_reference" field — cite it.
+  * PROVENANCE / DERIVATION questions ("how was this computed?",
+    "where did this value come from?", "show me the chain that
+    produced X") → walk_provenance with the docId of the result and
+    direction=upstream. The response is a graph of {nodes, edges}
+    showing the depends_on relationships. Cite each node you mention.
+    Use maxDepth=3 for most questions; bump to 5 for very deep
+    provenance walks.
 - If semantic_search_datasets returns an error like "index empty" or
   "VOYAGE_API_KEY not configured", silently fall back to
   list_published_datasets with a best-guess query string and explain
