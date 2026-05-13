@@ -41,6 +41,10 @@ import {
   type Reference,
 } from './references';
 import {
+  fetchSignalHandler,
+  fetchSignalInput,
+} from './tools/fetch-signal';
+import {
   queryDocumentsHandler,
   queryDocumentsInput,
 } from './tools/query-documents';
@@ -87,9 +91,21 @@ async function fetchJson<T>(url: string): Promise<ToolResult<T>> {
 
 /**
  * Type guard — narrow a tool result that may be `{ error }`.
+ *
+ * Strict shape match: exactly one key called `error` whose value is a
+ * string. Avoids false positives when a successful upstream response
+ * happens to include its own `error` field as part of its shape (e.g.
+ * the signal endpoint's `error: string | null`). See `tools/shared.ts`
+ * for the same logic — kept in sync.
  */
 function isErrorResult<T>(r: ToolResult<T>): r is ToolError {
-  return typeof r === 'object' && r !== null && 'error' in r;
+  if (typeof r !== 'object' || r === null) return false;
+  const keys = Object.keys(r);
+  return (
+    keys.length === 1 &&
+    keys[0] === 'error' &&
+    typeof (r as Record<string, unknown>).error === 'string'
+  );
 }
 
 /**
@@ -542,5 +558,32 @@ export const tools = {
       'node. Set maxDepth between 1 and 6 (default 3).',
     inputSchema: walkProvenanceInput,
     execute: walkProvenanceHandler,
+  }),
+  fetch_signal: tool({
+    description:
+      'Fetch a downsampled timeseries from an NDI binary document so ' +
+      'the chat can plot the actual signal (voltage trace, position ' +
+      'track, spike rate, etc.) inline. Use this when the user asks to ' +
+      "'show', 'plot', 'visualize', or 'trace' the data inside a " +
+      'specific document. Inputs: datasetId + docId of a document with ' +
+      'a binary file (typically element_epoch or daqreader_*_epochdata' +
+      '_ingested). Optional: downsample (max points per channel, ' +
+      'default 2000, max 5000), t0/t1 (time window in seconds). ' +
+      'Returns metadata + a `chart_payload` object — IMPORTANT: when ' +
+      'you call this tool, you MUST also echo the returned ' +
+      "`chart_payload` JSON back into your answer inside a fenced code " +
+      'block tagged "signal-chart":\n' +
+      '\n' +
+      '    ```signal-chart\n' +
+      '    {"datasetId":"...","docId":"...","downsample":2000,"title":"..."}\n' +
+      '    ```\n' +
+      '\n' +
+      'The chat UI intercepts that fence and renders the actual chart ' +
+      'inline. Also include a footnote citation to the source document ' +
+      'using the returned `references` array, exactly like every other ' +
+      'tool call. Always describe what the chart shows in plain English ' +
+      'before the fence — never just dump the chart without context.',
+    inputSchema: fetchSignalInput,
+    execute: fetchSignalHandler,
   }),
 } as const;

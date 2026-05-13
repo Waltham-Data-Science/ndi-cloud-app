@@ -14,8 +14,25 @@ export function baseUrl(): string | null {
   return typeof u === 'string' && u.length > 0 ? u : null;
 }
 
+/**
+ * Discriminate a tool-error envelope (`{ error: string }` — single
+ * key) from a successful payload that happens to *contain* a nested
+ * `error` field (e.g. the FastAPI signal endpoint's `BackendSignalResponse`
+ * has `error: string | null` as part of its shape — `null` on success).
+ *
+ * We can't just check `'error' in r` because that would mis-classify
+ * the backend's success-with-error-field-null shape. Instead require
+ * the result to have ONLY an `error` key, and that key's value to be
+ * a string.
+ */
 export function isErrorResult<T>(r: ToolResult<T>): r is ToolError {
-  return typeof r === 'object' && r !== null && 'error' in r;
+  if (typeof r !== 'object' || r === null) return false;
+  const keys = Object.keys(r);
+  return (
+    keys.length === 1 &&
+    keys[0] === 'error' &&
+    typeof (r as Record<string, unknown>).error === 'string'
+  );
 }
 
 /**

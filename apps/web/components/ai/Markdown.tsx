@@ -8,6 +8,7 @@ import remarkGfm from 'remark-gfm';
 import { parseFootnotes, type Reference } from '@/lib/ai/references';
 
 import { CitationChip } from './CitationChip';
+import { SignalChart, type SignalChartProps } from './SignalChart';
 import { SourcesPanel } from './SourcesPanel';
 
 /**
@@ -119,16 +120,48 @@ export function Markdown({ content }: Props) {
           p: ({ children }) => <p className="my-2 leading-relaxed">{children}</p>,
           ul: ({ children }) => <ul className="my-2 list-disc pl-5 space-y-1">{children}</ul>,
           ol: ({ children }) => <ol className="my-2 list-decimal pl-5 space-y-1">{children}</ol>,
-          code: ({ children }) => (
-            <code className="px-1 py-0.5 rounded bg-gray-100 text-[0.92em] font-mono">
-              {children}
-            </code>
-          ),
-          pre: ({ children }) => (
-            <pre className="my-2 p-3 rounded-md bg-gray-50 border border-gray-200 overflow-x-auto text-[0.92em]">
-              {children}
-            </pre>
-          ),
+          code: ({ children, className }) => {
+            // Day 4: detect the ```signal-chart fence the LLM emits
+            // after a fetch_signal tool call. Mount SignalChart in
+            // place of the code block. The fence body is a JSON blob
+            // — invalid JSON falls through to the default code style.
+            //
+            // react-markdown passes the fence language as
+            // `className="language-signal-chart"` on the inner <code>
+            // tag, which `pre` would normally wrap. We intercept here
+            // (inside <code>) so the wrapping <pre> is replaced
+            // entirely — see the matching `pre` renderer below which
+            // unwraps a signal-chart payload up to the parent.
+            if (className === 'language-signal-chart' && typeof children === 'string') {
+              const props = parseSignalChartPayload(children);
+              if (props) return <SignalChart {...props} />;
+            }
+            return (
+              <code className="px-1 py-0.5 rounded bg-gray-100 text-[0.92em] font-mono">
+                {children}
+              </code>
+            );
+          },
+          pre: ({ children }) => {
+            // If the <pre> wraps a signal-chart fence, the inner
+            // <code> renderer above has already produced a
+            // SignalChart element — but it sits inside this <pre>.
+            // Unwrap by detecting the SignalChart child and
+            // returning it bare so the chart isn't stuck inside a
+            // <pre> tag (which clips its overflow and squeezes the
+            // figure's caption).
+            //
+            // react's children for <pre> from a fenced code block is
+            // always a single <code> element node; we inspect its
+            // props.className to decide.
+            const onlyChild = childIsSignalChart(children);
+            if (onlyChild) return onlyChild;
+            return (
+              <pre className="my-2 p-3 rounded-md bg-gray-50 border border-gray-200 overflow-x-auto text-[0.92em]">
+                {children}
+              </pre>
+            );
+          },
           strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
           // Suppress h3 specifically when it's the model's "### Sources"
           // header — our SourcesPanel renders its own heading. We do
@@ -156,6 +189,57 @@ export function Markdown({ content }: Props) {
       <SourcesPanel references={referencesList} />
     </>
   );
+}
+
+/**
+ * Parse the JSON body of a ```signal-chart fenced code block into
+ * the props SignalChart needs. Returns null on malformed input so
+ * the caller can fall through to the default code-block style — a
+ * mistyped fence by the model shouldn't crash the message.
+ */
+function parseSignalChartPayload(raw: string): SignalChartProps | null {
+  try {
+    const obj = JSON.parse(raw.trim()) as Partial<SignalChartProps>;
+    if (
+      typeof obj.datasetId !== 'string' ||
+      obj.datasetId.length === 0 ||
+      typeof obj.docId !== 'string' ||
+      obj.docId.length === 0
+    ) {
+      return null;
+    }
+    return obj as SignalChartProps;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Detect when react-markdown's <pre> wraps a child that's already
+ * been rendered as SignalChart by our custom code renderer. Returns
+ * the SignalChart element when it's the only child, otherwise null.
+ *
+ * We can't import the SignalChart symbol and compare via React types
+ * because react-markdown's renderer wraps everything in opaque
+ * fragments, but `displayName` set on SignalChart gives us a stable
+ * identity test.
+ */
+function childIsSignalChart(children: React.ReactNode): React.ReactNode | null {
+  // The children of <pre> is a single <code> element from
+  // react-markdown. Our code renderer returns SignalChart directly
+  // when the className matches, so we get either a SignalChart
+  // element OR a <code> element. Walk one level into the React tree.
+  const node = children as React.ReactElement<{ children?: React.ReactNode }> | undefined;
+  if (!node || typeof node !== 'object') return null;
+  // SignalChart is the component itself if our renderer fired; the
+  // type field on a React element is the component function.
+  if (typeof (node as { type?: unknown }).type === 'function') {
+    const fn = (node as { type: { displayName?: string; name?: string } }).type;
+    if (fn.displayName === 'SignalChart' || fn.name === 'SignalChart') {
+      return node;
+    }
+  }
+  return null;
 }
 
 /**

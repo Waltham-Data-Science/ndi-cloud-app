@@ -10,34 +10,121 @@
     "piContext": "PI background that helps the model contextualize answers — affiliations, lab focus, anything useful for a 'who is X?' follow-up. Keep brief; this is augmentation, not biography."
   },
 
-  "_examples_doc": "Below are placeholder examples. Replace dataset IDs with real ones. Each field is optional. Empty objects are fine — the dataset will still be embedded using its catalog fields.",
+  "69bc5ca11d547b1f6d083761": {
+    "displayName": "Bhar / Babu — C. elegans memory transfer via IL2 extracellular vesicles",
+    "highlights": [
+      "Demonstrates inter-organism transfer of long-term associative memory via extracellular vesicles",
+      "IL2 neuron-dependent EV release during heat + isoamyl-alcohol (IAA) conditioning",
+      "9 C. elegans strains spanning wild-type N2 and 8 lab-engineered lines (BAB9001-5, PT3602, TM5848)",
+      "Published with a MATLAB Live Script tutorial walking subject metadata, treatment provenance, and EV markers"
+    ],
+    "keywords": [
+      "C. elegans",
+      "Caenorhabditis elegans",
+      "nematode",
+      "worm",
+      "long-term associative memory",
+      "LTAM",
+      "extracellular vesicles",
+      "EVs",
+      "IL2 neurons",
+      "isoamyl alcohol",
+      "IAA",
+      "heat conditioning",
+      "memory transfer",
+      "behavioral conditioning",
+      "drug treatment provenance"
+    ],
+    "notableMethods": [
+      "behavioral conditioning (heat + IAA)",
+      "chemotaxis assay",
+      "extracellular vesicle isolation",
+      "strain comparison",
+      "drug treatment with provenance tracking"
+    ],
+    "piContext": "Kavita Babu lab (IISc Bangalore) — C. elegans behavioral neuroscience, EV biology. Lead author Monmita Bhar. Funded by India Alliance Wellcome/DBT, MoE STARS, ANRF, KVPY/CSIR fellowships."
+  },
 
-  "_examples": {
-    "REPLACE_WITH_REAL_DATASET_ID_1": {
-      "displayName": "Bhar tree shrew visual cortex (V1 / V2)",
-      "highlights": [
-        "Awake-behaving silicon-probe recordings — rare in tree shrew literature",
-        "Tree shrew is an emerging primate-adjacent model for visual neuroscience",
-        "Open chronic-implant pipeline suitable for longitudinal studies"
-      ],
-      "keywords": [
-        "tree shrew",
-        "Tupaia",
-        "primate-like vision",
-        "V1",
-        "V2",
-        "awake behaving",
-        "chronic recordings"
-      ],
-      "notableMethods": ["chronic silicon probes", "head-fixed visual stimulation"],
-      "piContext": "Krishna Bhar — visual cortex, alternative-model species"
-    },
-    "REPLACE_WITH_REAL_DATASET_ID_2": {
-      "displayName": "",
-      "highlights": [],
-      "keywords": [],
-      "notableMethods": [],
-      "piContext": ""
-    }
+  "682e7772cdf3f24938176fac": {
+    "displayName": "Haley — C. elegans accept-reject foraging on bacterial patches",
+    "highlights": [
+      "Quantitative ethology of accept-reject decision-making during free foraging",
+      "Tracks 2D trajectories + distance-to-patch + on-patch dwell time at high spatial resolution",
+      "Pairs animal behavior with bacterial-patch growth (OP50 vs OP50-GFP strains) to test food-quality effects",
+      "Encounter tables with 20K+ rows linking acceptance vs rejection to patch context",
+      "Published with a MATLAB Live Script tutorial showing position timeseries (VHSB binary format) and ontology-grounded behavior tables"
+    ],
+    "keywords": [
+      "C. elegans",
+      "Caenorhabditis elegans",
+      "foraging",
+      "decision-making",
+      "accept-reject",
+      "bacterial patches",
+      "OP50",
+      "OP50-GFP",
+      "E. coli",
+      "trajectory tracking",
+      "position timeseries",
+      "behavioral video",
+      "patch encounter",
+      "VHSB format",
+      "PR811 strain",
+      "N2 wild-type",
+      "ethology"
+    ],
+    "notableMethods": [
+      "behavioral video tracking",
+      "patch detection + spatial mapping",
+      "ontology-grounded analysis tables (OTR)",
+      "phase-contrast + fluorescence microscopy of bacterial growth"
+    ],
+    "piContext": "Haley lab — C. elegans foraging behavior, decision-making, food-environment interactions. Pairs animal-level behavior with bacterial-food microscopy in a single integrated NDI dataset."
+  },
+
+  "67f723d574f5f79c6062389d": {
+    "displayName": "Dabrowska — BNST vasopressin / oxytocin patch-clamp electrophysiology",
+    "highlights": [
+      "Whole-cell patch-clamp recordings from identified neurons in the bed nucleus of the stria terminalis (BNST)",
+      "Optogenetic activation of CRF, OTR, AVP, and CRF-Cre lines lets the recording isolate cell-type-specific responses",
+      "Paired with elevated plus maze (EPM) + startle behavior to link cellular changes to anxiety phenotypes",
+      "606 probes (202 each of patch-Vm voltage, patch-I current, and stimulator) across 215 subjects",
+      "Published with a MATLAB Live Script tutorial demonstrating raw voltage/current trace retrieval (NBF binary format) and current-step sweep analysis"
+    ],
+    "keywords": [
+      "rat",
+      "Rattus norvegicus",
+      "bed nucleus of the stria terminalis",
+      "BNST",
+      "vasopressin",
+      "AVP",
+      "oxytocin",
+      "OTR",
+      "corticotropin-releasing factor",
+      "CRF",
+      "patch-clamp",
+      "whole-cell",
+      "intracellular recording",
+      "electrophysiology",
+      "elevated plus maze",
+      "EPM",
+      "acoustic startle",
+      "anxiety",
+      "stress response",
+      "optogenetics",
+      "NBF format",
+      "patch-Vm",
+      "patch-I",
+      "current step protocol"
+    ],
+    "notableMethods": [
+      "whole-cell patch-clamp electrophysiology",
+      "optogenetic stimulation",
+      "current-step injection protocol",
+      "elevated plus maze (EPM) behavioral assay",
+      "acoustic startle",
+      "Cre-driver line targeting (CRF-Cre, OTR-IRES-Cre, AVP-Cre)"
+    ],
+    "piContext": "Joanna Dabrowska lab — limbic neuropeptide signaling, stress/anxiety circuits, paraventricular and BNST microcircuitry. Combines targeted cell-type recordings with behavioral phenotyping."
   }
 }
