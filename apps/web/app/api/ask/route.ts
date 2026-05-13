@@ -84,9 +84,16 @@ export async function POST(req: Request): Promise<Response> {
     tools,
     // Cap output + tool loops to bound cost. See spec §Cost.
     maxOutputTokens: 1024,
-    // stopWhen replaces v4's `maxSteps`. We allow up to 5 model
-    // turns (initial + 4 tool roundtrips).
-    stopWhen: stepCountIs(5),
+    // stopWhen replaces v4's `maxSteps`. Cap at 8 model turns so a
+    // multi-tool scientific query (e.g. "what probe types in dataset
+    // X" → semantic_search → get_dataset_class_counts → query_documents
+    // (probe) → query_documents (element) → compose answer) has
+    // enough headroom to finish. Originally 5 — too tight; a Day-4
+    // smoke test with a Dabrowska-by-PI query hit the cap mid-answer.
+    // Each step still costs one LLM round-trip + at most one tool
+    // call; total cost cap unchanged because maxOutputTokens=1024
+    // bounds the LLM's output.
+    stopWhen: stepCountIs(8),
     temperature: 0.3,
   });
 
