@@ -41,7 +41,8 @@ import { argv, env, exit } from 'node:process';
 
 const LIVE = env.LIVE_API_URL ?? 'https://ndb-v2-production.up.railway.app';
 const EXPERIMENTAL = env.EXPERIMENTAL_API_URL;
-const TIMEOUT_MS = Number(env.AUDIT_TIMEOUT_MS ?? 30_000);
+const TIMEOUT_MS = Number(env.AUDIT_TIMEOUT_MS ?? 60_000);
+const RETRY_ON_TIMEOUT = 1; // one retry; tables/* on cold Mongo connections flake
 const EPSILON = 1e-6; // float-equality tolerance for binary-summary digests
 const VERBOSE = argv.includes('--verbose');
 
@@ -83,6 +84,33 @@ const KNOWN_BINARY_DOCS = [
 // Class names we'll probe per dataset for query_documents diff.
 const COMMON_CLASSES = ['subject', 'probe', 'element', 'element_epoch'];
 
+// Ontology CURIEs to probe at /api/ontology/lookup?term=<curie>. Covers every
+// PROVIDERS category in OntologyService:
+//   - OLS-backed (CL, NCBITaxon, CHEBI, PATO, EFO) — should match byte-identical
+//   - Stub providers (WBStrain) — Phase A's NDI fallback may enrich them
+//   - Catch-all (NDIC, unknown) — Phase A's NDI fallback may enrich them
+//   - Custom handlers (RRID, PubChem) — should match byte-identical
+//
+// Real CURIEs sampled from the published datasets — these are what the
+// Document Explorer actually requests on click.
+const ONTOLOGY_CURIES = [
+  // OLS-backed — both backends share the EBI OLS4 fetch path
+  'CL:0000540',         // neuron — Dabrowska BNST
+  'NCBITaxon:6239',     // C. elegans — Bhar/Haley
+  'NCBITaxon:10116',    // Rattus norvegicus — Dabrowska
+  'CHEBI:62064',        // isoamyl alcohol — Bhar
+  'PATO:0000461',       // normal phenotype
+  // Stub paths — Phase A may enrich
+  'WBStrain:00000001',  // N2 wild-type — Bhar/Haley
+  'WBStrain:00038063',  // a Bhar lab strain
+  'RRID:SCR_007358',    // a research resource ID — Dabrowska tools
+  // Catch-all paths — Phase A may add a real label
+  'NDIC:1',
+  'NDIC:42',
+  'EMPTY:something',    // synthetic miss to verify graceful handling
+  'UNKNOWN:99999',      // synthetic unknown provider
+];
+
 // Fields that vary per-request and must be stripped before diffing.
 // Each entry is a dot-path, supporting `[]` for "every element".
 const SCRUB_PATHS = [
@@ -95,16 +123,23 @@ const SCRUB_PATHS = [
   'cache.age_seconds',
   'fetched_at',
   'last_modified',
+  // Backend summary-cache stamp: a UTC ISO computed when the cached
+  // summary was last refreshed. The experimental env had a cold cache
+  // so it recomputed everything; the production env's summaries are
+  // older. Same body, different stamp — pure noise for the audit.
+  'computedAt',
+  'computed_at',
   // FastAPI envelope variations
   'meta.requestId',
   'meta.fetched_at',
+  'meta.computedAt',
   // Per-row volatile (rarely seen but cheap to strip)
   '[].cached_at',
 ];
 
 // ----- Fetch helper -----------------------------------------------------
 
-async function fetchJson(baseUrl, path) {
+async function fetchJsonOnce(baseUrl, path) {
   const url = new URL(path, baseUrl).toString();
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -121,16 +156,34 @@ async function fetchJson(baseUrl, path) {
     } catch {
       body = { __nonJson: true, text: text.slice(0, 500) };
     }
-    return { ok: res.ok, status: res.status, body };
+    return { ok: res.ok, status: res.status, body, timedOut: false };
   } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    const timedOut = msg.includes('aborted') || (err instanceof Error && err.name === 'AbortError');
     return {
       ok: false,
       status: 0,
-      body: { __error: err instanceof Error ? err.message : String(err) },
+      body: { __error: msg },
+      timedOut,
     };
   } finally {
     clearTimeout(timer);
   }
+}
+
+/**
+ * fetchJson with retry-on-timeout. The class-tables endpoint hits a flaky
+ * Mongo connection that times out at ~10s on a cold connection; one retry
+ * usually catches it after the pool warms up.
+ */
+async function fetchJson(baseUrl, path) {
+  let last = await fetchJsonOnce(baseUrl, path);
+  for (let attempt = 0; attempt < RETRY_ON_TIMEOUT && last.timedOut; attempt++) {
+    // Brief backoff so we're not racing the same cold Mongo connection.
+    await new Promise((r) => setTimeout(r, 500));
+    last = await fetchJsonOnce(baseUrl, path);
+  }
+  return last;
 }
 
 // ----- Scrubbing --------------------------------------------------------
@@ -229,6 +282,15 @@ function buildEndpoints(extraDatasets, extraBinaryDocs) {
     }
   }
 
+  // Ontology lookups — covers Phase A's NDI fallback path
+  for (const curie of ONTOLOGY_CURIES) {
+    eps.push({
+      name: `ontology ${curie}`,
+      path: `/api/ontology/lookup?term=${encodeURIComponent(curie)}`,
+      ontology: true,
+    });
+  }
+
   // Binary docs — both /data/timeseries (Document Explorer) and /signal (Ask)
   for (const bd of [...KNOWN_BINARY_DOCS, ...extraBinaryDocs]) {
     eps.push({
@@ -317,14 +379,17 @@ async function main() {
   //    dataset, not just the hand-listed 4.
   const catalog = await fetchJson(LIVE, '/api/datasets/published?page=1&pageSize=100');
   const extraDatasets = [];
-  if (catalog.ok && catalog.body?.items) {
-    for (const item of catalog.body.items) {
+  // FastAPI envelope: {totalNumber, datasets: [...]}. Each dataset has id/_id
+  // depending on serialization — both fallback chains covered.
+  const items = catalog.body?.datasets ?? catalog.body?.items ?? [];
+  if (catalog.ok && Array.isArray(items)) {
+    for (const item of items) {
       const id = item?.id ?? item?._id ?? null;
       if (id && !DATASETS.includes(id)) extraDatasets.push(id);
     }
   } else {
     console.error(
-      `Bootstrap failed: GET ${LIVE}/api/datasets/published returned ${catalog.status}.`,
+      `Bootstrap failed: GET ${LIVE}/api/datasets/published returned ${catalog.status} (body keys: ${Object.keys(catalog.body ?? {}).join(', ')}).`,
     );
     exit(2);
   }

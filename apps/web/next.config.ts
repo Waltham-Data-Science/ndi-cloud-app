@@ -160,7 +160,30 @@ const config: NextConfig = {
    * upstream sees the request.
    */
   async rewrites() {
-    const upstream = process.env.UPSTREAM_API_URL;
+    // Branch-aware upstream routing for the NDI-python integration audit.
+    //
+    // The `feat/experimental-ask-chat` branch is paired with an
+    // experimental ndb-v2 deploy on Railway (`ndb-v2-experimental.up.
+    // railway.app`) that runs the Phase A NDI-python integration. We
+    // want the Vercel preview build for that branch to hit the
+    // experimental backend so the audit can pixel-diff its rendered
+    // pages against the live site WITHOUT changing any Vercel-side
+    // env vars (we don't own all the env-var scopes from this CLI).
+    //
+    // Detection: Vercel auto-injects `VERCEL_GIT_COMMIT_REF` on every
+    // preview build. The override only fires when (a) the branch
+    // matches AND (b) `UPSTREAM_API_URL` was NOT explicitly set on
+    // the preview env (we don't override an explicit value).
+    //
+    // Production (main) deploys take the standard `UPSTREAM_API_URL`
+    // path. Local dev still gates on the env var being set.
+    const explicit = process.env.UPSTREAM_API_URL;
+    const branch = process.env.VERCEL_GIT_COMMIT_REF;
+    const upstream =
+      explicit ??
+      (branch === 'feat/experimental-ask-chat'
+        ? 'https://ndb-v2-experimental.up.railway.app'
+        : undefined);
     if (!upstream) return [];
     return [
       {
