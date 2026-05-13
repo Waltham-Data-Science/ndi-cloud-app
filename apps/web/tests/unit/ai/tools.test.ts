@@ -39,7 +39,40 @@ describe('lib/ai/tools', () => {
         `${TEST_BASE}/api/datasets/published?page=1&pageSize=20`,
         expect.objectContaining({ signal: expect.any(AbortSignal) }),
       );
-      expect(result).toEqual({ totalNumber: 5, datasets: [] });
+      // Day 1 citations: every successful tool result attaches a
+      // `references` array. With zero datasets returned, the array is
+      // empty (one reference per dataset row).
+      expect(result).toEqual(
+        expect.objectContaining({ totalNumber: 5, datasets: [], references: [] }),
+      );
+    });
+
+    it('attaches one reference per dataset row', async () => {
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            totalNumber: 2,
+            datasets: [
+              { id: 'ds1', name: 'Alpha', description: 'a brief abstract' },
+              { id: 'ds2', name: 'Beta' },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+      const result = await listPublishedDatasetsHandler({});
+      if ('error' in result) throw new Error('expected success');
+      expect(result.references).toHaveLength(2);
+      expect(result.references[0]).toMatchObject({
+        doc_id: 'ds1',
+        url: '/datasets/ds1/overview',
+        class: 'dataset',
+        title: 'Alpha',
+      });
+      expect(result.references[1]).toMatchObject({
+        doc_id: 'ds2',
+        title: 'Beta',
+      });
     });
 
     it('passes through explicit page+pageSize+query', async () => {
@@ -93,12 +126,16 @@ describe('lib/ai/tools', () => {
   });
 
   describe('getDatasetHandler', () => {
-    it('hits /api/datasets/:id', async () => {
+    it('hits /api/datasets/:id and attaches a dataset reference', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-        new Response(JSON.stringify({ id: 'd1', name: 'Mouse cortex' }), {
-          status: 200,
-          headers: { 'content-type': 'application/json' },
-        }),
+        new Response(
+          JSON.stringify({
+            id: 'd1',
+            name: 'Mouse cortex',
+            description: 'V1 recordings',
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
       );
       const result = await getDatasetHandler({ id: 'd1' });
       expect(fetchSpy).toHaveBeenCalledWith(
@@ -106,7 +143,18 @@ describe('lib/ai/tools', () => {
         expect.any(Object),
       );
       expect(result).toEqual(
-        expect.objectContaining({ id: 'd1', name: 'Mouse cortex' }),
+        expect.objectContaining({
+          id: 'd1',
+          name: 'Mouse cortex',
+          references: expect.arrayContaining([
+            expect.objectContaining({
+              doc_id: 'd1',
+              url: '/datasets/d1/overview',
+              class: 'dataset',
+              title: 'Mouse cortex',
+            }),
+          ]),
+        }),
       );
     });
 
@@ -169,7 +217,15 @@ describe('lib/ai/tools', () => {
         `${TEST_BASE}/api/facets`,
         expect.any(Object),
       );
-      expect(result).toEqual({ species: [], brainRegions: [] });
+      expect(result).toEqual(
+        expect.objectContaining({
+          species: [],
+          brainRegions: [],
+          references: expect.arrayContaining([
+            expect.objectContaining({ class: 'facets' }),
+          ]),
+        }),
+      );
     });
   });
 });

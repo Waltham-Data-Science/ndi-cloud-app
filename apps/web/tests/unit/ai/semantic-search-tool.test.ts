@@ -89,6 +89,14 @@ describe('semanticSearchDatasetsHandler', () => {
       score: 0.71,
     });
     expect(result.pipeline.stage).toBe('rerank');
+    // Day 1: each reranked hit attaches a Reference pointing to the
+    // dataset's overview page. The doc_id matches the dataset id.
+    expect(result.references).toHaveLength(2);
+    expect(result.references[0]).toMatchObject({
+      doc_id: 'd1',
+      url: '/datasets/d1/overview',
+      class: 'dataset',
+    });
   });
 
   it('returns { error } when DATABASE_URL is unset', async () => {

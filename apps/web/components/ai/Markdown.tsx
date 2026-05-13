@@ -1,70 +1,191 @@
 'use client';
 
 import Link from 'next/link';
+import { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+
+import { parseFootnotes, type Reference } from '@/lib/ai/references';
+
+import { CitationChip } from './CitationChip';
+import { SourcesPanel } from './SourcesPanel';
 
 /**
  * Markdown renderer for assistant messages.
  *
  * Why react-markdown over a custom parser: handles GFM (tables,
- * strikethrough), code blocks, and link safety out of the box.
- * Disabling raw HTML (default) prevents the model from injecting
+ * strikethrough, footnotes), code blocks, and link safety out of the
+ * box. Disabling raw HTML (default) prevents the model from injecting
  * `<script>` even if a prompt-injection coaxed it.
  *
- * Internal-link rewriting: `/datasets/...` paths use next/link for
- * client-side nav; external URLs use `<a target="_blank">`.
+ * # Citations (Day 1 of the scientific-depth plan)
  *
- * Styling: matches the marketing typography — slightly tighter than
- * default markdown so chat bubbles read as conversation, not a blog
- * post.
+ * The LLM is instructed to write `[^N]` footnote references inline
+ * with claims and to define them at the bottom under "### Sources".
+ * remark-gfm parses these natively. We customize two pieces:
+ *
+ *   - The `<sup><a data-footnote-ref>N</a></sup>` markup → rendered
+ *     as a `CitationChip` that opens the *referenced URL directly*
+ *     (rather than scrolling to the in-page anchor that remark-gfm
+ *     emits by default)
+ *   - The remark-gfm-generated `<section data-footnotes>` block →
+ *     suppressed; replaced by our `SourcesPanel` which we render
+ *     after the main markdown content using a pre-parsed references
+ *     map.
+ *
+ * Pre-parsing is done once per render via `useMemo` on the raw
+ * content string. The same parsed map is consumed by both the inline
+ * chip lookup and the bottom panel — single source of truth.
+ *
+ * Internal-link rewriting (for non-citation links): `/datasets/...`
+ * paths use next/link for client-side nav; external URLs use
+ * `<a target="_blank">`.
  */
 type Props = { content: string };
 
 export function Markdown({ content }: Props) {
+  // Parse footnote definitions ONCE per content change. Same map fed
+  // to both the inline chip lookup and the bottom SourcesPanel.
+  const footnoteMap = useMemo(() => parseFootnotes(content), [content]);
+
+  // Strip the body of the "### Sources" / footnote-defs section before
+  // handing to react-markdown — otherwise remark-gfm renders a second
+  // copy below our SourcesPanel. We keep the inline [^N] references
+  // intact (those still get rendered as `<sup>` markers, which we
+  // override below).
+  const bodyContent = useMemo(() => stripSourcesSection(content), [content]);
+
+  const referencesList: Reference[] = useMemo(() => {
+    return [...footnoteMap.entries()]
+      .sort(([a], [b]) => a - b)
+      .map(([, ref]) => ref);
+  }, [footnoteMap]);
+
   return (
-    <ReactMarkdown
-      remarkPlugins={[remarkGfm]}
-      components={{
-        a: ({ href, children, ...rest }) => {
-          const url = href ?? '';
-          const isInternal = url.startsWith('/') && !url.startsWith('//');
-          if (isInternal) {
+    <>
+      <ReactMarkdown
+        remarkPlugins={[remarkGfm]}
+        components={{
+          a: ({ href, children, ...rest }) => {
+            const url = href ?? '';
+            // Detect footnote-ref anchors: remark-gfm emits
+            // `#user-content-fn-N` for [^N] markers. We grab N and
+            // render a CitationChip linked to the referenced URL.
+            const footnoteRefMatch = url.match(/^#user-content-fn-(\d+)$/);
+            if (footnoteRefMatch) {
+              const n = Number.parseInt(footnoteRefMatch[1]!, 10);
+              const ref = footnoteMap.get(n);
+              if (ref) {
+                return <CitationChip number={n} reference={ref} />;
+              }
+              // Fallback — footnote ref points to a missing definition.
+              // Render as a small grey chip without a link.
+              return (
+                <span className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 mx-0.5 align-middle text-[10px] font-semibold rounded-md bg-gray-100 text-gray-400">
+                  {n}
+                </span>
+              );
+            }
+            const isInternal = url.startsWith('/') && !url.startsWith('//');
+            if (isInternal) {
+              return (
+                <Link href={url} className="text-brand-blue underline hover:text-brand-blue-2">
+                  {children}
+                </Link>
+              );
+            }
             return (
-              <Link href={url} className="text-brand-blue underline hover:text-brand-blue-2">
+              <a
+                href={url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-brand-blue underline hover:text-brand-blue-2"
+                {...rest}
+              >
                 {children}
-              </Link>
+              </a>
             );
-          }
-          return (
-            <a
-              href={url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-brand-blue underline hover:text-brand-blue-2"
-              {...rest}
-            >
+          },
+          // Suppress remark-gfm's auto-generated footnote section. The
+          // LLM wrote its own "### Sources" header which we stripped
+          // above; we render the canonical SourcesPanel ourselves.
+          section: ({ children, ...rest }) => {
+            // react-markdown passes data attributes via `node` in v9.
+            // The footnote section gets `data-footnotes` on the <section>.
+            const props = rest as { 'data-footnotes'?: unknown };
+            if (props['data-footnotes'] !== undefined) return null;
+            return <section {...rest}>{children}</section>;
+          },
+          p: ({ children }) => <p className="my-2 leading-relaxed">{children}</p>,
+          ul: ({ children }) => <ul className="my-2 list-disc pl-5 space-y-1">{children}</ul>,
+          ol: ({ children }) => <ol className="my-2 list-decimal pl-5 space-y-1">{children}</ol>,
+          code: ({ children }) => (
+            <code className="px-1 py-0.5 rounded bg-gray-100 text-[0.92em] font-mono">
               {children}
-            </a>
-          );
-        },
-        p: ({ children }) => <p className="my-2 leading-relaxed">{children}</p>,
-        ul: ({ children }) => <ul className="my-2 list-disc pl-5 space-y-1">{children}</ul>,
-        ol: ({ children }) => <ol className="my-2 list-decimal pl-5 space-y-1">{children}</ol>,
-        code: ({ children }) => (
-          <code className="px-1 py-0.5 rounded bg-gray-100 text-[0.92em] font-mono">
-            {children}
-          </code>
-        ),
-        pre: ({ children }) => (
-          <pre className="my-2 p-3 rounded-md bg-gray-50 border border-gray-200 overflow-x-auto text-[0.92em]">
-            {children}
-          </pre>
-        ),
-        strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-      }}
-    >
-      {content}
-    </ReactMarkdown>
+            </code>
+          ),
+          pre: ({ children }) => (
+            <pre className="my-2 p-3 rounded-md bg-gray-50 border border-gray-200 overflow-x-auto text-[0.92em]">
+              {children}
+            </pre>
+          ),
+          strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+          // Suppress h3 specifically when it's the model's "### Sources"
+          // header — our SourcesPanel renders its own heading. We do
+          // this conservatively: only the exact text "Sources" gets
+          // dropped, so the model can still use h3 for other section
+          // titles.
+          h3: ({ children }) => {
+            if (typeof children === 'string' && children.trim() === 'Sources') {
+              return null;
+            }
+            if (
+              Array.isArray(children) &&
+              children.length === 1 &&
+              typeof children[0] === 'string' &&
+              children[0].trim() === 'Sources'
+            ) {
+              return null;
+            }
+            return <h3 className="mt-3 mb-1 text-[15px] font-semibold">{children}</h3>;
+          },
+        }}
+      >
+        {bodyContent}
+      </ReactMarkdown>
+      <SourcesPanel references={referencesList} />
+    </>
   );
+}
+
+/**
+ * Strip the "### Sources" / footnote-definition block from the message
+ * body so react-markdown doesn't render a duplicate alongside our
+ * SourcesPanel. We keep inline [^N] markers intact (those live in the
+ * narrative text above the Sources section).
+ *
+ * The strip targets the canonical shape the LLM is taught to emit:
+ *
+ *   ...narrative text [^1]...
+ *
+ *   ### Sources
+ *   [^1]: [Title](url) — class
+ *   [^2]: [Title](url) — class
+ *
+ * Everything from "### Sources" header onward is removed. The
+ * footnote definitions are gone from the body, so remark-gfm has
+ * nothing to feed into its auto-section.
+ */
+function stripSourcesSection(content: string): string {
+  // Find a line that is just "### Sources" (allow trailing whitespace).
+  const lines = content.split('\n');
+  let cutoff = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^###\s+Sources\s*$/.test(lines[i]!)) {
+      cutoff = i;
+      break;
+    }
+  }
+  if (cutoff === -1) return content;
+  return lines.slice(0, cutoff).join('\n').trimEnd();
 }

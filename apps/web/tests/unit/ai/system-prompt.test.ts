@@ -49,4 +49,24 @@ describe('lib/ai/system-prompt', () => {
   it('instructs graceful fallback when semantic_search is unavailable', () => {
     expect(SYSTEM_PROMPT).toMatch(/fall back|VOYAGE_API_KEY|index empty/i);
   });
+
+  // Day 1 — citation discipline. These clauses are what gate the
+  // chatbot from making sourceless claims; if any of these vanish in a
+  // future edit, the demo's trust signal collapses.
+  it('requires citations as non-negotiable', () => {
+    expect(SYSTEM_PROMPT).toMatch(/citation/i);
+    expect(SYSTEM_PROMPT).toMatch(/non-negotiable/i);
+  });
+
+  it('teaches the model to use [^N] footnote markers', () => {
+    expect(SYSTEM_PROMPT).toMatch(/\[\^N\]/);
+  });
+
+  it('requires a "### Sources" section listing each cited reference', () => {
+    expect(SYSTEM_PROMPT).toMatch(/### Sources/);
+  });
+
+  it('forbids citing a source not retrieved from a tool', () => {
+    expect(SYSTEM_PROMPT).toMatch(/never fabricate a citation|never invent|cannot cite/i);
+  });
 });

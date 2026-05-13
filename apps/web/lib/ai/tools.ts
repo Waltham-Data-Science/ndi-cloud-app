@@ -14,11 +14,32 @@
  * than a 500.
  *
  * Anonymous-public endpoints only — no cookies, no CSRF, no auth.
+ *
+ * # Citation contract (Day 1 of the scientific-depth plan)
+ *
+ * Every tool now returns `references: Reference[]` alongside its data
+ * payload. The LLM is instructed (via system-prompt) to render these
+ * as `[^N]` footnotes inline with its answer, and the chat UI renders
+ * each `[^N]` as a clickable chip that opens the underlying NDI
+ * document in a new tab. The contract:
+ *
+ *   - Catalog tools cite the dataset record (`/datasets/[id]/overview`)
+ *   - Document-level tools (Day 2) cite each individual document
+ *     (`/datasets/[id]/documents/[docId]`)
+ *   - Signal tools (Day 4) cite the binary doc + element + epoch
+ *
+ * Never invent a reference. If upstream data is missing the field
+ * needed to build a reference, omit the reference for that item.
  */
 import { tool } from 'ai';
 import { z } from 'zod';
 
 import { hybridSearch, type RetrievedChunk } from './hybrid-retrieval';
+import {
+  makeDatasetReference,
+  makeReference,
+  type Reference,
+} from './references';
 import { embedQuery, rerank } from './voyage-client';
 
 const TOOL_TIMEOUT_MS = 8_000;
@@ -56,6 +77,25 @@ async function fetchJson<T>(url: string): Promise<ToolResult<T>> {
   }
 }
 
+/**
+ * Type guard — narrow a tool result that may be `{ error }`.
+ */
+function isErrorResult<T>(r: ToolResult<T>): r is ToolError {
+  return typeof r === 'object' && r !== null && 'error' in r;
+}
+
+/**
+ * Attach `references` to a successful tool result. Skips silently if
+ * the input is an error result (errors don't need citations).
+ */
+function withRefs<T extends object>(
+  result: ToolResult<T>,
+  references: Reference[],
+): ToolResult<T & { references: Reference[] }> {
+  if (isErrorResult(result)) return result;
+  return { ...result, references };
+}
+
 // ─── list_published_datasets ────────────────────────────────────────
 
 export const listPublishedDatasetsInput = z.object({
@@ -64,9 +104,14 @@ export const listPublishedDatasetsInput = z.object({
   query: z.string().min(1).optional(),
 });
 
+interface DatasetListResponse {
+  totalNumber: number;
+  datasets: Array<{ id?: string; _id?: string; name?: string; description?: string }>;
+}
+
 export async function listPublishedDatasetsHandler(
   input: z.infer<typeof listPublishedDatasetsInput>,
-): Promise<ToolResult<{ totalNumber: number; datasets: unknown[] }>> {
+): Promise<ToolResult<DatasetListResponse & { references: Reference[] }>> {
   const parsed = listPublishedDatasetsInput.safeParse(input);
   if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
 
@@ -79,7 +124,26 @@ export async function listPublishedDatasetsHandler(
   if (parsed.data.query) {
     url += `&q=${encodeURIComponent(parsed.data.query)}`;
   }
-  return fetchJson(url);
+  const result = await fetchJson<DatasetListResponse>(url);
+  if (isErrorResult(result)) return result;
+
+  // One reference per dataset in the response — citation chip links to
+  // the dataset's overview page in the Document Explorer.
+  const references: Reference[] = (result.datasets ?? [])
+    .map((d) => {
+      const id = d.id ?? d._id;
+      if (typeof id !== 'string' || !id) return null;
+      return makeDatasetReference({
+        datasetId: id,
+        title: d.name ?? '(unnamed dataset)',
+        snippet:
+          (d.description ?? '').slice(0, 120) ||
+          'NDI Commons published dataset',
+      });
+    })
+    .filter((r): r is Reference => r !== null);
+
+  return withRefs(result, references);
 }
 
 // ─── get_dataset ────────────────────────────────────────────────────
@@ -88,64 +152,152 @@ export const getDatasetInput = z.object({
   id: z.string().min(1, 'id is required'),
 });
 
+interface DatasetRecord {
+  id?: string;
+  _id?: string;
+  name?: string;
+  description?: string;
+}
+
 export async function getDatasetHandler(
   input: z.infer<typeof getDatasetInput>,
-): Promise<ToolResult<unknown>> {
+): Promise<ToolResult<DatasetRecord & { references: Reference[] }>> {
   const parsed = getDatasetInput.safeParse(input);
   if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
 
   const base = baseUrl();
   if (!base) return { error: 'Catalog service not configured' };
 
-  return fetchJson(`${base}/api/datasets/${encodeURIComponent(parsed.data.id)}`);
+  const result = await fetchJson<DatasetRecord>(
+    `${base}/api/datasets/${encodeURIComponent(parsed.data.id)}`,
+  );
+  if (isErrorResult(result)) return result;
+
+  const id = result.id ?? result._id ?? parsed.data.id;
+  const references: Reference[] = [
+    makeDatasetReference({
+      datasetId: id,
+      title: result.name ?? '(unnamed dataset)',
+      snippet: (result.description ?? '').slice(0, 120) || 'Full dataset record',
+    }),
+  ];
+
+  return withRefs(result, references);
 }
 
 // ─── get_dataset_summary ────────────────────────────────────────────
 
 export const getDatasetSummaryInput = getDatasetInput;
 
+interface DatasetSummary {
+  id?: string;
+  _id?: string;
+  name?: string;
+  totalDocuments?: number;
+}
+
 export async function getDatasetSummaryHandler(
   input: z.infer<typeof getDatasetSummaryInput>,
-): Promise<ToolResult<unknown>> {
+): Promise<ToolResult<DatasetSummary & { references: Reference[] }>> {
   const parsed = getDatasetSummaryInput.safeParse(input);
   if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
 
   const base = baseUrl();
   if (!base) return { error: 'Catalog service not configured' };
 
-  return fetchJson(
-    `${base}/api/datasets/${encodeURIComponent(parsed.data.id)}/summary`,
+  const datasetId = parsed.data.id;
+  const result = await fetchJson<DatasetSummary>(
+    `${base}/api/datasets/${encodeURIComponent(datasetId)}/summary`,
   );
+  if (isErrorResult(result)) return result;
+
+  const references: Reference[] = [
+    makeDatasetReference({
+      datasetId,
+      title: result.name ?? '(unnamed dataset)',
+      snippet:
+        typeof result.totalDocuments === 'number'
+          ? `Compact summary — ${result.totalDocuments} documents`
+          : 'Compact dataset summary',
+    }),
+  ];
+
+  return withRefs(result, references);
 }
 
 // ─── get_dataset_class_counts ───────────────────────────────────────
 
 export const getDatasetClassCountsInput = getDatasetInput;
 
+interface ClassCountsResponse {
+  datasetId?: string;
+  totalDocuments?: number;
+  counts?: Record<string, number>;
+}
+
 export async function getDatasetClassCountsHandler(
   input: z.infer<typeof getDatasetClassCountsInput>,
-): Promise<ToolResult<unknown>> {
+): Promise<ToolResult<ClassCountsResponse & { references: Reference[] }>> {
   const parsed = getDatasetClassCountsInput.safeParse(input);
   if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
 
   const base = baseUrl();
   if (!base) return { error: 'Catalog service not configured' };
 
-  return fetchJson(
-    `${base}/api/datasets/${encodeURIComponent(parsed.data.id)}/class-counts`,
+  const datasetId = parsed.data.id;
+  const result = await fetchJson<ClassCountsResponse>(
+    `${base}/api/datasets/${encodeURIComponent(datasetId)}/class-counts`,
   );
+  if (isErrorResult(result)) return result;
+
+  const classNames = Object.keys(result.counts ?? {});
+  const references: Reference[] = [
+    makeDatasetReference({
+      datasetId,
+      title: 'Class counts',
+      snippet:
+        classNames.length > 0
+          ? `Counts across ${classNames.length} document classes`
+          : 'Class-count summary',
+    }),
+  ];
+
+  return withRefs(result, references);
 }
 
 // ─── get_facets ─────────────────────────────────────────────────────
 
 export const getFacetsInput = z.object({});
 
+interface FacetsResponse {
+  species?: unknown[];
+  brainRegions?: unknown[];
+  strains?: unknown[];
+}
+
 export async function getFacetsHandler(
   _input: z.infer<typeof getFacetsInput>,
-): Promise<ToolResult<unknown>> {
+): Promise<ToolResult<FacetsResponse & { references: Reference[] }>> {
   const base = baseUrl();
   if (!base) return { error: 'Catalog service not configured' };
-  return fetchJson(`${base}/api/facets`);
+
+  const result = await fetchJson<FacetsResponse>(`${base}/api/facets`);
+  if (isErrorResult(result)) return result;
+
+  // Facets aren't a single document — they're a cross-catalog
+  // aggregate. The reference points to the data-commons search page,
+  // which is the closest "source" the user can click through to.
+  const references: Reference[] = [
+    {
+      doc_id: 'facets',
+      url: '/datasets',
+      class: 'facets',
+      title: 'Catalog facets (species, brain regions, strains, etc.)',
+      snippet: 'Cross-catalog aggregation surface',
+    },
+  ];
+
+  return withRefs(result, references);
 }
 
 // ─── semantic_search_datasets ───────────────────────────────────────
@@ -160,14 +312,8 @@ export async function getFacetsHandler(
 //      candidates, returns top-K with relevance scores
 //
 // Returns top-K (default 5, max 10) reranked chunks with their full
-// content + curated metadata.
-//
-// Use this when the user's question is fuzzy / topical / synonymous
-// — when literal substring search would miss relevant datasets.
-// Examples: "datasets about memory" (hits hippocampus work),
-// "primate-like vision" (hits tree shrew via curated keywords),
-// "extracellular methods" (hits descriptions where the method is
-// mentioned but not in any structured field).
+// content + curated metadata, plus one reference per chunk pointing
+// to the dataset's overview page.
 
 export const semanticSearchDatasetsInput = z.object({
   query: z.string().min(1, 'query is required'),
@@ -186,7 +332,13 @@ const CANDIDATES_PER_LANE = 20;
 
 export async function semanticSearchDatasetsHandler(
   input: z.infer<typeof semanticSearchDatasetsInput>,
-): Promise<ToolResult<{ results: SemanticSearchResultEntry[]; pipeline: PipelineInfo }>> {
+): Promise<
+  ToolResult<{
+    results: SemanticSearchResultEntry[];
+    pipeline: PipelineInfo;
+    references: Reference[];
+  }>
+> {
   const parsed = semanticSearchDatasetsInput.safeParse(input);
   if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
 
@@ -230,7 +382,7 @@ export async function semanticSearchDatasetsHandler(
   pipeline.candidatesAfterRrf = candidates.length;
 
   if (candidates.length === 0) {
-    return { results: [], pipeline };
+    return { results: [], pipeline, references: [] };
   }
 
   // 4. Rerank.
@@ -248,7 +400,14 @@ export async function semanticSearchDatasetsHandler(
         metadata: chunk.metadata,
       };
     });
-    return { results: finalResults, pipeline };
+    const references: Reference[] = finalResults.map((r) =>
+      makeDatasetReference({
+        datasetId: r.id,
+        title: r.name ?? '(unnamed dataset)',
+        snippet: `Semantic-search hit, score ${r.score.toFixed(2)}`,
+      }),
+    );
+    return { results: finalResults, pipeline, references };
   } catch (e) {
     // Soft-degrade: if reranking fails, return the top-K from RRF
     // alone. The user gets an answer based on hybrid retrieval, just
@@ -264,7 +423,14 @@ export async function semanticSearchDatasetsHandler(
         metadata: { ...c.metadata, rerankFailed: errMsg(e) },
       }));
     pipeline.rerankFallback = true;
-    return { results: fallback, pipeline };
+    const references: Reference[] = fallback.map((r) =>
+      makeDatasetReference({
+        datasetId: r.id,
+        title: r.name ?? '(unnamed dataset)',
+        snippet: `RRF-only hit (rerank failed), score ${r.score.toFixed(4)}`,
+      }),
+    );
+    return { results: fallback, pipeline, references };
   }
 }
 
@@ -278,6 +444,11 @@ function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
+// Re-export makeReference so per-tool files (Day 2) can import from
+// this module without reaching into ./references directly. Keeps the
+// tool surface ergonomic — one import covers everything.
+export { makeReference };
+
 // ─── Tool definitions for the AI SDK ────────────────────────────────
 
 export const tools = {
@@ -285,28 +456,32 @@ export const tools = {
     description:
       'List published datasets in the NDI Commons catalog. Use this to ' +
       'answer "how many datasets" (set pageSize=1, read totalNumber) or ' +
-      '"what datasets cover X" (set query).',
+      '"what datasets cover X" (set query). Returns a `references` array — ' +
+      'cite each dataset you mention via a [^N] footnote.',
     inputSchema: listPublishedDatasetsInput,
     execute: listPublishedDatasetsHandler,
   }),
   get_dataset: tool({
     description:
       'Fetch the full record for a single dataset by ID. Includes ' +
-      'contributors, DOI, license, and other metadata.',
+      'contributors, DOI, license, and other metadata. Returns a ' +
+      '`references` array citing the dataset record.',
     inputSchema: getDatasetInput,
     execute: getDatasetHandler,
   }),
   get_dataset_summary: tool({
     description:
       'Fetch a compact summary of a dataset (counts + key metadata). ' +
-      'Prefer this over get_dataset when full record is overkill.',
+      'Prefer this over get_dataset when full record is overkill. ' +
+      'Returns a `references` array citing the summary.',
     inputSchema: getDatasetSummaryInput,
     execute: getDatasetSummaryHandler,
   }),
   get_dataset_class_counts: tool({
     description:
       'Fetch per-class document counts for a dataset (e.g., how many ' +
-      'epochs, probes, subjects).',
+      'epochs, probes, subjects). Returns a `references` array citing ' +
+      'the dataset.',
     inputSchema: getDatasetClassCountsInput,
     execute: getDatasetClassCountsHandler,
   }),
@@ -314,7 +489,7 @@ export const tools = {
     description:
       'Fetch top-level facet aggregations across the catalog: species, ' +
       'brain regions, strains, etc. Use for "what species/regions are ' +
-      'represented?".',
+      'represented?". Returns a `references` array.',
     inputSchema: getFacetsInput,
     execute: getFacetsHandler,
   }),
@@ -328,7 +503,8 @@ export const tools = {
       'that combines the catalog metadata with curated highlights and ' +
       'methods notes. Returns top-K (default 5, max 10) ranked by ' +
       'cosine similarity. Prefer this over list_published_datasets ' +
-      'whenever the query is fuzzy or synonym-heavy.',
+      'whenever the query is fuzzy or synonym-heavy. Returns a ' +
+      '`references` array citing each hit.',
     inputSchema: semanticSearchDatasetsInput,
     execute: semanticSearchDatasetsHandler,
   }),
