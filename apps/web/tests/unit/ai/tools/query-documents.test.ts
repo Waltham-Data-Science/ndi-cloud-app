@@ -38,7 +38,7 @@ describe('query_documents', () => {
       className: 'subject',
     });
     expect(fetchSpy).toHaveBeenCalledWith(
-      `${TEST_BASE}/api/datasets/ds1/tables/subject?page=1&pageSize=20`,
+      `${TEST_BASE}/api/datasets/ds1/tables/subject?page=1&pageSize=10`,
       expect.any(Object),
     );
     if ('error' in result) throw new Error('expected success');
@@ -47,7 +47,7 @@ describe('query_documents', () => {
     expect(result.references).toEqual([]);
   });
 
-  it('clamps limit to its max via zod (>100 is rejected as invalid)', async () => {
+  it('clamps limit to its max via zod (>30 is rejected as invalid)', async () => {
     const result = await queryDocumentsHandler({
       datasetId: 'ds1',
       className: 'subject',

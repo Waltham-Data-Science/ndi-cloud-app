@@ -43,7 +43,16 @@ import { baseUrl, fetchJson, isErrorResult, type ToolResult } from './shared';
 export const queryDocumentsInput = z.object({
   datasetId: z.string().min(1, 'datasetId is required'),
   className: z.string().min(1, 'className is required'),
-  limit: z.number().int().positive().max(100).optional(),
+  /**
+   * Max rows to return. Capped at 30 (was 100 — but at 100, a
+   * `subject` query with ~5K rows in the dataset fed back 200KB of
+   * row data and tripped Claude's 200K-token context limit). 30 rows
+   * is a comfortable survey cap — for "give me the distinct values
+   * across all rows" the model should make multiple narrower queries
+   * or call get_facets instead. Default is 10 to keep tool-call
+   * payloads small unless the model explicitly asks for more.
+   */
+  limit: z.number().int().positive().max(30).optional(),
 });
 
 export interface TableColumn {
@@ -98,7 +107,7 @@ export async function queryDocumentsHandler(
   if (!base) return { error: 'Catalog service not configured' };
 
   const { datasetId, className } = parsed.data;
-  const limit = parsed.data.limit ?? 20;
+  const limit = parsed.data.limit ?? 10;
   const url =
     `${base}/api/datasets/${encodeURIComponent(datasetId)}` +
     `/tables/${encodeURIComponent(className)}?page=1&pageSize=${limit}`;

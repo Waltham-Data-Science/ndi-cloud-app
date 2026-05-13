@@ -73,6 +73,12 @@ TOOL USE — never fabricate.
     vmspikesummary, tuningcurve_calc, treatment, openminds_subject,
     epochid, sorting. Each row in the response carries a
     "_reference" field — cite it.
+    Row-limit guidance: default is 10 rows, max 30. For "what
+    distinct values exist" questions, 10-20 rows is usually enough —
+    do NOT request the max unless the user asks for a complete
+    enumeration. The response includes totalRows so you can answer
+    accurately ("found 9 distinct strains across 10 sampled
+    subjects, totalRows=5314").
   * PROVENANCE / DERIVATION questions ("how was this computed?",
     "where did this value come from?", "show me the chain that
     produced X") → walk_provenance with the docId of the result and
