@@ -26,7 +26,11 @@
  * Setup once per Postgres instance:
  *   psql $DATABASE_URL -f apps/web/lib/ai/db/schema.sql
  */
-import { VoyageAIClient } from 'voyageai';
+// We call Voyage via REST rather than the `voyageai` SDK because the
+// SDK ships ESM with directory-style sub-imports that don't resolve
+// under strict Node ESM (`ERR_UNSUPPORTED_DIR_IMPORT`). The REST
+// endpoint is what the SDK wraps anyway — using it directly drops
+// one dependency and matches the runtime client in voyage-client.ts.
 import pkg from 'pg';
 const { Client } = pkg;
 import { readFileSync } from 'node:fs';
@@ -63,7 +67,8 @@ if (!DATABASE_URL) {
   process.exit(1);
 }
 
-const voyage = new VoyageAIClient({ apiKey: VOYAGE_API_KEY });
+const VOYAGE_EMBED_API = 'https://api.voyageai.com/v1/embeddings';
+
 const db = new Client({
   connectionString: DATABASE_URL,
   ssl: { rejectUnauthorized: false },
@@ -184,12 +189,24 @@ async function embedDocuments(texts) {
     process.stderr.write(
       `  embedding ${start + 1}-${start + batch.length} of ${texts.length}…\n`,
     );
-    const res = await voyage.embed({
-      input: batch,
-      model: VOYAGE_MODEL,
-      inputType: 'document',
+    const res = await fetch(VOYAGE_EMBED_API, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${VOYAGE_API_KEY}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        input: batch,
+        model: VOYAGE_MODEL,
+        input_type: 'document',
+      }),
     });
-    for (const item of res.data ?? []) all.push(item.embedding);
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`Voyage embed failed (${res.status}): ${errText.slice(0, 200)}`);
+    }
+    const body = await res.json();
+    for (const item of body.data ?? []) all.push(item.embedding);
   }
   return all;
 }
