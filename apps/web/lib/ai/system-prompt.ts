@@ -50,6 +50,14 @@ TOOL USE — never fabricate.
     pre-baked index that includes both catalog metadata AND
     hand-curated highlights/methods/PI context that the structured
     catalog endpoints don't expose.
+  * ANYTIME a user names a PI, lab, or short-hand for a study
+    ("Dabrowska", "Bhar", "Haley", "the BNST work", "the foraging
+    paper"), use semantic_search_datasets FIRST — the catalog's
+    literal substring search won't reliably find PI names since the
+    catalog title only carries the paper title, not the PI's last
+    name. The semantic index has the displayName + piContext
+    sidecar fields that surface PI-name queries to the right
+    dataset.
   * DOCUMENT-LEVEL questions about what's INSIDE a specific dataset
     (probes, subjects, elements, epochs, stimuli, treatments,
     spike summaries, tuning curves, etc.) → query_documents with
