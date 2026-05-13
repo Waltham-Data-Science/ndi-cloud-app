@@ -40,6 +40,15 @@ export const fetchSignalInput = z.object({
   downsample: z.number().int().positive().min(10).max(5000).optional(),
   t0: z.number().optional(),
   t1: z.number().optional(),
+  /**
+   * Optional file-name selector. Many NDI binary docs carry multiple
+   * file refs (e.g. daqreader_mfdaq_epochdata_ingested has channel_list.bin
+   * + ai_group1_seg.nbf_1 + …); the default decoder picks the first
+   * alphabetically, which is usually metadata not the actual data. The
+   * sidecar's `binarySignalExample.filename` field tells the LLM which
+   * file to pass for known-good demo docs.
+   */
+  file: z.string().min(1).optional(),
 });
 
 interface BackendSignalSource {
@@ -112,6 +121,7 @@ export async function fetchSignalHandler(
   const qs = new URLSearchParams({ downsample: String(downsample) });
   if (parsed.data.t0 !== undefined) qs.set('t0', String(parsed.data.t0));
   if (parsed.data.t1 !== undefined) qs.set('t1', String(parsed.data.t1));
+  if (parsed.data.file !== undefined) qs.set('file', parsed.data.file);
 
   const url =
     `${base}/api/datasets/${encodeURIComponent(datasetId)}` +
@@ -171,6 +181,7 @@ export async function fetchSignalHandler(
       downsample,
       ...(parsed.data.t0 !== undefined && { t0: parsed.data.t0 }),
       ...(parsed.data.t1 !== undefined && { t1: parsed.data.t1 }),
+      ...(parsed.data.file !== undefined && { file: parsed.data.file }),
       title,
     },
     references: [reference],

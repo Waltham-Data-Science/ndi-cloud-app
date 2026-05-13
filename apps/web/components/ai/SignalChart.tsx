@@ -55,6 +55,12 @@ export interface SignalChartProps {
   downsample?: number;
   t0?: number;
   t1?: number;
+  /**
+   * Optional file-name selector for multi-file binary documents.
+   * Must match what the LLM passed to fetch_signal so the chart's
+   * re-fetch grabs the same data file.
+   */
+  file?: string;
   title?: string;
 }
 
@@ -85,17 +91,19 @@ export function SignalChart({
   downsample = 2000,
   t0,
   t1,
+  file,
   title,
 }: SignalChartProps) {
   const url = useMemo(() => {
     const qs = new URLSearchParams({ downsample: String(downsample) });
     if (typeof t0 === 'number') qs.set('t0', String(t0));
     if (typeof t1 === 'number') qs.set('t1', String(t1));
+    if (typeof file === 'string' && file.length > 0) qs.set('file', file);
     return `/api/datasets/${datasetId}/documents/${docId}/signal?${qs.toString()}`;
-  }, [datasetId, docId, downsample, t0, t1]);
+  }, [datasetId, docId, downsample, t0, t1, file]);
 
   const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['signal-chart', datasetId, docId, downsample, t0, t1],
+    queryKey: ['signal-chart', datasetId, docId, downsample, t0, t1, file],
     queryFn: ({ signal }) => apiFetch<SignalResponse>(url, { signal }),
     staleTime: STALE_MS,
     gcTime: STALE_MS * 5,

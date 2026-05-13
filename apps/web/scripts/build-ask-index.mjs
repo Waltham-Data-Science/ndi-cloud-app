@@ -179,6 +179,18 @@ function composeDocument(dataset, sidecar) {
   }
   if (sidecar?.piContext) lines.push(`PI context: ${sidecar.piContext}`);
 
+  // Demo-curated binary-signal example so the LLM has a deterministic
+  // doc + filename to pass to `fetch_signal` without exploring (which
+  // routinely overruns the step cap). Format chosen to be greppable
+  // from the semantic-search chunk text the LLM consumes.
+  if (sidecar?.binarySignalExample) {
+    const ex = sidecar.binarySignalExample;
+    if (ex.docId && ex.filename) {
+      lines.push(`Demo binary signal example: docId=${ex.docId} file=${ex.filename}`);
+      if (ex.description) lines.push(`  (${ex.description})`);
+    }
+  }
+
   return lines.join('\n');
 }
 

@@ -84,6 +84,11 @@
 
   "67f723d574f5f79c6062389d": {
     "displayName": "Dabrowska — BNST vasopressin / oxytocin patch-clamp electrophysiology",
+    "binarySignalExample": {
+      "docId": "68d6e54703a03f5cfdac8eff",
+      "filename": "ai_group1_seg.nbf_1",
+      "description": "Analog-input voltage trace (patch-Vm), epoch 1 group 1, segment 1. NBF binary, ~10 kHz sample rate"
+    },
     "highlights": [
       "Whole-cell patch-clamp recordings from identified neurons in the bed nucleus of the stria terminalis (BNST)",
       "Optogenetic activation of CRF, OTR, AVP, and CRF-Cre lines lets the recording isolate cell-type-specific responses",

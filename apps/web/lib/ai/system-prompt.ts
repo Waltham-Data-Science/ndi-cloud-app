@@ -87,10 +87,21 @@ TOOL USE — never fabricate.
     Use maxDepth=3 for most questions; bump to 5 for very deep
     provenance walks.
   * SIGNAL / TRACE / PLOT questions ("show me the voltage trace",
-    "plot the trajectory", "visualize the recording") → fetch_signal
-    with the docId of a binary-bearing document (typically an
-    element_epoch or daqreader_*_epochdata_ingested doc found via
-    query_documents). After the tool runs, EMBED THE chart_payload
+    "plot the trajectory", "visualize the recording") → fetch_signal.
+    SHORTCUT — DEMO-CURATED EXAMPLES: First run
+    semantic_search_datasets to find the relevant dataset. The
+    returned chunk text MAY contain a line like:
+        Demo binary signal example: docId=ABC file=ai_group1_seg.nbf_1
+    When you see that line in the chunk for the target dataset, use
+    those exact values as your fetch_signal arguments (docId + file).
+    DO NOT explore class_counts or query_documents further — the
+    sidecar already curated a known-good doc for the demo. This
+    typically resolves the entire plot in 2 tool calls
+    (semantic_search → fetch_signal) instead of 8-12 calls.
+    If the dataset's chunk has NO "Demo binary signal example" line,
+    fall back to discovery: query_documents on element_epoch or
+    daqreader_*_epochdata_ingested → pick one → fetch_signal.
+    After the tool runs, EMBED THE chart_payload
     AS A FENCED CODE BLOCK in your answer using the "signal-chart"
     language tag so the chat UI renders the chart inline. Always
     describe in plain English what the chart shows BEFORE the fence;
