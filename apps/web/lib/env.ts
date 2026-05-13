@@ -65,20 +65,34 @@ export const schema = z.object({
     z.enum(['0', '1']).optional(),
   ),
 
-  // Voyage AI API key for query-time embedding in the experimental
-  // /ask chat's RAG layer. Optional — when unset, the
+  // Voyage AI API key for query-time embedding + reranking in the
+  // experimental /ask chat's RAG layer. Optional — when unset, the
   // semantic_search_datasets tool returns { error } and Claude falls
   // back to the structured catalog tools. The same Voyage key used by
-  // the vh-lab + shrek-lab chatbots works here (we're on the same
-  // voyage-4-large 1024-d embedding contract for portability).
+  // the vh-lab + shrek-lab chatbots works here (same voyage-4-large
+  // 1024-d embedding contract + voyage rerank-2.5 reranker).
   //
-  // The build-time index generator (`pnpm build-ask-index`) ALSO
-  // reads this var — but the index is pre-baked + committed, so
-  // setting this var on Vercel is only needed for live query
-  // embeddings. Empty-string coercion matches the pattern above.
+  // Empty-string coercion matches the pattern above.
   VOYAGE_API_KEY: z.preprocess(
     (v) => (v === '' ? undefined : v),
     z.string().min(10).optional(),
+  ),
+
+  // Postgres connection string for the experimental /ask chat's RAG
+  // store. Matches vh-lab + shrek-lab pattern: each chatbot has its
+  // own Railway-hosted pgvector instance.
+  //
+  // Required at runtime when semantic_search_datasets is exercised —
+  // the tool returns a typed error if unset, and Claude falls back to
+  // structured catalog tools. Required at build time when running
+  // `pnpm build-ask-index` (which is run locally, not on Vercel).
+  //
+  // Pattern: `postgresql://user:pass@host:port/dbname?sslmode=require`
+  // Provision via Railway → Add → PostgreSQL, then run the schema in
+  // `lib/ai/db/schema.sql`.
+  DATABASE_URL: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().url().optional(),
   ),
 });
 

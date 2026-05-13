@@ -18,13 +18,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 
-import {
-  getIndexInfo,
-  isIndexEmpty,
-  topKByVector,
-  type ScoredEntry,
-} from './index-loader';
-import { embedQuery } from './voyage-client';
+import { hybridSearch, type RetrievedChunk } from './hybrid-retrieval';
+import { embedQuery, rerank } from './voyage-client';
 
 const TOOL_TIMEOUT_MS = 8_000;
 
@@ -155,19 +150,24 @@ export async function getFacetsHandler(
 
 // ─── semantic_search_datasets ───────────────────────────────────────
 //
-// RAG layer. Embeds the query via Voyage AI (voyage-4-large, 1024-d),
-// cosine-ranks against the pre-baked index of dataset chunks +
-// curated metadata, returns top-K. Each chunk is the same string the
-// build-time script embedded: catalog fields (name, description,
-// species, brain regions, contributors, etc.) + sidecar additions
-// (highlights, keywords, methods, PI context).
+// Full RAG pipeline matching vh-lab + shrek-lab:
+//
+//   1. Embed the query via Voyage voyage-4-large (1024d, input_type=query)
+//   2. Hybrid retrieval — top-20 vector (`<=>`) + top-20 BM25
+//      (tsvector / plainto_tsquery) — in parallel
+//   3. Reciprocal Rank Fusion (k=60) to merge the two lanes
+//   4. Cross-encoder rerank via Voyage rerank-2.5 — feeds ~20-30
+//      candidates, returns top-K with relevance scores
+//
+// Returns top-K (default 5, max 10) reranked chunks with their full
+// content + curated metadata.
 //
 // Use this when the user's question is fuzzy / topical / synonymous
-// — when literal substring search via `list_published_datasets`
-// would miss relevant datasets. Examples: "datasets about memory"
-// (matches hippocampus work), "primate-like vision" (matches tree
-// shrew), "extracellular methods" (matches descriptions where the
-// method is mentioned but not in any structured field).
+// — when literal substring search would miss relevant datasets.
+// Examples: "datasets about memory" (hits hippocampus work),
+// "primate-like vision" (hits tree shrew via curated keywords),
+// "extracellular methods" (hits descriptions where the method is
+// mentioned but not in any structured field).
 
 export const semanticSearchDatasetsInput = z.object({
   query: z.string().min(1, 'query is required'),
@@ -176,22 +176,24 @@ export const semanticSearchDatasetsInput = z.object({
 
 export interface SemanticSearchResultEntry {
   id: string;
-  name: string;
+  name: string | null;
   text: string;
   score: number;
   metadata: Record<string, unknown>;
 }
 
+const CANDIDATES_PER_LANE = 20;
+
 export async function semanticSearchDatasetsHandler(
   input: z.infer<typeof semanticSearchDatasetsInput>,
-): Promise<ToolResult<{ results: SemanticSearchResultEntry[]; indexInfo: ReturnType<typeof getIndexInfo> }>> {
+): Promise<ToolResult<{ results: SemanticSearchResultEntry[]; pipeline: PipelineInfo }>> {
   const parsed = semanticSearchDatasetsInput.safeParse(input);
   if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
 
-  if (isIndexEmpty()) {
+  if (!process.env.DATABASE_URL) {
     return {
       error:
-        'Semantic search index is empty. Run `pnpm build-ask-index` to populate.',
+        'Semantic search not available — DATABASE_URL not configured. The /ask RAG index lives in Postgres + pgvector.',
     };
   }
   if (!process.env.VOYAGE_API_KEY) {
@@ -202,44 +204,78 @@ export async function semanticSearchDatasetsHandler(
   }
 
   const limit = parsed.data.limit ?? 5;
+  const pipeline: PipelineInfo = { stage: 'init' };
 
+  // 1. Embed the query.
   let queryVec: Float32Array;
   try {
+    pipeline.stage = 'embed';
     queryVec = await embedQuery(parsed.data.query);
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'unknown';
-    return { error: `Embedding failed: ${message}` };
+    return { error: `Embedding failed: ${errMsg(e)}` };
   }
 
-  const indexInfo = getIndexInfo();
-  if (queryVec.length !== indexInfo.dim) {
-    // This would only happen if the build-script model and the
-    // runtime model drifted apart. Caught by the dim mismatch in
-    // cosineSimilarity, but we return a typed error here so Claude
-    // can communicate the situation without a stack trace.
-    return {
-      error: `Embedding dimension mismatch (query ${queryVec.length} vs index ${indexInfo.dim}). Rebuild the index.`,
-    };
-  }
-
-  let scored: ScoredEntry[];
+  // 2 + 3. Hybrid retrieval + RRF.
+  let candidates: RetrievedChunk[];
   try {
-    scored = topKByVector(queryVec, limit);
+    pipeline.stage = 'hybridSearch';
+    candidates = await hybridSearch(
+      parsed.data.query,
+      Array.from(queryVec),
+      CANDIDATES_PER_LANE,
+    );
   } catch (e) {
-    const message = e instanceof Error ? e.message : 'unknown';
-    return { error: `Search failed: ${message}` };
+    return { error: `Retrieval failed: ${errMsg(e)}` };
+  }
+  pipeline.candidatesAfterRrf = candidates.length;
+
+  if (candidates.length === 0) {
+    return { results: [], pipeline };
   }
 
-  return {
-    results: scored.map((s) => ({
-      id: s.id,
-      name: s.name,
-      text: s.text,
-      score: s.score,
-      metadata: s.metadata,
-    })),
-    indexInfo,
-  };
+  // 4. Rerank.
+  try {
+    pipeline.stage = 'rerank';
+    const rerankInputs = candidates.map((c) => c.content);
+    const reranked = await rerank(parsed.data.query, rerankInputs, limit);
+    const finalResults: SemanticSearchResultEntry[] = reranked.map((r) => {
+      const chunk = candidates[r.index]!;
+      return {
+        id: chunk.doc_id,
+        name: chunk.doc_title,
+        text: chunk.content,
+        score: r.relevanceScore,
+        metadata: chunk.metadata,
+      };
+    });
+    return { results: finalResults, pipeline };
+  } catch (e) {
+    // Soft-degrade: if reranking fails, return the top-K from RRF
+    // alone. The user gets an answer based on hybrid retrieval, just
+    // not as well-tuned. This matches vh-lab's behavior — they catch
+    // rerank failures and fall through to RRF scores.
+    const fallback: SemanticSearchResultEntry[] = candidates
+      .slice(0, limit)
+      .map((c) => ({
+        id: c.doc_id,
+        name: c.doc_title,
+        text: c.content,
+        score: c.score,
+        metadata: { ...c.metadata, rerankFailed: errMsg(e) },
+      }));
+    pipeline.rerankFallback = true;
+    return { results: fallback, pipeline };
+  }
+}
+
+interface PipelineInfo {
+  stage: 'init' | 'embed' | 'hybridSearch' | 'rerank';
+  candidatesAfterRrf?: number;
+  rerankFallback?: boolean;
+}
+
+function errMsg(e: unknown): string {
+  return e instanceof Error ? e.message : String(e);
 }
 
 // ─── Tool definitions for the AI SDK ────────────────────────────────

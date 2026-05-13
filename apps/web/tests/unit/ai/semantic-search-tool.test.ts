@@ -1,134 +1,159 @@
 /**
- * semantic_search_datasets handler — verifies graceful fallbacks
- * (empty index, missing API key, embedding failure, dim mismatch)
- * and the happy path with a mocked Voyage call.
- *
- * Uses the same 3-d fixture pattern as index-loader.test.ts.
+ * semantic_search_datasets handler — orchestrates embedding,
+ * hybrid retrieval, and reranking. Tests mock the three dependencies
+ * and verify the orchestration: order of calls, graceful fallbacks,
+ * and result shape.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@/lib/ai/dataset-index.json', () => ({
-  default: {
-    schemaVersion: 1,
-    model: 'voyage-4-large',
-    dim: 3,
-    createdAt: '2026-05-12T00:00:00Z',
-    entries: [
-      {
-        id: 'd-north',
-        name: 'North',
-        text: 'About the north',
-        metadata: { species: ['mouse'] },
-        embedding: [1, 0, 0],
-      },
-      {
-        id: 'd-east',
-        name: 'East',
-        text: 'About the east',
-        metadata: { species: ['rat'] },
-        embedding: [0, 1, 0],
-      },
-    ],
-  },
+vi.mock('@/lib/ai/voyage-client', () => ({
+  embedQuery: vi.fn(),
+  rerank: vi.fn(),
+}));
+
+vi.mock('@/lib/ai/hybrid-retrieval', () => ({
+  hybridSearch: vi.fn(),
 }));
 
 import { semanticSearchDatasetsHandler } from '@/lib/ai/tools';
+import { embedQuery, rerank } from '@/lib/ai/voyage-client';
+import { hybridSearch } from '@/lib/ai/hybrid-retrieval';
+
+const mockedEmbed = vi.mocked(embedQuery);
+const mockedRerank = vi.mocked(rerank);
+const mockedHybridSearch = vi.mocked(hybridSearch);
+
+function fakeChunk(id: string, content: string, score = 0.5) {
+  return {
+    id: parseInt(id.replace(/\D/g, ''), 10) || 1,
+    doc_id: id,
+    doc_title: `Title for ${id}`,
+    content,
+    metadata: { species: ['mouse'] },
+    score,
+  };
+}
 
 describe('semanticSearchDatasetsHandler', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
     vi.stubEnv('VOYAGE_API_KEY', 'pa-test-1234567890');
+    vi.stubEnv('DATABASE_URL', 'postgres://localhost/test');
+    mockedEmbed.mockReset();
+    mockedRerank.mockReset();
+    mockedHybridSearch.mockReset();
   });
 
   afterEach(() => {
-    vi.restoreAllMocks();
     vi.unstubAllEnvs();
   });
 
-  it('returns top-K results ranked by cosine when the happy path works', async () => {
-    // Mock the Voyage REST call to return a query vector that aligns
-    // perfectly with d-north (embedding [1,0,0]).
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({ data: [{ embedding: [1, 0, 0] }] }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      ),
-    );
+  it('runs embed → hybridSearch → rerank in order on the happy path', async () => {
+    mockedEmbed.mockResolvedValueOnce(Float32Array.from([0.1, 0.2, 0.3]));
+    mockedHybridSearch.mockResolvedValueOnce([
+      fakeChunk('d1', 'about mice'),
+      fakeChunk('d2', 'about rats'),
+      fakeChunk('d3', 'about birds'),
+    ]);
+    mockedRerank.mockResolvedValueOnce([
+      { index: 0, relevanceScore: 0.95 },
+      { index: 2, relevanceScore: 0.71 },
+    ]);
 
     const result = await semanticSearchDatasetsHandler({
-      query: 'something pointing north',
+      query: 'rodent behavior',
     });
 
-    if ('error' in result) {
-      throw new Error(`expected success, got error: ${result.error}`);
-    }
+    if ('error' in result) throw new Error(`expected success, got ${result.error}`);
+    expect(mockedEmbed).toHaveBeenCalledWith('rodent behavior');
+    expect(mockedHybridSearch).toHaveBeenCalledWith(
+      'rodent behavior',
+      expect.any(Array),
+      20,
+    );
+    expect(mockedRerank).toHaveBeenCalledWith(
+      'rodent behavior',
+      ['about mice', 'about rats', 'about birds'],
+      5,
+    );
     expect(result.results).toHaveLength(2);
-    expect(result.results[0]!.id).toBe('d-north');
-    expect(result.results[0]!.score).toBeCloseTo(1, 5);
-    expect(result.results[1]!.id).toBe('d-east');
-    expect(result.results[1]!.score).toBeCloseTo(0, 5);
+    expect(result.results[0]).toMatchObject({
+      id: 'd1',
+      name: 'Title for d1',
+      text: 'about mice',
+      score: 0.95,
+    });
+    expect(result.results[1]).toMatchObject({
+      id: 'd3',
+      text: 'about birds',
+      score: 0.71,
+    });
+    expect(result.pipeline.stage).toBe('rerank');
   });
 
-  it('honors the limit param', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({ data: [{ embedding: [1, 0, 0] }] }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      ),
-    );
-    const result = await semanticSearchDatasetsHandler({
-      query: 'something',
-      limit: 1,
-    });
-    if ('error' in result) throw new Error('expected success');
-    expect(result.results).toHaveLength(1);
+  it('returns { error } when DATABASE_URL is unset', async () => {
+    vi.unstubAllEnvs();
+    vi.stubEnv('VOYAGE_API_KEY', 'pa-test-1234567890');
+    const result = await semanticSearchDatasetsHandler({ query: 'anything' });
+    expect(result).toEqual({ error: expect.stringMatching(/DATABASE_URL/) });
   });
 
   it('returns { error } when VOYAGE_API_KEY is unset', async () => {
     vi.unstubAllEnvs();
+    vi.stubEnv('DATABASE_URL', 'postgres://localhost/test');
     const result = await semanticSearchDatasetsHandler({ query: 'anything' });
     expect(result).toEqual({ error: expect.stringMatching(/VOYAGE_API_KEY/) });
   });
 
-  it('returns { error } when the query is empty', async () => {
+  it('returns { error } when query is empty', async () => {
     const result = await semanticSearchDatasetsHandler({ query: '' });
     expect(result).toEqual({ error: expect.stringMatching(/invalid/i) });
   });
 
-  it('returns { error } when Voyage fetch fails', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response('boom', { status: 502 }),
-    );
-    const result = await semanticSearchDatasetsHandler({ query: 'anything' });
+  it('returns { error } when embedding fails', async () => {
+    mockedEmbed.mockRejectedValueOnce(new Error('Voyage returned 502'));
+    const result = await semanticSearchDatasetsHandler({ query: 'x' });
     expect(result).toEqual({ error: expect.stringMatching(/embedding/i) });
   });
 
-  it('returns { error } when dimensions mismatch the index', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      // Wrong dim: 5 floats vs index dim of 3 — would crash in dot product;
-      // tool should catch and return typed error.
-      new Response(
-        JSON.stringify({ data: [{ embedding: [1, 0, 0, 0, 0] }] }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      ),
-    );
+  it('returns { error } when hybrid retrieval throws', async () => {
+    mockedEmbed.mockResolvedValueOnce(Float32Array.from([0.1, 0.2]));
+    mockedHybridSearch.mockRejectedValueOnce(new Error('db connection refused'));
     const result = await semanticSearchDatasetsHandler({ query: 'x' });
-    expect(result).toEqual({ error: expect.stringMatching(/dimension/i) });
+    expect(result).toEqual({ error: expect.stringMatching(/retrieval/i) });
   });
 
-  it('attaches index metadata to the response', async () => {
-    vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
-      new Response(
-        JSON.stringify({ data: [{ embedding: [1, 0, 0] }] }),
-        { status: 200, headers: { 'content-type': 'application/json' } },
-      ),
-    );
-    const result = await semanticSearchDatasetsHandler({ query: 'anything' });
+  it('soft-degrades to RRF-only ranking when rerank fails', async () => {
+    mockedEmbed.mockResolvedValueOnce(Float32Array.from([0.1, 0.2]));
+    mockedHybridSearch.mockResolvedValueOnce([
+      fakeChunk('d1', 'top from rrf', 0.9),
+      fakeChunk('d2', 'second from rrf', 0.4),
+    ]);
+    mockedRerank.mockRejectedValueOnce(new Error('rerank 500'));
+
+    const result = await semanticSearchDatasetsHandler({ query: 'x', limit: 2 });
+    if ('error' in result) throw new Error('expected success despite rerank fail');
+    expect(result.results).toHaveLength(2);
+    expect(result.results[0]!.id).toBe('d1');
+    expect(result.results[0]!.score).toBe(0.9); // RRF score, not rerank
+    expect(result.results[0]!.metadata.rerankFailed).toMatch(/rerank/i);
+    expect(result.pipeline.rerankFallback).toBe(true);
+  });
+
+  it('returns empty results (no error) when hybridSearch yields zero candidates', async () => {
+    mockedEmbed.mockResolvedValueOnce(Float32Array.from([0.1, 0.2]));
+    mockedHybridSearch.mockResolvedValueOnce([]);
+    const result = await semanticSearchDatasetsHandler({ query: 'x' });
     if ('error' in result) throw new Error('expected success');
-    expect(result.indexInfo).toMatchObject({
-      model: 'voyage-4-large',
-      dim: 3,
-      count: 2,
-    });
+    expect(result.results).toEqual([]);
+    expect(mockedRerank).not.toHaveBeenCalled();
+  });
+
+  it('honors the limit parameter', async () => {
+    mockedEmbed.mockResolvedValueOnce(Float32Array.from([0.1, 0.2]));
+    mockedHybridSearch.mockResolvedValueOnce([fakeChunk('d1', 'a')]);
+    mockedRerank.mockResolvedValueOnce([{ index: 0, relevanceScore: 1 }]);
+    await semanticSearchDatasetsHandler({ query: 'x', limit: 3 });
+    expect(mockedRerank).toHaveBeenCalledWith('x', ['a'], 3);
   });
 });
