@@ -84,16 +84,27 @@ export async function POST(req: Request): Promise<Response> {
     tools,
     // Cap output + tool loops to bound cost. See spec §Cost.
     maxOutputTokens: 1024,
-    // stopWhen replaces v4's `maxSteps`. Cap at 8 model turns so a
-    // multi-tool scientific query (e.g. "what probe types in dataset
-    // X" → semantic_search → get_dataset_class_counts → query_documents
-    // (probe) → query_documents (element) → compose answer) has
-    // enough headroom to finish. Originally 5 — too tight; a Day-4
-    // smoke test with a Dabrowska-by-PI query hit the cap mid-answer.
-    // Each step still costs one LLM round-trip + at most one tool
-    // call; total cost cap unchanged because maxOutputTokens=1024
-    // bounds the LLM's output.
-    stopWhen: stepCountIs(8),
+    // stopWhen replaces v4's `maxSteps`. Cap at 12 model turns so
+    // deep scientific exploration finishes within one user turn.
+    // Trajectory of cap bumps:
+    //   5  (initial) — too tight; "show me a voltage trace" needs to
+    //                  find the right binary doc which typically
+    //                  requires 4-6 exploratory tool calls before
+    //                  fetch_signal is even called
+    //   8  (Day-4)   — multi-tool "what probes in dataset X" worked
+    //                  but voltage-trace prompts still ran out of
+    //                  steps mid-exploration before reaching
+    //                  fetch_signal
+    //   12 (now)     — enough headroom for the full exploration arc:
+    //                  semantic_search → get_dataset_class_counts →
+    //                  query_documents (probe) → query_documents
+    //                  (element) → query_documents
+    //                  (daqreader_mfdaq_epochdata_ingested) →
+    //                  fetch_signal → compose answer with chart +
+    //                  citations.
+    // maxOutputTokens=1024 still bounds the LLM's output regardless
+    // of step count, so the cost ceiling per turn is unchanged.
+    stopWhen: stepCountIs(12),
     temperature: 0.3,
   });
 
