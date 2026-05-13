@@ -116,7 +116,17 @@ export async function queryDocumentsHandler(
   if (isErrorResult(result)) return result;
 
   const columns = result.columns ?? [];
-  const rawRows = result.rows ?? [];
+  const allRawRows = result.rows ?? [];
+  // CRITICAL: The FastAPI `/tables/{class}` endpoint ignores
+  // page/pageSize and returns ALL rows (it was built for the
+  // Document Explorer's client-side virtual scroller). For the
+  // chatbot we MUST slice here — a 5,314-subject dataset would
+  // otherwise blow past Claude's 200K-token context window.
+  // Smoke-tested 2026-05-13: 20 unsliced subject rows = 6 MB
+  // response → context overflow. Server-side pagination is a
+  // proper follow-up; client-side slice is the safe bound now.
+  const totalAvailable = result.total ?? allRawRows.length;
+  const rawRows = allRawRows.slice(0, limit);
   const docIdKey = findDocIdColumn(columns);
 
   const rows = rawRows.map((row) => {
@@ -145,7 +155,7 @@ export async function queryDocumentsHandler(
     className,
     columns,
     rows,
-    totalRows: result.total ?? rows.length,
+    totalRows: totalAvailable,
     references,
   };
 }
