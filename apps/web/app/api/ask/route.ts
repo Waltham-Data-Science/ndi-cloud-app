@@ -169,6 +169,15 @@ export async function POST(req: Request): Promise<Response> {
     //                  citations.
     stopWhen: stepCountIs(12),
     temperature: 0.3,
+    // The AI SDK's default `maxRetries: 2` (1 initial + 2 retries =
+    // 3 attempts) with exponential backoff burns up to ~55s of the
+    // 60s server budget on transient failures before the error
+    // surfaces to the client. Pre-fix, when Anthropic rate-limited
+    // upstream the chat would silently stall for the full minute
+    // before showing the 429. With maxRetries=1, one quick retry
+    // catches single-shot blips but a hard failure (real rate-limit,
+    // bad input) surfaces in ~5s. (P1 audit follow-up, 2026-05-14.)
+    maxRetries: 1,
   });
 
   return result.toUIMessageStreamResponse();
