@@ -13,6 +13,43 @@ The day-of work:
 
 The user agreed. They're smoke-testing the violin RIGHT NOW. **Post-compact priority #1: get the smoke-test result and act on it.**
 
+## Post-compact additions (2026-05-14, same day, after the /compact)
+
+Sprint 1 collapsed to a wiring exercise once we discovered cloud-node
+already exposes `POST /ndiquery` (full Query DSL with `scope=public|all|
+private|CSV-of-IDs`, injection-hardened) AND ndb-v2's `POST /api/query`
+already proxies it with auto-pagination up to 50k docs. So the original
+"build cloud-backed `ndi.dataset.Dataset` binding first" plan is on
+ice — it's now Sprint 1.5, only built if smoke testing reveals a gap.
+
+What shipped instead (both on `feat/experimental-ask-chat`):
+
+| Commit | What |
+|---|---|
+| `e457042` | `aggregate_documents` chat tool — server-side mean/median/std/etc. with optional `groupBy`. 8 tests. |
+| `b4b07de` | `ndi_query` chat tool — full NDI Query DSL (16 ops + ~negation, scope=public/CSV-of-IDs), compact per-doc projection (id + class + datasetId + label + data_preview ≤600B), 13 tests. |
+
+Both tools route through the existing `/api/query` proxy, so NO backend
+changes. Anonymous-only enforcement is at the chat-tool layer (private/
+all scopes return a typed error before RTT).
+
+**What this unlocks** (the 14-question PI audit blockers in the checkpoint
+that were attributed to "missing NDI-python depth"):
+
+- "Across all public datasets, count CRF+ subjects" → ndi_query(scope=public)
+- "Compare strains in dataset A vs B" → ndi_query(scope=CSV)
+- "Find docs depending on doc X across catalog" → ndi_query(depends_on)
+- "Average input resistance across 215 subjects" → aggregate_documents
+- "Subject weight by strain across the catalog" → aggregate_documents+groupBy
+- Any multi-constraint within-dataset filter `query_documents` can't express
+
+**Sprint 1 STATUS**: ~80% of the "depth" gap closed without writing any
+NDI-python integration. The remaining 20% (epoch math, time alignment,
+spike-rate calc) genuinely needs cloud-backed Dataset — defer to Sprint
+1.5 if PI questions in smoke testing demand it.
+
+Live preview at this commit: rebuilding from `e457042` on push.
+
 ## What's shipped (in both branches)
 
 ### ndb-v2 `feat/ndi-python-phase-a` (PR #112, draft, DO NOT MERGE)
