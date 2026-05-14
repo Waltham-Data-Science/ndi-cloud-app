@@ -9,7 +9,7 @@ import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 import { CodeExportButton } from '@/components/ai/CodeExportButton';
-import type { RecordedToolCall } from '@/lib/ai/code-export/types';
+import type { RecordedToolCall } from '@/lib/ndi/code-export/types';
 
 const SAMPLE_CALLS: RecordedToolCall[] = [
   { toolName: 'get_dataset', args: { id: 'DS1' } },

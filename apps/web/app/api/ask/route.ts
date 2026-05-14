@@ -31,8 +31,8 @@ import { chatModel } from '@/lib/ai/anthropic-client';
 import { askEnabled } from '@/lib/ai/feature-flag';
 import { checkRateLimit } from '@/lib/ai/rate-limit';
 import { SYSTEM_PROMPT } from '@/lib/ai/system-prompt';
-import { tools } from '@/lib/ai/tools';
-import { logEvent } from '@/lib/ai/tools/shared';
+import { tools } from '@/lib/ai/chat-tools';
+import { logEvent } from '@/lib/ndi/tools/shared';
 
 export const runtime = 'nodejs';
 // Allow up to 60s — gives Claude room for 4 tool roundtrips at

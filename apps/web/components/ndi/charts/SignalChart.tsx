@@ -48,12 +48,12 @@ import { useMemo } from 'react';
 
 import { apiFetch } from '@/lib/api/client';
 import type { TimeseriesData } from '@/lib/api/binary';
-import { documentExplorerUrl } from '@/lib/ai/references';
+import { documentExplorerUrl } from '@/lib/ndi/references';
 
 // uPlot pulls a non-trivial CSS bundle + reads from `window`; dynamic
 // import keeps it out of the initial chat-page bundle and skips SSR.
 const TimeseriesChart = dynamic(
-  () => import('@/components/app/TimeseriesChart').then((m) => m.TimeseriesChart),
+  () => import('@/components/ndi/charts/TimeseriesChart').then((m) => m.TimeseriesChart),
   {
     ssr: false,
     loading: () => (

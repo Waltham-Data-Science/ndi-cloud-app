@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { queryDocumentsHandler } from '@/lib/ai/tools/query-documents';
+import { queryDocumentsHandler } from '@/lib/ndi/tools/query-documents';
 
 const TEST_BASE = 'https://api.example.com';
 

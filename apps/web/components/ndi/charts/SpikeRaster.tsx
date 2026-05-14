@@ -37,7 +37,7 @@ import Link from 'next/link';
 import dynamic from 'next/dynamic';
 import type { Data, Layout } from 'plotly.js';
 
-import { datasetOverviewUrl } from '@/lib/ai/references';
+import { datasetOverviewUrl } from '@/lib/ndi/references';
 import type { PlotlyMountHandle } from './PlotlyMount';
 
 const PlotlyMount = dynamic(

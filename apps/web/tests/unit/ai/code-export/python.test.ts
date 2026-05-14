@@ -5,8 +5,8 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { generatePythonSnippet } from '@/lib/ai/code-export/python';
-import type { RecordedToolCall } from '@/lib/ai/code-export/types';
+import { generatePythonSnippet } from '@/lib/ndi/code-export/python';
+import type { RecordedToolCall } from '@/lib/ndi/code-export/types';
 
 function gen(calls: RecordedToolCall[], question = 'How many datasets exist?') {
   return generatePythonSnippet(calls, {

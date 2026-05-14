@@ -24,7 +24,7 @@ const { plotlyCalls, PlotlyMountMock } = vi.hoisted(() => {
 });
 
 // Mock the PlotlyMount module so any direct import resolves to the mock.
-vi.mock('@/components/charts/PlotlyMount', () => ({
+vi.mock('@/components/ndi/charts/PlotlyMount', () => ({
   PlotlyMount: PlotlyMountMock,
 }));
 
@@ -36,7 +36,7 @@ vi.mock('next/dynamic', () => ({
   default: () => PlotlyMountMock,
 }));
 
-import { GanttChart, type GanttChartItem } from '@/components/charts/GanttChart';
+import { GanttChart, type GanttChartItem } from '@/components/ndi/charts/GanttChart';
 
 describe('GanttChart', () => {
   afterEach(() => {

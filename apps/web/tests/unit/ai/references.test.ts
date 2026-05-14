@@ -13,7 +13,7 @@ import {
   makeDatasetReference,
   makeReference,
   parseFootnotes,
-} from '@/lib/ai/references';
+} from '@/lib/ndi/references';
 
 describe('documentExplorerUrl', () => {
   it('builds the canonical /datasets/[id]/documents/[docId] path', () => {

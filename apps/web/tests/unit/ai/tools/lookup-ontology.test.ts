@@ -11,7 +11,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { lookupOntologyHandler } from '@/lib/ai/tools/lookup-ontology';
+import { lookupOntologyHandler } from '@/lib/ndi/tools/lookup-ontology';
 
 const TEST_BASE = 'https://api.example.com';
 

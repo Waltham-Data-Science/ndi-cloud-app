@@ -13,7 +13,7 @@ import { useCallback, useMemo, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { BarChart3 } from 'lucide-react';
 
-import { ViolinChart } from '@/components/charts/ViolinChart';
+import { ViolinChart } from '@/components/ndi/charts/ViolinChart';
 import { PanelCard } from '@/components/workspace/PanelCard';
 import { ShowCodeButton } from '@/components/workspace/ShowCodeButton';
 import { Button } from '@/components/ui/Button';

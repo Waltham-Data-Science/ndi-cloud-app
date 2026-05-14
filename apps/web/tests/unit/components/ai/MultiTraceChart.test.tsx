@@ -63,7 +63,7 @@ import {
   viridisColor,
   plasmaColor,
   coolWarmColor,
-} from '@/components/ai/MultiTraceChart';
+} from '@/components/ndi/charts/MultiTraceChart';
 
 const fixture3Numeric = {
   channels: {

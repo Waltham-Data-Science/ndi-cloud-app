@@ -30,7 +30,7 @@
  * out of the initial route chunk:
  *
  *     const PlotlyMount = dynamic(
- *       () => import('@/components/charts/PlotlyMount').then(m => m.PlotlyMount),
+ *       () => import('@/components/ndi/charts/PlotlyMount').then(m => m.PlotlyMount),
  *       { ssr: false, loading: () => <div>Loading chart…</div> },
  *     );
  */

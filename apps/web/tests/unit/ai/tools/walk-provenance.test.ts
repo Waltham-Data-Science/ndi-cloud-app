@@ -7,7 +7,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { walkProvenanceHandler } from '@/lib/ai/tools/walk-provenance';
+import { walkProvenanceHandler } from '@/lib/ndi/tools/walk-provenance';
 
 const TEST_BASE = 'https://api.example.com';
 

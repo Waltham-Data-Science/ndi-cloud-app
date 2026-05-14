@@ -14,7 +14,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ndiDatasetOverviewHandler } from '@/lib/ai/tools/ndi-dataset-overview';
+import { ndiDatasetOverviewHandler } from '@/lib/ndi/tools/ndi-dataset-overview';
 
 const TEST_BASE = 'https://api.example.com';
 const DSID = '67f723d574f5f79c6062389d'; // Dabrowska demo id

@@ -11,7 +11,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchImageHandler } from '@/lib/ai/tools/fetch-image';
+import { fetchImageHandler } from '@/lib/ndi/tools/fetch-image';
 
 const TEST_BASE = 'https://api.example.com';
 

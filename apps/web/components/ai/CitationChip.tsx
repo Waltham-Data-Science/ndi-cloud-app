@@ -26,7 +26,7 @@
  */
 import { useId, useState } from 'react';
 
-import type { Reference } from '@/lib/ai/references';
+import type { Reference } from '@/lib/ndi/references';
 
 interface Props {
   number: number;

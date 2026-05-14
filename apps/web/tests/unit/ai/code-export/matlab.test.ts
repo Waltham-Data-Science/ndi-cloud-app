@@ -5,8 +5,8 @@
  */
 import { describe, expect, it } from 'vitest';
 
-import { generateMatlabSnippet } from '@/lib/ai/code-export/matlab';
-import type { RecordedToolCall } from '@/lib/ai/code-export/types';
+import { generateMatlabSnippet } from '@/lib/ndi/code-export/matlab';
+import type { RecordedToolCall } from '@/lib/ndi/code-export/types';
 
 function gen(calls: RecordedToolCall[], question = 'How many datasets exist?') {
   return generateMatlabSnippet(calls, {

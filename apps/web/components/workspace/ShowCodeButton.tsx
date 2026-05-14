@@ -20,7 +20,7 @@
  * tabbed modal with the canonical snippet for that one tool call. No
  * duplication — same snippet generators that power the chat.
  */
-import type { RecordedToolCall } from '@/lib/ai/code-export/types';
+import type { RecordedToolCall } from '@/lib/ndi/code-export/types';
 
 import { CodeExportButton } from '@/components/ai/CodeExportButton';
 

@@ -12,7 +12,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { tabularQueryHandler } from '@/lib/ai/tools/tabular-query';
+import { tabularQueryHandler } from '@/lib/ndi/tools/tabular-query';
 
 const TEST_BASE = 'https://api.example.com';
 const DSID = 'a'.repeat(24);

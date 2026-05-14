@@ -42,14 +42,14 @@ vi.mock('@/lib/api/client', async () => {
   };
 });
 
-vi.mock('@/components/charts/SpikeRaster', () => ({
+vi.mock('@/components/ndi/charts/SpikeRaster', () => ({
   SpikeRaster: (props: Record<string, unknown>) => {
     spikeRasterCalls.push(props);
     return <div data-testid="spike-raster-mock" />;
   },
 }));
 
-vi.mock('@/components/charts/IsiHistogram', () => ({
+vi.mock('@/components/ndi/charts/IsiHistogram', () => ({
   IsiHistogram: (props: Record<string, unknown>) => {
     isiHistogramCalls.push(props);
     return <div data-testid="isi-histogram-mock" />;
@@ -68,7 +68,7 @@ vi.mock('@/components/ai/CodeExportButton', () => ({
 }));
 
 import { SpikeActivityPanel } from '@/components/workspace/SpikeActivityPanel';
-import type { FetchSpikeSummaryToolResult } from '@/lib/ai/tools/fetch-spike-summary';
+import type { FetchSpikeSummaryToolResult } from '@/lib/ndi/tools/fetch-spike-summary';
 
 function renderPanel(datasetId = 'dataset123') {
   const client = new QueryClient({

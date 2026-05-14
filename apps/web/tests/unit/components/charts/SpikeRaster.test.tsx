@@ -22,7 +22,7 @@ const { plotlyCalls, PlotlyMountMock } = vi.hoisted(() => {
   return { plotlyCalls: calls, PlotlyMountMock: Mock };
 });
 
-vi.mock('@/components/charts/PlotlyMount', () => ({
+vi.mock('@/components/ndi/charts/PlotlyMount', () => ({
   PlotlyMount: PlotlyMountMock,
 }));
 
@@ -33,7 +33,7 @@ vi.mock('next/dynamic', () => ({
   default: () => PlotlyMountMock,
 }));
 
-import { SpikeRaster, type SpikeRasterUnit } from '@/components/charts/SpikeRaster';
+import { SpikeRaster, type SpikeRasterUnit } from '@/components/ndi/charts/SpikeRaster';
 
 describe('SpikeRaster', () => {
   afterEach(() => {

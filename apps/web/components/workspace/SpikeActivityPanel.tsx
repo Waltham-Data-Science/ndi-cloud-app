@@ -12,16 +12,16 @@ import { useMutation } from '@tanstack/react-query';
 import { useCallback, useId, useMemo, useState } from 'react';
 
 import { CodeExportButton } from '@/components/ai/CodeExportButton';
-import { IsiHistogram } from '@/components/charts/IsiHistogram';
-import { SpikeRaster } from '@/components/charts/SpikeRaster';
+import { IsiHistogram } from '@/components/ndi/charts/IsiHistogram';
+import { SpikeRaster } from '@/components/ndi/charts/SpikeRaster';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ApiError, apiFetch } from '@/lib/api/client';
-import type { RecordedToolCall } from '@/lib/ai/code-export/types';
+import type { RecordedToolCall } from '@/lib/ndi/code-export/types';
 import type {
   FetchSpikeSummaryToolResult,
   IsiHistogramChartPayload,
   SpikeRasterChartPayload,
-} from '@/lib/ai/tools/fetch-spike-summary';
+} from '@/lib/ndi/tools/fetch-spike-summary';
 
 export interface SpikeActivityPanelProps {
   datasetId: string;

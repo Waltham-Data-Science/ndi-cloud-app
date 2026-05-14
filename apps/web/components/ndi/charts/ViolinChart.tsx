@@ -36,7 +36,7 @@ import dynamic from 'next/dynamic';
 import type { Data, Layout } from 'plotly.js';
 
 import { apiFetch } from '@/lib/api/client';
-import { documentExplorerUrl, datasetOverviewUrl } from '@/lib/ai/references';
+import { documentExplorerUrl, datasetOverviewUrl } from '@/lib/ndi/references';
 import type { PlotlyMountHandle } from './PlotlyMount';
 
 const PlotlyMount = dynamic(

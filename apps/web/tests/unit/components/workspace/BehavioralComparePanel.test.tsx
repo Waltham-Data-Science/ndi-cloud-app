@@ -19,7 +19,7 @@ import type { ReactNode } from 'react';
 
 // Mock ViolinChart so we don't drag Plotly into jsdom. We assert it
 // renders and echoes the chart_payload values back for verification.
-vi.mock('@/components/charts/ViolinChart', () => ({
+vi.mock('@/components/ndi/charts/ViolinChart', () => ({
   ViolinChart: (props: {
     datasetId: string;
     variableNameContains: string;

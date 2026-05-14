@@ -10,7 +10,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchSignalHandler } from '@/lib/ai/tools/fetch-signal';
+import { fetchSignalHandler } from '@/lib/ndi/tools/fetch-signal';
 
 const TEST_BASE = 'https://api.example.com';
 

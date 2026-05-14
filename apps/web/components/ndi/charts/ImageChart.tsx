@@ -39,7 +39,7 @@ import dynamic from 'next/dynamic';
 import type { Data, Layout } from 'plotly.js';
 
 import { apiFetch } from '@/lib/api/client';
-import { documentExplorerUrl } from '@/lib/ai/references';
+import { documentExplorerUrl } from '@/lib/ndi/references';
 import type { PlotlyMountHandle } from './PlotlyMount';
 
 // Plotly's cartesian bundle pulls a ~446 KB gz dependency. Dynamic

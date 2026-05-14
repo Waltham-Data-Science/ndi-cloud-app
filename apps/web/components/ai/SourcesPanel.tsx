@@ -14,7 +14,7 @@
  * navigation via Next's `<Link>` was tearing users off /ask onto the
  * dataset detail page during streaming (visual-UX audit, P0-A).
  */
-import type { Reference } from '@/lib/ai/references';
+import type { Reference } from '@/lib/ndi/references';
 
 interface Props {
   references: Reference[];

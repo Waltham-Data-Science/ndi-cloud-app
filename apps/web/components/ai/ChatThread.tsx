@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from 'react';
 
-import type { RecordedToolCall } from '@/lib/ai/code-export/types';
+import type { RecordedToolCall } from '@/lib/ndi/code-export/types';
 
 import { ChatMessage, type ChatRole } from './ChatMessage';
 import { ToolCallIndicator } from './ToolCallIndicator';

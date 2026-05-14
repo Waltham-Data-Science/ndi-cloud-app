@@ -5,16 +5,16 @@ import { useMemo } from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-import { parseFootnotes, type Reference } from '@/lib/ai/references';
+import { parseFootnotes, type Reference } from '@/lib/ndi/references';
 
-import { GanttChart, type GanttChartProps } from '@/components/charts/GanttChart';
-import { ImageChart, type ImageChartProps } from '@/components/charts/ImageChart';
-import { IsiHistogram, type IsiHistogramProps } from '@/components/charts/IsiHistogram';
-import { SpikeRaster, type SpikeRasterProps } from '@/components/charts/SpikeRaster';
-import { ViolinChart, type ViolinChartProps } from '@/components/charts/ViolinChart';
+import { GanttChart, type GanttChartProps } from '@/components/ndi/charts/GanttChart';
+import { ImageChart, type ImageChartProps } from '@/components/ndi/charts/ImageChart';
+import { IsiHistogram, type IsiHistogramProps } from '@/components/ndi/charts/IsiHistogram';
+import { SpikeRaster, type SpikeRasterProps } from '@/components/ndi/charts/SpikeRaster';
+import { ViolinChart, type ViolinChartProps } from '@/components/ndi/charts/ViolinChart';
 
 import { CitationChip } from './CitationChip';
-import { SignalChart, type SignalChartProps } from './SignalChart';
+import { SignalChart, type SignalChartProps } from '@/components/ndi/charts/SignalChart';
 import { SourcesPanel } from './SourcesPanel';
 
 /**

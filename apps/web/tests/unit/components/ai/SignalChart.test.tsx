@@ -18,7 +18,7 @@ import type { ReactNode } from 'react';
 // under test, not the uPlot rendering. The mock surfaces a marker
 // node we can assertion on, plus echoes the sample_count it received
 // so we can verify the fetch result is wired through.
-vi.mock('@/components/app/TimeseriesChart', () => ({
+vi.mock('@/components/ndi/charts/TimeseriesChart', () => ({
   TimeseriesChart: ({ data }: { data: { sample_count: number } }) => (
     <div data-testid="timeseries-chart">samples={data.sample_count}</div>
   ),
@@ -28,7 +28,7 @@ vi.mock('@/components/app/TimeseriesChart', () => ({
 // test file (MultiTraceChart.test.tsx) for its color-ramp + legend +
 // colorbar semantics. Here we only care that SignalChart routes to
 // the right renderer based on channel count + colorbar prop.
-vi.mock('@/components/ai/MultiTraceChart', () => ({
+vi.mock('@/components/ndi/charts/MultiTraceChart', () => ({
   MultiTraceChart: ({
     data,
     colorbar,
@@ -53,7 +53,7 @@ vi.mock('@/lib/api/client', () => ({
   apiFetch: vi.fn(),
 }));
 
-import { SignalChart } from '@/components/ai/SignalChart';
+import { SignalChart } from '@/components/ndi/charts/SignalChart';
 import { apiFetch } from '@/lib/api/client';
 
 const mockedApiFetch = vi.mocked(apiFetch);

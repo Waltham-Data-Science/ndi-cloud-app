@@ -13,7 +13,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { aggregateDocumentsHandler } from '@/lib/ai/tools/aggregate-documents';
+import { aggregateDocumentsHandler } from '@/lib/ndi/tools/aggregate-documents';
 
 const TEST_BASE = 'https://api.example.com';
 const DSID_A = 'a'.repeat(24);

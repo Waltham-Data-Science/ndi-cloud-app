@@ -11,7 +11,7 @@ import {
   getDatasetSummaryHandler,
   getDatasetClassCountsHandler,
   getFacetsHandler,
-} from '@/lib/ai/tools';
+} from '@/lib/ai/chat-tools';
 
 const TEST_BASE = 'https://api.example.com';
 

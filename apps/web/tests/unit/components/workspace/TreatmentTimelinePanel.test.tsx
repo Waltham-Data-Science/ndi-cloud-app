@@ -21,7 +21,7 @@ import type { ReactNode } from 'react';
 // Plotly rendering is not under test here. The mock surfaces the props it
 // received via data-testid attributes so each test can assert the panel
 // forwarded chart_payload correctly.
-vi.mock('@/components/charts/GanttChart', () => ({
+vi.mock('@/components/ndi/charts/GanttChart', () => ({
   GanttChart: ({
     datasetId,
     title,

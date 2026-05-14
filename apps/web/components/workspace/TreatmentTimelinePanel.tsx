@@ -30,10 +30,10 @@ import { useId, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 
 import { apiFetch } from '@/lib/api/client';
-import { GanttChart, type GanttChartItem } from '@/components/charts/GanttChart';
+import { GanttChart, type GanttChartItem } from '@/components/ndi/charts/GanttChart';
 import { CodeExportButton } from '@/components/ai/CodeExportButton';
 import { Skeleton } from '@/components/ui/Skeleton';
-import type { RecordedToolCall } from '@/lib/ai/code-export/types';
+import type { RecordedToolCall } from '@/lib/ndi/code-export/types';
 
 export interface TreatmentTimelinePanelProps {
   datasetId: string;

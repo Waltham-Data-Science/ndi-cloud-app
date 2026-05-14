@@ -19,7 +19,7 @@ const { plotlyCalls, PlotlyMountMock } = vi.hoisted(() => {
   return { plotlyCalls: calls, PlotlyMountMock: Mock };
 });
 
-vi.mock('@/components/charts/PlotlyMount', () => ({
+vi.mock('@/components/ndi/charts/PlotlyMount', () => ({
   PlotlyMount: PlotlyMountMock,
 }));
 
@@ -27,7 +27,7 @@ vi.mock('next/dynamic', () => ({
   default: () => PlotlyMountMock,
 }));
 
-import { IsiHistogram } from '@/components/charts/IsiHistogram';
+import { IsiHistogram } from '@/components/ndi/charts/IsiHistogram';
 
 describe('IsiHistogram', () => {
   afterEach(() => {

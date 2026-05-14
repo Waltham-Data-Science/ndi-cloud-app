@@ -8,7 +8,7 @@ vi.mock('uplot', () => ({
 }));
 vi.mock('uplot/dist/uPlot.min.css', () => ({}));
 
-import { LinePlot } from '@/components/app/LinePlot';
+import { LinePlot } from '@/components/ndi/charts/inline/LinePlot';
 
 const monotonicRows = Array.from({ length: 50 }, (_, i) => ({
   t: i * 0.1,

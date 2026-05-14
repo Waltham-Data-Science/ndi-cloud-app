@@ -41,56 +41,56 @@ import {
   makeDatasetReference,
   makeReference,
   type Reference,
-} from './references';
+} from '@/lib/ndi/references';
 import {
   aggregateDocumentsHandler,
   aggregateDocumentsInput,
-} from './tools/aggregate-documents';
+} from '@/lib/ndi/tools/aggregate-documents';
 import {
   fetchImageHandler,
   fetchImageInput,
-} from './tools/fetch-image';
+} from '@/lib/ndi/tools/fetch-image';
 import {
   getDocumentHandler,
   getDocumentInput,
-} from './tools/get-document';
+} from '@/lib/ndi/tools/get-document';
 import {
   fetchSignalHandler,
   fetchSignalInput,
-} from './tools/fetch-signal';
+} from '@/lib/ndi/tools/fetch-signal';
 import {
   fetchSpikeSummaryHandler,
   fetchSpikeSummaryInput,
-} from './tools/fetch-spike-summary';
+} from '@/lib/ndi/tools/fetch-spike-summary';
 import {
   lookupOntologyHandler,
   lookupOntologyInput,
-} from './tools/lookup-ontology';
+} from '@/lib/ndi/tools/lookup-ontology';
 import {
   ndiDatasetOverviewHandler,
   ndiDatasetOverviewInput,
-} from './tools/ndi-dataset-overview';
+} from '@/lib/ndi/tools/ndi-dataset-overview';
 import {
   ndiQueryHandler,
   ndiQueryInput,
-} from './tools/ndi-query';
+} from '@/lib/ndi/tools/ndi-query';
 import {
   queryDocumentsHandler,
   queryDocumentsInput,
-} from './tools/query-documents';
+} from '@/lib/ndi/tools/query-documents';
 import {
   tabularQueryHandler,
   tabularQueryInput,
-} from './tools/tabular-query';
+} from '@/lib/ndi/tools/tabular-query';
 import {
   treatmentTimelineHandler,
   treatmentTimelineInput,
-} from './tools/treatment-timeline';
-import { logToolInvocation } from './tools/shared';
+} from '@/lib/ndi/tools/treatment-timeline';
+import { logToolInvocation } from '@/lib/ndi/tools/shared';
 import {
   walkProvenanceHandler,
   walkProvenanceInput,
-} from './tools/walk-provenance';
+} from '@/lib/ndi/tools/walk-provenance';
 import { embedQuery, rerank } from './voyage-client';
 
 const TOOL_TIMEOUT_MS = 8_000;

@@ -19,7 +19,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { fetchSpikeSummaryHandler } from '@/lib/ai/tools/fetch-spike-summary';
+import { fetchSpikeSummaryHandler } from '@/lib/ndi/tools/fetch-spike-summary';
 
 const TEST_BASE = 'https://api.example.com';
 const DSID = 'a'.repeat(24);

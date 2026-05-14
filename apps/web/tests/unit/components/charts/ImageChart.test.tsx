@@ -14,7 +14,7 @@ import type { ReactNode } from 'react';
 // test, not the Plotly rendering. The mock surfaces a marker node we
 // can assertion on, plus echoes a summary of the data it received so
 // we can verify the fetch result is wired through.
-vi.mock('@/components/charts/PlotlyMount', () => ({
+vi.mock('@/components/ndi/charts/PlotlyMount', () => ({
   PlotlyMount: ({
     data,
   }: {
@@ -31,7 +31,7 @@ vi.mock('@/lib/api/client', () => ({
   apiFetch: vi.fn(),
 }));
 
-import { ImageChart } from '@/components/charts/ImageChart';
+import { ImageChart } from '@/components/ndi/charts/ImageChart';
 import { apiFetch } from '@/lib/api/client';
 
 const mockedApiFetch = vi.mocked(apiFetch);

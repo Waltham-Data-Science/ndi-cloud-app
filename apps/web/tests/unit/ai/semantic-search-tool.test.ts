@@ -15,7 +15,7 @@ vi.mock('@/lib/ai/hybrid-retrieval', () => ({
   hybridSearch: vi.fn(),
 }));
 
-import { semanticSearchDatasetsHandler } from '@/lib/ai/tools';
+import { semanticSearchDatasetsHandler } from '@/lib/ai/chat-tools';
 import { embedQuery, rerank } from '@/lib/ai/voyage-client';
 import { hybridSearch } from '@/lib/ai/hybrid-retrieval';
 

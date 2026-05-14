@@ -25,9 +25,9 @@ import {
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Skeleton } from '@/components/ui/Skeleton';
 
-import { ImageStackCanvasViewer, ImageViewer } from './ImageViewer';
+import { ImageStackCanvasViewer, ImageViewer } from '@/components/ndi/media/ImageViewer';
 import { ImageStackVideoViewer } from './ImageStackVideoViewer';
-import { VideoPlayer } from './VideoPlayer';
+import { VideoPlayer } from '@/components/ndi/media/VideoPlayer';
 
 // CQ5: Dynamic imports for the uPlot-backed chart components. uPlot is
 // the largest single asset in this view (~30 KB gz with the CSS), and
@@ -38,11 +38,11 @@ import { VideoPlayer } from './VideoPlayer';
 // `ssr: false` because uPlot touches `window`/`document` on construct
 // and we never want the chart to attempt to render on the server.
 const TimeseriesChart = dynamic(
-  () => import('./TimeseriesChart').then((m) => ({ default: m.TimeseriesChart })),
+  () => import('@/components/ndi/charts/TimeseriesChart').then((m) => ({ default: m.TimeseriesChart })),
   { ssr: false, loading: () => <Skeleton className="h-64 w-full" /> },
 );
 const FitcurveChart = dynamic(
-  () => import('./FitcurveChart').then((m) => ({ default: m.FitcurveChart })),
+  () => import('@/components/ndi/charts/FitcurveChart').then((m) => ({ default: m.FitcurveChart })),
   { ssr: false, loading: () => <Skeleton className="h-48 w-full" /> },
 );
 

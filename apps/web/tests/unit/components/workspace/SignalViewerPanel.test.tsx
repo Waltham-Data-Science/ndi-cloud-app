@@ -18,7 +18,7 @@ import type { ReactNode } from 'react';
 // Mock SignalChart so the test focuses on panel logic + the chart
 // payload it constructs. The mock echoes the props it received for
 // assertion.
-vi.mock('@/components/ai/SignalChart', () => ({
+vi.mock('@/components/ndi/charts/SignalChart', () => ({
   SignalChart: (props: { datasetId: string; docId: string; downsample?: number; t0?: number; t1?: number; file?: string; title?: string }) => (
     <div
       data-testid="signal-chart-mock"

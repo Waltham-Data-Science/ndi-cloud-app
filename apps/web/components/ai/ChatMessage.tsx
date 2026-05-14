@@ -1,7 +1,7 @@
 'use client';
 
-import type { RecordedToolCall } from '@/lib/ai/code-export/types';
-import type { Reference } from '@/lib/ai/references';
+import type { RecordedToolCall } from '@/lib/ndi/code-export/types';
+import type { Reference } from '@/lib/ndi/references';
 
 import { CodeExportButton } from './CodeExportButton';
 import { Markdown } from './Markdown';

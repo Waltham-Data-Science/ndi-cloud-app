@@ -24,7 +24,7 @@ import { type NextRequest } from 'next/server';
 import {
   fetchSpikeSummaryHandler,
   fetchSpikeSummaryInput,
-} from '@/lib/ai/tools/fetch-spike-summary';
+} from '@/lib/ndi/tools/fetch-spike-summary';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';

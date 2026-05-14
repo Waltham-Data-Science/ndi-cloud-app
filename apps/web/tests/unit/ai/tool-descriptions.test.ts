@@ -46,7 +46,7 @@
  * description rather than a real-looking name.
  */
 import { describe, expect, it } from 'vitest';
-import { tools } from '@/lib/ai/tools';
+import { tools } from '@/lib/ai/chat-tools';
 
 /**
  * Well-known NDI document class names. These are the canonical

@@ -14,7 +14,7 @@
  *      the chart component re-fetches against (SignalChart owns its
  *      own data fetch via apiFetch — no per-panel useMutation needed,
  *      letting us avoid duplicating the auth/timeout/cancel plumbing)
- *   3. Result area: SignalChart from `@/components/ai/SignalChart` —
+ *   3. Result area: SignalChart from `@/components/ndi/charts/SignalChart` —
  *      same component the chat surface uses. Loading + error + empty
  *      states are handled inside the chart
  *   4. Footer: Run + Show code
@@ -35,7 +35,7 @@ import { Waves } from 'lucide-react';
 import Link from 'next/link';
 import { useState, type FormEvent } from 'react';
 
-import { SignalChart } from '@/components/ai/SignalChart';
+import { SignalChart } from '@/components/ndi/charts/SignalChart';
 import { Field } from '@/components/marketing/AuthForm';
 import { MarketingButton } from '@/components/marketing/Button';
 

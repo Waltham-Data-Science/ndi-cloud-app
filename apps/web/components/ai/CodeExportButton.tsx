@@ -26,9 +26,9 @@ import { useCallback, useMemo, useState } from 'react';
 
 import { Modal } from '@/components/ui/Modal';
 
-import type { RecordedToolCall } from '@/lib/ai/code-export/types';
-import { generateMatlabSnippet } from '@/lib/ai/code-export/matlab';
-import { generatePythonSnippet } from '@/lib/ai/code-export/python';
+import type { RecordedToolCall } from '@/lib/ndi/code-export/types';
+import { generateMatlabSnippet } from '@/lib/ndi/code-export/matlab';
+import { generatePythonSnippet } from '@/lib/ndi/code-export/python';
 
 interface Props {
   toolCalls: RecordedToolCall[];

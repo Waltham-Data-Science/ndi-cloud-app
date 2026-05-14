@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { render, screen } from '@testing-library/react';
 
-import { BoxPlot } from '@/components/app/BoxPlot';
-import type { ViolinGroup } from '@/components/app/ViolinPlot';
+import { BoxPlot } from '@/components/ndi/charts/inline/BoxPlot';
+import type { ViolinGroup } from '@/components/ndi/charts/inline/ViolinPlot';
 
 function makeGroup(name: string, n: number, mean: number): ViolinGroup {
   const values = Array.from({ length: n }, (_, i) => mean + (i - n / 2) * 0.5);

@@ -5,7 +5,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { treatmentTimelineHandler } from '@/lib/ai/tools/treatment-timeline';
+import { treatmentTimelineHandler } from '@/lib/ndi/tools/treatment-timeline';
 
 const TEST_BASE = 'https://api.example.com';
 const DSID = 'a'.repeat(24);

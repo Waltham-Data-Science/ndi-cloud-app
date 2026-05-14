@@ -14,7 +14,7 @@
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { ndiQueryHandler } from '@/lib/ai/tools/ndi-query';
+import { ndiQueryHandler } from '@/lib/ndi/tools/ndi-query';
 
 const TEST_BASE = 'https://api.example.com';
 const DSID_A = 'a'.repeat(24);
