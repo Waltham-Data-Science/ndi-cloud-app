@@ -141,6 +141,12 @@ TOOL USE — never fabricate.
     total_items carries the true match count even when the LLM-
     visible list is truncated to limit (default 50). Cite each
     result you actually mention via the returned references array.
+    GRANULAR CITATION TRANSPARENCY: the response carries a
+    references_summary block with {cited, total_available,
+    truncated, cap}. When truncated=true, your prose MUST disclose
+    the cited-vs-total ratio ("I cited 20 of 215 matches; narrow
+    the query if you want more specific citations") — never imply
+    that the surfaced citations are exhaustive when they are not.
   * ONTOLOGY CURIE LOOKUP — whenever you see a bare CURIE in any
     tool result and the user might want to know what it means →
     lookup_ontology. Examples of bare CURIEs you'll encounter:

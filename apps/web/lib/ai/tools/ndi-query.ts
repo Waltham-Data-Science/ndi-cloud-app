@@ -218,6 +218,17 @@ export interface NdiQueryToolResult {
    */
   scope: string;
   references: Reference[];
+  /**
+   * Citation coverage metadata. The LLM is taught to surface this in
+   * prose when truncated is true — e.g. "I cited 20 of 215 matches;
+   * narrow the query if you want more specific citations."
+   */
+  references_summary: {
+    cited: number;
+    total_available: number;
+    truncated: boolean;
+    cap: number;
+  };
 }
 
 export async function ndiQueryHandler(
@@ -286,11 +297,16 @@ export async function ndiQueryHandler(
   const sliced = allDocs.slice(0, visibleCap);
 
   const summaries: NdiQueryDocSummary[] = sliced.map(projectDoc);
-  // One reference per surfaced doc up to a soft cap of 20 — beyond that
-  // the chat panel becomes a wall of chips. The LLM is taught to focus
-  // its citations on the docs it actually mentions in prose.
-  const references: Reference[] = summaries
-    .slice(0, 20)
+  // One reference per surfaced doc up to a soft cap — beyond that
+  // the chat panel becomes a wall of chips. The LLM is taught to
+  // focus its citations on the docs it actually mentions in prose,
+  // AND told (via `references_summary`) when the cited count
+  // doesn't reach the total match count, so it can call out
+  // "showing the first 20 of 215 matches" rather than implying its
+  // citations are exhaustive.
+  const REFERENCE_CAP = 20;
+  const perDocRefs: Reference[] = summaries
+    .slice(0, REFERENCE_CAP)
     .map((d) =>
       d.datasetId
         ? makeReference({
@@ -303,6 +319,8 @@ export async function ndiQueryHandler(
         : null,
     )
     .filter((r): r is Reference => r !== null);
+
+  const references: Reference[] = [...perDocRefs];
 
   // Fallback dataset-level reference if no per-doc references were
   // buildable (e.g. cloud-node didn't surface datasetId for the result
@@ -323,6 +341,15 @@ export async function ndiQueryHandler(
     truncated: totalItems > summaries.length,
     scope,
     references,
+    // Granular transparency on citation coverage. When the LLM
+    // surfaces this in prose ("I cited 20 of 215 matches") the user
+    // knows there's hidden data and can ask for a narrower query.
+    references_summary: {
+      cited: references.length,
+      total_available: totalItems,
+      truncated: references.length < totalItems,
+      cap: REFERENCE_CAP,
+    },
   };
 }
 

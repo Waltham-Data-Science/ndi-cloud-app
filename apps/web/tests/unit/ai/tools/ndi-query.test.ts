@@ -243,6 +243,15 @@ describe('ndi_query', () => {
     expect(res.documents).toHaveLength(50);
     expect(res.total_items).toBe(5000);
     expect(res.truncated).toBe(true);
+    // Granular transparency: the LLM sees cited count vs true total
+    // so it can disclose "20 of 5000" rather than implying citations
+    // are exhaustive.
+    expect(res.references_summary).toEqual({
+      cited: 20, // hard cap on per-doc refs
+      total_available: 5000,
+      truncated: true,
+      cap: 20,
+    });
   });
 
   // ---- references ------------------------------------------------------

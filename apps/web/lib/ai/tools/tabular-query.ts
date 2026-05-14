@@ -28,6 +28,7 @@ import { z } from 'zod';
 
 import {
   makeOntologyTableReference,
+  makeReference,
   type Reference,
 } from '../references';
 import { baseUrl, fetchJson, isErrorResult, type ToolResult } from './shared';
@@ -72,6 +73,15 @@ interface BackendGroup {
   max: number;
   q1: number;
   q3: number;
+  /**
+   * Sample of contributing ontologyTableRow docIds (cap of 3 per
+   * group from the backend). Used by the frontend to build per-group
+   * sample-row references so the user can drill into specific
+   * examples (e.g. "one Saline row" / "one CNO row").
+   */
+  docIds?: string[];
+  /** Total contributing rows BEFORE the docIds sample-cap. */
+  totalRows?: number;
 }
 
 interface BackendTabularResponse {
@@ -181,16 +191,22 @@ export async function tabularQueryHandler(
     q3: g.q3,
   }));
 
-  // Build references. Pre-this-fix the citation pointed to a single
-  // arbitrary ontologyTableRow doc (`doc_ids[0]` from the backend),
-  // which was misleading — the chart aggregates across MANY rows.
-  // A click on the chip took the user to a single-row JSON viewer,
-  // not the table that backs the chart.
+  // Build references — granular at every level:
   //
-  // Fix: cite the ontology-tables view in the data browser. The user
-  // lands on the same surface that shows the column they're seeing
-  // compared, plus its sibling columns, so they can verify the
-  // analysis against the source data.
+  // 1. PRIMARY: ontology-table view of the dataset. The user can
+  //    eyeball the column they're seeing compared, sibling columns,
+  //    and the full row set. Click takes them to the data-browser
+  //    surface that backs the chart.
+  //
+  // 2. PER-GROUP samples: one click-through chip per group label,
+  //    using the first contributing docId from the backend's
+  //    sampled list (capped at 3 docIds/group server-side). Lets
+  //    the user verify "what does ONE Saline row actually look
+  //    like?" vs "what does ONE CNO row actually look like?" —
+  //    granular sourcing for the aggregation.
+  //
+  // Pre-this-fix the citation pointed to a single arbitrary row
+  // from `doc_ids[0]` with no group context, which was misleading.
   const totalObs = groups_summary.reduce((s, g) => s + g.count, 0);
   const references: Reference[] = [
     makeOntologyTableReference({
@@ -201,6 +217,25 @@ export async function tabularQueryHandler(
       ...(groupBy ? { groupBy } : {}),
     }),
   ];
+  for (const group of res.groups) {
+    const sampleDocId = group.docIds?.[0];
+    if (!sampleDocId) continue;
+    const groupTotal = group.totalRows ?? group.count;
+    const sourceLabel = res.source?.variable_name ?? variableNameContains;
+    references.push(
+      makeReference({
+        datasetId,
+        doc_id: sampleDocId,
+        class: 'ontologyTableRow',
+        title: `Sample row: ${group.name}`,
+        snippet:
+          `One of ${groupTotal} ` +
+          `row${groupTotal === 1 ? '' : 's'} contributing to the ` +
+          `${group.name} group of "${sourceLabel}". ` +
+          `Click to inspect the row's full document.`,
+      }),
+    );
+  }
 
   // Surface the backend's diagnostic envelope when nothing came back.
   // The backend tells us WHY (e.g. "no column matched groupBy
