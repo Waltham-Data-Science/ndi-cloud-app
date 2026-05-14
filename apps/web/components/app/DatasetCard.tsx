@@ -56,6 +56,15 @@ import { normalizeLicense } from '@/lib/license-normalize';
 
 interface DatasetCardProps {
   dataset: DatasetRecord;
+  /**
+   * Builds the href the card navigates to. Defaults to the public
+   * `/datasets/[id]/overview` discovery surface. The `/my` workspace
+   * landing overrides this to `/my/workspace/[id]` so logged-in users
+   * land directly in the rich Task-2 viewer GUI when they click on
+   * one of their datasets. (Added 2026-05-14 with the workspace
+   * landing; safe default keeps every other consumer unchanged.)
+   */
+  hrefBuilder?: (datasetId: string) => string;
 }
 
 const HOVER_STYLE: CSSProperties = {
@@ -63,7 +72,10 @@ const HOVER_STYLE: CSSProperties = {
   transitionTimingFunction: 'var(--ease-out)',
 };
 
-export function DatasetCard({ dataset }: DatasetCardProps) {
+export function DatasetCard({
+  dataset,
+  hrefBuilder = (id) => `/datasets/${id}/overview`,
+}: DatasetCardProps) {
   // Strip cloud-side cosmetic noise before render: leading "Dataset:"
   // prefix on names (legacy admin-UI artifact, inconsistent across
   // entries) and the in-flight "DATASET BEING PROCESSED." marker that
@@ -73,7 +85,7 @@ export function DatasetCard({ dataset }: DatasetCardProps) {
 
   return (
     <Link
-      href={`/datasets/${dataset.id}/overview`}
+      href={hrefBuilder(dataset.id)}
       className="block group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue-3 rounded-lg"
       aria-label={`Open dataset ${displayName}`}
     >

@@ -1,13 +1,33 @@
 'use client';
 
 /**
- * /my — workspace client island. Phase 6.6 REBUILD-6.
+ * /my — workspace landing. Originally Phase 6.6 REBUILD-6.
+ *
+ * # 2026-05-14 — Task-2 viewer GUI pivot
+ *
+ * Repositioned from "my org's dataset list" → "unified workspace
+ * entry point" so logged-in users have ONE place to pick a dataset
+ * — their own or one from the public NDI catalog — and click into
+ * the rich plotting/computing surface at `/my/workspace/[id]`.
+ *
+ * Surface changes from the original REBUILD-6:
+ *
+ *   - Top-of-page tab strip: "Your datasets" (existing) ↔ "Public
+ *     NDI catalog" (new, sources `usePublishedDatasets`). Status
+ *     filter chips + admin scope toggle are scoped to the "Your
+ *     datasets" tab — they don't apply to the public catalog.
+ *   - Card click destination flipped from `/datasets/[id]/overview`
+ *     (read-only metadata) to `/my/workspace/[id]` (the rich Task-2
+ *     viewer). The Document Explorer is still one click away from
+ *     the workspace itself for users who want the raw record view.
+ *
+ * Original REBUILD-6 content preserved below:
  *
  * Ports the full source design from
  * `ndi-data-browser-v2/frontend/src/pages/MyDatasetsPage.tsx`:
  *   1. Depth-gradient hero with brandmark pattern overlay, eyebrow +
- *      admin badge (when `isAdmin`), org-name h1 + sub, scope toggle
- *      (admin-only), and a 4-column glassmorphic HeroStat row.
+ *      admin badge (when `isAdmin`), workspace h1 + sub, scope
+ *      toggle (admin-only), and a 4-column glassmorphic HeroStat row.
  *   2. Status filter chip row (All / Published / Draft) + view toggle.
  *   3. Grid view (DatasetCard fan, sm:2 / xl:3) — primary view.
  *   4. Table view (audit-#64 virtualized `MyDatasetsTable`) —
@@ -22,15 +42,10 @@
  * firehose. Backend silently downgrades non-admin scope=all → mine, so
  * this is correct UX (only admins see the toggle, only admins benefit).
  *
- * View toggle persists to local component state, not URL — the source
- * doesn't URL-state it either. Each user picks once per session and
- * the choice doesn't need to share via deep link.
+ * View toggle persists to local component state, not URL.
  *
  * Audit #64 (full virtualization for MyDatasets): preserved in the
- * table view via `<MyDatasetsTable>`. The grid view also benefits
- * because `DatasetCard` is itself memoized at the source repo and
- * the catalog already imports it; rendering 200+ cards in a grid is
- * only a paint cost, not a re-render cost.
+ * table view via `<MyDatasetsTable>`.
  */
 import {
   HardDrive,
@@ -47,19 +62,27 @@ import { DatasetCard } from '@/components/app/DatasetCard';
 import { MyDatasetsTable } from '@/components/app/MyDatasetsTable';
 import { Badge } from '@/components/ui/Badge';
 import { CardSkeleton } from '@/components/ui/Skeleton';
-import { useMyDatasets, type MyScope } from '@/lib/api/datasets';
+import { useMyDatasets, usePublishedDatasets, type MyScope } from '@/lib/api/datasets';
 import { useSession } from '@/lib/auth/use-session';
 import { cn } from '@/lib/cn';
 import { formatBytes, formatNumber } from '@/lib/format';
 
 type StatusFilter = 'all' | 'published' | 'draft';
 type ViewMode = 'grid' | 'table';
+type WorkspaceTab = 'mine' | 'public';
+
+// When the user clicks a dataset card from /my, we route them into
+// the rich Task-2 workspace surface instead of the read-only public
+// detail page. The Document Explorer and full record view are still
+// one click away from inside the workspace.
+const workspaceHrefBuilder = (id: string) => `/my/workspace/${id}`;
 
 export function MyDatasetsClient() {
   const router = useRouter();
   const session = useSession();
   const isAdmin = session.user?.isAdmin === true;
 
+  const [activeTab, setActiveTab] = useState<WorkspaceTab>('mine');
   const [scope, setScope] = useState<MyScope>('mine');
   const activeScope: MyScope = isAdmin ? scope : 'mine';
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('all');
@@ -73,7 +96,17 @@ export function MyDatasetsClient() {
     }
   }, [session.isLoading, session.user, router]);
 
-  const datasetsQuery = useMyDatasets(session.user !== null, activeScope);
+  // Per-tab data sources. Both return the same DatasetListResponse
+  // shape, so the rest of the component is tab-agnostic from the
+  // dataset-render perspective. We always run BOTH queries (cheap —
+  // TanStack caches per-key) so switching tabs is instant and the
+  // hero stats are accurate even on the first paint of the inactive
+  // tab. usePublishedDatasets paginates; a single page of 100 is
+  // plenty for the current 8-dataset public catalog and gives us
+  // headroom as more datasets land.
+  const myDatasetsQuery = useMyDatasets(session.user !== null, activeScope);
+  const publicDatasetsQuery = usePublishedDatasets(1, 100);
+  const datasetsQuery = activeTab === 'mine' ? myDatasetsQuery : publicDatasetsQuery;
 
   const { visible, counts, totalSize } = useMemo(() => {
     const datasets = datasetsQuery.data?.datasets ?? [];
@@ -207,32 +240,73 @@ export function MyDatasetsClient() {
 
       {/* ── Body ─────────────────────────────────────────────────────── */}
       <section className="mx-auto max-w-[1200px] px-7 py-7 bg-bg-canvas min-h-[40vh]">
-        <div className="flex flex-wrap items-center gap-2 mb-5">
-          <FilterChip
-            active={statusFilter === 'all'}
-            onClick={() => setStatusFilter('all')}
-            count={counts.all}
+        {/* Top-of-section tab strip — switches the dataset source
+            between the user's own datasets and the public NDI catalog.
+            Both feed the same card/table render below; the only thing
+            that changes is the data query the chips/cards bind to. */}
+        <div
+          role="tablist"
+          aria-label="Dataset source"
+          className="mb-5 flex flex-wrap items-center gap-1 border-b border-border-subtle"
+        >
+          <TabButton
+            active={activeTab === 'mine'}
+            onClick={() => setActiveTab('mine')}
           >
-            All
-          </FilterChip>
-          <FilterChip
-            active={statusFilter === 'published'}
-            onClick={() => setStatusFilter('published')}
-            count={counts.published}
+            Your datasets
+            {myDatasetsQuery.data && (
+              <span className="ml-1.5 inline-flex items-center rounded-full bg-fg-secondary/10 px-1.5 py-0.5 text-[10px] font-semibold text-fg-secondary">
+                {formatNumber(myDatasetsQuery.data.datasets.length)}
+              </span>
+            )}
+          </TabButton>
+          <TabButton
+            active={activeTab === 'public'}
+            onClick={() => setActiveTab('public')}
           >
-            Published
-          </FilterChip>
-          <FilterChip
-            active={statusFilter === 'draft'}
-            onClick={() => setStatusFilter('draft')}
-            count={counts.draft}
-          >
-            Draft / in-review
-          </FilterChip>
+            Public NDI catalog
+            {publicDatasetsQuery.data && (
+              <span className="ml-1.5 inline-flex items-center rounded-full bg-fg-secondary/10 px-1.5 py-0.5 text-[10px] font-semibold text-fg-secondary">
+                {formatNumber(
+                  publicDatasetsQuery.data.totalNumber ??
+                    publicDatasetsQuery.data.datasets.length,
+                )}
+              </span>
+            )}
+          </TabButton>
           <div className="ml-auto">
             <ViewToggle value={viewMode} onChange={setViewMode} />
           </div>
         </div>
+
+        {/* Status filter chips only meaningful for "Your datasets" —
+            public catalog entries are all published by definition, so
+            the All/Published/Draft toggle would be a no-op there. */}
+        {activeTab === 'mine' && (
+          <div className="flex flex-wrap items-center gap-2 mb-5">
+            <FilterChip
+              active={statusFilter === 'all'}
+              onClick={() => setStatusFilter('all')}
+              count={counts.all}
+            >
+              All
+            </FilterChip>
+            <FilterChip
+              active={statusFilter === 'published'}
+              onClick={() => setStatusFilter('published')}
+              count={counts.published}
+            >
+              Published
+            </FilterChip>
+            <FilterChip
+              active={statusFilter === 'draft'}
+              onClick={() => setStatusFilter('draft')}
+              count={counts.draft}
+            >
+              Draft / in-review
+            </FilterChip>
+          </div>
+        )}
 
         {datasetsQuery.isError && (
           <div className="rounded-md border border-dashed border-border-subtle bg-bg-surface p-6 text-center">
@@ -299,14 +373,51 @@ export function MyDatasetsClient() {
           (viewMode === 'grid' ? (
             <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
               {visible.map((d) => (
-                <DatasetCard key={d.id} dataset={d} />
+                <DatasetCard
+                  key={d.id}
+                  dataset={d}
+                  hrefBuilder={workspaceHrefBuilder}
+                />
               ))}
             </div>
           ) : (
-            <MyDatasetsTable datasets={visible} />
+            <MyDatasetsTable
+              datasets={visible}
+              hrefBuilder={workspaceHrefBuilder}
+            />
           ))}
       </section>
     </>
+  );
+}
+
+/* ─── Tab buttons (top of body) ──────────────────────────────────── */
+
+function TabButton({
+  active,
+  onClick,
+  children,
+}: {
+  active: boolean;
+  onClick: () => void;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      role="tab"
+      aria-selected={active}
+      onClick={onClick}
+      className={cn(
+        '-mb-px inline-flex items-center gap-1.5 border-b-2 px-4 py-2.5 text-[13px] font-medium transition-colors',
+        'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ndi-teal',
+        active
+          ? 'border-ndi-teal text-ndi-teal'
+          : 'border-transparent text-fg-secondary hover:text-brand-navy',
+      )}
+    >
+      {children}
+    </button>
   );
 }
 

@@ -45,6 +45,14 @@ interface MyDatasetsTableProps {
    * callers handle row activation differently (e.g. open a side panel).
    */
   onRowClick?: (dataset: DatasetRecord) => void;
+  /**
+   * Builds the href for the name-cell `<Link>`. Defaults to the
+   * public `/datasets/[id]/overview` detail page. The /my workspace
+   * landing passes `(id) => /my/workspace/[id]` so logged-in users
+   * land in the rich Task-2 viewer rather than the read-only
+   * metadata page. (Added 2026-05-14 alongside the workspace landing.)
+   */
+  hrefBuilder?: (datasetId: string) => string;
 }
 
 const StatusBadge = memo(function StatusBadge({
@@ -61,12 +69,14 @@ const StatusBadge = memo(function StatusBadge({
 
 const NameCell = memo(function NameCell({
   dataset,
+  hrefBuilder,
 }: {
   dataset: DatasetRecord;
+  hrefBuilder: (id: string) => string;
 }) {
   return (
     <Link
-      href={`/datasets/${dataset.id}/overview`}
+      href={hrefBuilder(dataset.id)}
       className="font-medium text-fg-primary hover:text-ndi-teal focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ndi-teal"
     >
       {dataset.name}
@@ -77,6 +87,7 @@ const NameCell = memo(function NameCell({
 export function MyDatasetsTable({
   datasets,
   onRowClick,
+  hrefBuilder = (id) => `/datasets/${id}/overview`,
 }: MyDatasetsTableProps) {
   // Stable column defs across renders so TanStack Table keeps row
   // identity and the audit #64 memo barriers actually short-circuit.
@@ -85,7 +96,9 @@ export function MyDatasetsTable({
       {
         id: 'name',
         header: 'Name',
-        cell: ({ row }) => <NameCell dataset={row.original} />,
+        cell: ({ row }) => (
+          <NameCell dataset={row.original} hrefBuilder={hrefBuilder} />
+        ),
       },
       {
         id: 'status',
@@ -142,7 +155,12 @@ export function MyDatasetsTable({
         ),
       },
     ],
-    [],
+    // `hrefBuilder` is the only dynamic prop the column cells close
+    // over; everything else is column-local. Including it here lets a
+    // consumer flip Link destinations (e.g., /my switching cards to
+    // route into /my/workspace/[id]) without losing memoization for
+    // the other cells.
+    [hrefBuilder],
   );
 
   // React Compiler skips memoization for components consuming
