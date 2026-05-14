@@ -5,13 +5,17 @@
  * have to thread the model id literal everywhere. The model name is
  * pinned here so a sweep is one place.
  *
- * `claude-sonnet-4-5` is the current Sonnet model id (2026-05). When
- * Anthropic ships a successor, update this constant; no other code
- * changes needed.
+ * `claude-sonnet-4-6` is the current Sonnet model id (2026-05-14).
+ * Sonnet 4.5 (`claude-sonnet-4-5`) was the prior generation and is
+ * now in Anthropic's legacy tier. Same $3/MTok input · $15/MTok
+ * output pricing as 4.5, but better intelligence + the 1M-token
+ * context window that 4.5 didn't have on the API. When Anthropic
+ * ships a successor, update this constant; no other code changes
+ * needed.
  */
 import { createAnthropic } from '@ai-sdk/anthropic';
 
-export const CLAUDE_MODEL_ID = 'claude-sonnet-4-5';
+export const CLAUDE_MODEL_ID = 'claude-sonnet-4-6';
 
 let _client: ReturnType<typeof createAnthropic> | null = null;
 

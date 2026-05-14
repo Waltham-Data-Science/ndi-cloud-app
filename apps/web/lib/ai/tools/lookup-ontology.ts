@@ -28,7 +28,11 @@ import { baseUrl, fetchJson, isErrorResult, type ToolResult } from './shared';
 const ONTOLOGY_PROVIDER_URLS: Record<string, (localId: string) => string> = {
   UBERON: (id) => `https://www.ebi.ac.uk/ols/ontologies/uberon/terms?iri=http://purl.obolibrary.org/obo/UBERON_${id}`,
   CL: (id) => `https://www.ebi.ac.uk/ols/ontologies/cl/terms?iri=http://purl.obolibrary.org/obo/CL_${id}`,
-  NCBITaxon: (id) => `https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=${id}`,
+  // NCBI Datasets Taxonomy browser. Switched from the legacy
+  // `/Taxonomy/Browser/wwwtax.cgi` CGI page to the unified Datasets
+  // surface on 2026-05-14 — same data, plus inline genome/assembly/
+  // SRA cross-references. Mirrors `lib/ontology/url-builder.ts`.
+  NCBITaxon: (id) => `https://www.ncbi.nlm.nih.gov/datasets/taxonomy/browser/?taxon=${id}`,
   GO: (id) => `https://www.ebi.ac.uk/ols/ontologies/go/terms?iri=http://purl.obolibrary.org/obo/GO_${id}`,
   CHEBI: (id) => `https://www.ebi.ac.uk/chebi/searchId.do?chebiId=CHEBI:${id}`,
 };

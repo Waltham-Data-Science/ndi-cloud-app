@@ -184,7 +184,7 @@ describe('SummaryTableView — name cells link to ontology provider (round-3 fol
     );
     expect(link).not.toBeNull();
     expect(link?.getAttribute('href')).toBe(
-      'https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=6239',
+      'https://www.ncbi.nlm.nih.gov/datasets/taxonomy/browser/?taxon=6239',
     );
   });
 
