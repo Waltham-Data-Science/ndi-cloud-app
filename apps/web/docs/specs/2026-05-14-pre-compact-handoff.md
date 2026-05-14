@@ -14,21 +14,38 @@ backfill:
 
 ## TL;DR — what shipped this session, what's blocking next
 
-**Shipped 5 commits this session** addressing **12 critical/P0 bugs**
+**Shipped 7 commits this session** addressing **14 critical/P0 bugs**
 across the chat surface AND the data-browser ontology pipeline. The chat
 is meaningfully more robust at granular completeness (per-group sample
 citations, transparent truncation, fence-renderer fixes, missing
-get_document tool implemented). 1430/1430 frontend unit tests pass;
+get_document tool implemented, POST tool 403 unblocked, chart-fence
+truncation cap bumped). 1430+/1430 frontend unit tests pass;
 611+ backend tests pass; typecheck + lint clean; bundle ratchet
 unchanged (+0.22 KB on 168 KB baseline).
 
-**Hard P0 blocker still open**: dataset pages auto-redirect to `/ask`
-after 3-10s dwell. Reproducible. Source not yet traced. Until fixed,
-data-browser QA on the experimental preview is broken.
+**Hard P0 blockers still open** (priority order — these break the demo):
+1. **Citation chips auto-navigate page during streaming** (a63c agent)
+   — clicking or auto-scroll-into-view of a fresh chip jumps tab to
+   `/datasets/.../overview`, KILLING the chat mid-stream. Reproduced
+   multiple times.
+2. **Chat silently hangs after 60s with NO UI feedback** (a63c agent)
+   — `/api/ask` hits `maxDuration=60` ceiling, returns nothing, UI
+   keeps showing "using <tool>…" forever.
+3. **Frozen mid-stream state persists across refresh** (a63c agent)
+   — conversation persistence saves the "in progress" tool indicator;
+   refresh shows it as still active forever.
+4. **Dataset pages auto-redirect to `/ask` after 3-10s dwell** (a395
+   agent, reproduced by parent). Likely root cause: React #418
+   hydration mismatch causes tree remount; stale closure with
+   router.push fires.
 
-**1 audit agent still in flight** at compact time: chatbot accuracy E2E
-(running 15 prompts against ground truth). Its findings should land in
-the next session and be aggregated into the audit report.
+These four together make BOTH the chat AND the data browser unreliable
+for any non-trivial demo. They need to be the first thing tackled
+post-compact. Bugs #1, #2, #4 may share a common root (some navigation
+side-effect during hydration or streaming).
+
+**Both remaining audit agents are now DONE** (a71c chatbot accuracy +
+a63c visual UX chat+marketing). All 9 agents back.
 
 ---
 
@@ -66,10 +83,55 @@ the bypass cookie; subsequent navigations work without the param.
 | `26f71ad` | ndb-v2 | **3 backend critical fixes** — `_fetch_wormbase` echoed strain_id as label (caused "00000001" instead of "N2 wild-type" on every Bhar surface), UBERON/GO/OBI added to `_OLS_PROVIDERS` (was returning null for "frontal cortex" etc.), tabular_query router cloud errors → typed 503 envelope (was opaque 500) |
 | `91d4396` | cloud-app | Audit report doc at `apps/web/docs/specs/2026-05-14-audit-report.md` — comprehensive triage of findings from 5 of 9 agents |
 | `942257f` | cloud-app | Bundle/perf audit findings — `prefetch={false}` on /ask `<Link>` in marketing Header (was wasting 104 KB gz on every non-/ask page), rate-limit cost doc updated with real numbers ($0.05–$0.31/req instead of flat 5¢) |
+| `a0d81b2` | cloud-app | This handoff doc — initial version |
+| `f6022fe` | cloud-app | **Chat accuracy fixes from a71c audit**: (a) Origin header on all 3 POST tools (ndi_query, aggregate_documents, fetch_spike_summary — were 403ing for missing Origin), (b) maxOutputTokens bumped 1024→3072 (chart fences were truncating mid-stream before reaching the ```chart fence) |
 
 ---
 
 ## Open P0/P1 issues — priority order for next session
+
+### 0a. Citation chips auto-navigate page during chat streaming (P0, BLOCKER from a63c)
+
+The visual UX agent reproduced this multiple times: while a chat
+response is streaming, the tab "jumped from `/ask#c=…` to a dataset
+detail page" — destroying the chat mid-stream. Trigger may be either
+auto-scroll-into-view of a fresh citation chip OR an inadvertent
+click-handler on the chip.
+
+**How to investigate**:
+- Audit `<a>` rendering inside Sources panel and inline `[^N]`
+  CitationChip components.
+- Check for any `scrollIntoView` side-effects on the chips.
+- Verify `target="_blank" rel="noopener"` is set on all citation
+  hyperlinks so external nav opens a new tab instead of replacing.
+- This may share a root cause with the `/datasets/*` auto-redirect
+  (#0c below) — both involve unwanted nav during page lifecycle.
+
+### 0b. Chat silently hangs after ~60s with no UI recovery (P0, BLOCKER from a63c)
+
+`/api/ask` request runs for 60s (the `maxDuration` ceiling), returns
+nothing, and the UI keeps showing "using <tool>…" indefinitely. Has
+no spinner, no progress, no timeout error, no retry affordance. To
+the user the chat looks broken.
+
+**Fix sketch**:
+- Wire a frontend timeout handler (~50s). On expiry, replace tool
+  indicator with an inline error: "The model timed out. Try a more
+  specific question or [retry]."
+- Add a Stop button while streaming so the user can abort.
+- The maxOutputTokens fix in f6022fe helps reduce stalls, but the
+  underlying race + missing UX safety net is independent.
+
+### 0c. Stale "in progress" indicators persist across refresh (P0, BLOCKER from a63c)
+
+Conversation persistence saves the half-completed assistant message
+INCLUDING the live "using <tool>…" italic indicator. Refreshing
+shows the false "in progress" state forever.
+
+**Fix sketch**: On stream end (success OR abort OR error), normalize
+the tool indicator to a terminal state before persisting. Never
+serialize a `streaming` flag — derive it from message structure on
+hydrate.
 
 ### 1. Auto-redirect `/datasets/*` → `/ask` after 3-10s dwell (P0, BLOCKER)
 
@@ -189,19 +251,30 @@ the env schema.
 
 ## What's still in flight at compact time
 
-**1 audit agent** still running when I wrote this doc:
+**All 9 agents back.** No agents remain running. The two that returned
+between writing the original handoff and now:
 
-- **a71c (chatbot accuracy E2E)** — running 15 representative prompts
-  against the live chat, ground-truth-verified via direct backend curl.
-  Validates tool path, numeric accuracy, citation correctness, hallucination
-  patterns. Expected output: per-prompt PASS/PARTIAL/FAIL verdict + bug
-  list. Worth waiting for and aggregating into a follow-up doc.
+- **a71c (chatbot accuracy E2E)** — DONE. Headline: 3/15 PASS, 4/15
+  PARTIAL, 8/15 FAIL. Two systemic bugs identified: POST-tool 403 (Origin
+  missing) and maxOutputTokens cutoff. Both **FIXED in f6022fe**. Other
+  notable findings:
+  - WBStrain:00000001 still resolves to "00000001" not "N2 wild-type"
+    even after the backend fix — NDI-python's WBStrain provider hits
+    the WormBase URL but doesn't actually scrape the strain name. **Open**.
+  - `ndi_dataset_overview` returns "binding unavailable" on the
+    experimental Railway — NDI-python dataset materialization not
+    configured. **Open** (Sprint 1.5 caveat).
+  - `probe` className projection returns 0 rows in Dabrowska even
+    though `summary.probeTypes` has the data. Class-name mismatch
+    between projection and summary. **Open** (P1).
+  - LLM occasionally answers from general knowledge when
+    `lookup_ontology` returns `found:false` — minor hallucination
+    risk for unknown CURIEs. **Open** (P2).
 
-To check on it post-compact:
-```bash
-ls /private/tmp/claude-501/-Users-audribhowmick-Documents-ndi-projects-ndi-cloud-app/8a559085-dc56-49cb-8aca-9e97bde4dca5/tasks/
-# Look for a71c27e288aaa7a88.output
-```
+- **a63c (visual UX chat + marketing)** — DONE. Critical findings
+  added to the P0 block above. Marketing pages are clean (only nits
+  + one auth-routing bug at `/reset-password`). Chat surface is the
+  problem area.
 
 ---
 
@@ -300,37 +373,63 @@ All gates green at compact time.
 
 ## Post-compact action list (priority order)
 
-1. **CHECK THE a71c AGENT OUTPUT.** If it returned, aggregate findings
-   into the audit report. If still running, decide whether to wait or
-   proceed.
+1. **Validate the f6022fe fixes are live**: smoke the chat with
+   "Across all public datasets, how many subjects are Sprague-Dawley
+   rats?" (a P3 prompt that 403'd pre-fix). Should now succeed.
+   Then run the violin EPM/Saline-CNO prompt again — chart fence
+   should now actually render (was being truncated mid-stream).
 
-2. **Trace the auto-redirect P0.** Start with the React #418 hypothesis:
-   use Playwright to navigate to `/datasets/.../overview`, inspect the
-   console for hydration warnings, look at which client component is
-   re-mounting. The visual UX audit captured a screenshot showing the
-   redirected page at `audit/audit-15-mobile-overview.png` — that may
-   have additional context.
+2. **TRIAGE the navigation P0s** (0a, 0b, 0c, 1 in the open-issues
+   table). These may share root causes — fixing one may fix several.
+   Suggested order:
+   - First trace 0c (stale persisted state): grep for where
+     conversation-store serializes messages. Add a terminal-state
+     normalization on stream end.
+   - Then trace 0a (citation chip auto-navigation): audit
+     CitationChip + SourcesPanel for any `scrollIntoView` or
+     missing `target="_blank"`.
+   - Then trace 1 (data-browser auto-redirect): may resolve once
+     hydration mismatches are fixed elsewhere.
+   - Then 0b (chat timeout UX): wire frontend safety nets.
 
 3. **Verify `/api/ontology/batch-lookup` 403** with a direct curl
    against Railway. Fix the auth posture once root cause is clear.
 
-4. **Apply the P1 fixes** in priority order (code-export missing tool
-   cases, JsonTree CURIE rendering, chart aria-labels, ToolCallIndicator
-   labels). These are isolated and can be parallelized with another wave
-   of agents.
+4. **Fix `/reset-password` form** (a63c P1 #6): renders in-account
+   "Change password" UI with `current password` field when a user
+   lands here from an email reset link (they only have a token).
+   Either route reset-from-email to a separate view, OR branch
+   inside the page based on `?token=` presence.
 
-5. **Enable Anthropic prompt caching** (significant cost win + reliability
-   win — eliminates the 55s retry stall on rate-limit hits).
+5. **Apply the P1 fixes** in priority order:
+   - code-export missing cases (treatment_timeline, fetch_image,
+     fetch_spike_summary)
+   - JsonTree CURIE rendering (DocumentDetailView)
+   - Chart aria-labels
+   - ToolCallIndicator labels for new tools
+   - ESC closes Show code modal
+   - Mobile chat layout
+   These are isolated and can be parallelized with another agent wave.
 
-6. **DO NOT**:
+6. **WBStrain provider scrape**: the backend now correctly falls
+   through to NDI-python for WBStrain, but NDI-python's WBStrain
+   path returns the URL without scraping the strain name. Fix
+   either in NDI-python upstream OR add a WBStrain-specific
+   scraper in `ontology_service._fetch_wormbase` that reads the
+   strain page.
+
+7. **Enable Anthropic prompt caching** (cost win + reliability win
+   — cuts per-turn cost ~6× and eliminates the 55s retry stall on
+   rate-limit hits).
+
+8. **DO NOT**:
    - Merge anything to main (both branches stay experimental)
    - Touch live production data
    - Build new chart types until existing P0/P1 are clean
-   - Spawn more agents without checking the a71c output first
 
 ---
 
 **Ready for `/compact`.** Post-compact: read this doc, then act on the
-priority list. The chat is much more robust than it was at session start;
-the data-browser side needs the auto-redirect bug fixed before it's
-demo-viable.
+priority list. Both repos are at a clean test state. Both Vercel + Railway
+are live with the latest fixes. The chat works for many flows but is
+gated by the four navigation P0s before being demo-reliable.
