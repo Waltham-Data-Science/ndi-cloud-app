@@ -32,6 +32,7 @@ import { askEnabled } from '@/lib/ai/feature-flag';
 import { checkRateLimit } from '@/lib/ai/rate-limit';
 import { SYSTEM_PROMPT } from '@/lib/ai/system-prompt';
 import { tools } from '@/lib/ai/tools';
+import { logEvent } from '@/lib/ai/tools/shared';
 
 export const runtime = 'nodejs';
 // Allow up to 60s — gives Claude room for 4 tool roundtrips at
@@ -51,6 +52,7 @@ function clientIp(req: Request): string {
 export async function POST(req: Request): Promise<Response> {
   // 1. Feature flag.
   if (!askEnabled()) {
+    logEvent('ask.feature_disabled');
     return Response.json({ error: 'chat_disabled' }, { status: 503 });
   }
 
@@ -63,6 +65,11 @@ export async function POST(req: Request): Promise<Response> {
   const ip = clientIp(req);
   const rl = checkRateLimit(ip);
   if (!rl.ok) {
+    logEvent('ask.rate_limited', {
+      ip,
+      bucket: rl.bucket,
+      retryAfterSeconds: rl.retryAfterSeconds,
+    });
     return Response.json(
       {
         error: 'rate_limited',
@@ -78,13 +85,23 @@ export async function POST(req: Request): Promise<Response> {
   try {
     body = await req.json();
   } catch {
+    logEvent('ask.invalid_body', { reason: 'invalid_json' });
     return Response.json({ error: 'invalid_json' }, { status: 400 });
   }
 
   const messages = extractMessages(body);
   if (!messages) {
+    logEvent('ask.invalid_body', { reason: 'shape_mismatch' });
     return Response.json({ error: 'invalid_body' }, { status: 400 });
   }
+
+  // Request observability — size-only, never message content.
+  const lastUserMessage = lastUserText(messages);
+  logEvent('ask.request.start', {
+    ip,
+    messageCount: messages.length,
+    mostRecentUserMessage_length: lastUserMessage.length,
+  });
 
   // 4. Stream.
   //
@@ -178,9 +195,42 @@ export async function POST(req: Request): Promise<Response> {
     // catches single-shot blips but a hard failure (real rate-limit,
     // bad input) surfaces in ~5s. (P1 audit follow-up, 2026-05-14.)
     maxRetries: 1,
+    onError: ({ error }) => {
+      const e = error instanceof Error ? error : new Error(String(error));
+      logEvent('ask.stream.error', {
+        errorType: e.name,
+        message: e.message.slice(0, 200),
+      });
+    },
   });
 
+  logEvent('ask.stream.start', { ip });
   return result.toUIMessageStreamResponse();
+}
+
+/**
+ * Extract the text of the most recent user message for size-only
+ * logging. Walks the UIMessage parts array (the AI SDK's canonical
+ * shape) and joins any text-typed parts. Returns '' when no text part
+ * is found — never throws, never inspects message content beyond
+ * computing a length.
+ */
+function lastUserText(messages: UIMessage[]): string {
+  for (let i = messages.length - 1; i >= 0; i -= 1) {
+    const m = messages[i];
+    if (m?.role !== 'user') continue;
+    const parts = (m as { parts?: unknown }).parts;
+    if (!Array.isArray(parts)) return '';
+    const texts: string[] = [];
+    for (const p of parts) {
+      if (p && typeof p === 'object' && (p as { type?: unknown }).type === 'text') {
+        const t = (p as { text?: unknown }).text;
+        if (typeof t === 'string') texts.push(t);
+      }
+    }
+    return texts.join('');
+  }
+  return '';
 }
 
 function extractMessages(body: unknown): UIMessage[] | null {

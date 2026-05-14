@@ -40,7 +40,13 @@
 import { z } from 'zod';
 
 import { makeReference, type Reference } from '../references';
-import { baseUrl, fetchJson, isErrorResult, type ToolResult } from './shared';
+import {
+  baseUrl,
+  fetchJson,
+  isErrorResult,
+  logToolInvocation,
+  type ToolResult,
+} from './shared';
 
 export const fetchSignalInput = z.object({
   datasetId: z.string().min(1, 'datasetId is required'),
@@ -146,6 +152,12 @@ export interface FetchSignalResult {
 export async function fetchSignalHandler(
   input: z.infer<typeof fetchSignalInput>,
 ): Promise<ToolResult<FetchSignalResult>> {
+  logToolInvocation('fetch_signal', {
+    datasetId: input?.datasetId,
+    docId: input?.docId,
+    downsample: input?.downsample,
+    hasWindow: input?.t0 !== undefined || input?.t1 !== undefined,
+  });
   const parsed = fetchSignalInput.safeParse(input);
   if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
 

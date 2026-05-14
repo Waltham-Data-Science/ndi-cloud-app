@@ -31,7 +31,13 @@ import {
   makeReference,
   type Reference,
 } from '../references';
-import { baseUrl, fetchJson, isErrorResult, type ToolResult } from './shared';
+import {
+  baseUrl,
+  fetchJson,
+  isErrorResult,
+  logToolInvocation,
+  type ToolResult,
+} from './shared';
 
 export const tabularQueryInput = z.object({
   datasetId: z.string().min(1, 'datasetId is required'),
@@ -164,6 +170,11 @@ export interface TabularQueryToolResult {
 export async function tabularQueryHandler(
   input: TabularQueryInput,
 ): Promise<ToolResult<TabularQueryToolResult>> {
+  logToolInvocation('tabular_query', {
+    datasetId: input?.datasetId,
+    variableNameContains: input?.variableNameContains,
+    hasGroupBy: typeof input?.groupBy === 'string' && input.groupBy.length > 0,
+  });
   // Runtime validation. The earlier draft of this handler relied on
   // TS-only typing of the inputs and crashed inside the stream when
   // the LLM passed a malformed payload — the AI SDK turns that

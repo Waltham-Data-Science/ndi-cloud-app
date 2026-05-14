@@ -35,7 +35,13 @@
 import { z } from 'zod';
 
 import { makeReference, type Reference } from '../references';
-import { baseUrl, fetchJson, isErrorResult, type ToolResult } from './shared';
+import {
+  baseUrl,
+  fetchJson,
+  isErrorResult,
+  logToolInvocation,
+  type ToolResult,
+} from './shared';
 
 export const walkProvenanceInput = z.object({
   datasetId: z.string().min(1, 'datasetId is required'),
@@ -86,6 +92,11 @@ interface RawDependenciesResponse {
 export async function walkProvenanceHandler(
   input: z.infer<typeof walkProvenanceInput>,
 ): Promise<ToolResult<WalkProvenanceResult>> {
+  logToolInvocation('walk_provenance', {
+    datasetId: (input as { datasetId?: unknown } | undefined)?.datasetId,
+    docId: (input as { docId?: unknown } | undefined)?.docId,
+    maxDepth: (input as { maxDepth?: unknown } | undefined)?.maxDepth,
+  });
   const parsed = walkProvenanceInput.safeParse(input);
   if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
 

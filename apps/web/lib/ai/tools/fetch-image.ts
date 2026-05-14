@@ -33,7 +33,13 @@
 import { z } from 'zod';
 
 import { makeReference, type Reference } from '../references';
-import { baseUrl, fetchJson, isErrorResult, type ToolResult } from './shared';
+import {
+  baseUrl,
+  fetchJson,
+  isErrorResult,
+  logToolInvocation,
+  type ToolResult,
+} from './shared';
 
 export const fetchImageInput = z.object({
   datasetId: z.string().min(1, 'datasetId is required'),
@@ -112,6 +118,11 @@ export interface FetchImageResult {
 export async function fetchImageHandler(
   input: FetchImageInput,
 ): Promise<ToolResult<FetchImageResult>> {
+  logToolInvocation('fetch_image', {
+    datasetId: input?.datasetId,
+    docId: input?.docId,
+    frame: input?.frame,
+  });
   const parsed = fetchImageInput.safeParse(input);
   if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
 

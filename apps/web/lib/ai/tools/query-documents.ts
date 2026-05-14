@@ -38,7 +38,13 @@
 import { z } from 'zod';
 
 import { makeReference, type Reference } from '../references';
-import { baseUrl, fetchJson, isErrorResult, type ToolResult } from './shared';
+import {
+  baseUrl,
+  fetchJson,
+  isErrorResult,
+  logToolInvocation,
+  type ToolResult,
+} from './shared';
 
 export const queryDocumentsInput = z.object({
   datasetId: z.string().min(1, 'datasetId is required'),
@@ -133,6 +139,11 @@ function rowDocId(row: Record<string, unknown>, key: string | null): string | nu
 export async function queryDocumentsHandler(
   input: z.infer<typeof queryDocumentsInput>,
 ): Promise<ToolResult<QueryDocumentsResult>> {
+  logToolInvocation('query_documents', {
+    datasetId: input?.datasetId,
+    className: input?.className,
+    limit: input?.limit,
+  });
   const parsed = queryDocumentsInput.safeParse(input);
   if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
 

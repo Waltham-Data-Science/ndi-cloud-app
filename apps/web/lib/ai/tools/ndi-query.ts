@@ -35,7 +35,12 @@ import {
   makeDatasetReference,
   type Reference,
 } from '../references';
-import { baseUrl, type ToolError, type ToolResult } from './shared';
+import {
+  baseUrl,
+  logToolInvocation,
+  type ToolError,
+  type ToolResult,
+} from './shared';
 
 const TOOL_TIMEOUT_MS = 12_000; // bigger than catalog tools — ndiquery can fetch up to 50k docs
 
@@ -234,6 +239,13 @@ export interface NdiQueryToolResult {
 export async function ndiQueryHandler(
   input: NdiQueryInput,
 ): Promise<ToolResult<NdiQueryToolResult>> {
+  logToolInvocation('ndi_query', {
+    scope: input?.scope,
+    clauseCount: Array.isArray(input?.searchstructure)
+      ? input.searchstructure.length
+      : 0,
+    limit: input?.limit,
+  });
   const parsed = ndiQueryInput.safeParse(input);
   if (!parsed.success) {
     return { error: `Invalid input: ${parsed.error.message}` };

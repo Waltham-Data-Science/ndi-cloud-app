@@ -17,7 +17,13 @@
 import { z } from 'zod';
 
 import { type Reference } from '../references';
-import { baseUrl, fetchJson, isErrorResult, type ToolResult } from './shared';
+import {
+  baseUrl,
+  fetchJson,
+  isErrorResult,
+  logToolInvocation,
+  type ToolResult,
+} from './shared';
 
 // Upstream provider URLs for the common CURIE prefixes. The chat-UI's
 // CitationChip opens these in a new tab — clicking a UBERON term takes
@@ -97,6 +103,9 @@ export interface LookupOntologyToolResult {
 export async function lookupOntologyHandler(
   input: LookupOntologyInput,
 ): Promise<ToolResult<LookupOntologyToolResult>> {
+  logToolInvocation('lookup_ontology', {
+    term: input?.term,
+  });
   const parsed = lookupOntologyInput.safeParse(input);
   if (!parsed.success) {
     return { error: `Invalid input: ${parsed.error.message}` };

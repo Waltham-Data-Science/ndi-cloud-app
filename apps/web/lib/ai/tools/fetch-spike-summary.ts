@@ -38,7 +38,7 @@
 import { z } from 'zod';
 
 import { makeReference, type Reference } from '../references';
-import { baseUrl, type ToolResult } from './shared';
+import { baseUrl, logToolInvocation, type ToolResult } from './shared';
 
 const TOOL_TIMEOUT_MS = 12_000; // generous — vmspikesummary docs can be heavy
 
@@ -194,6 +194,14 @@ interface BackendSingleDocResponse {
 export async function fetchSpikeSummaryHandler(
   input: FetchSpikeSummaryInput,
 ): Promise<ToolResult<FetchSpikeSummaryToolResult>> {
+  logToolInvocation('fetch_spike_summary', {
+    datasetId: input?.datasetId,
+    kind: input?.kind,
+    hasUnitDocId: typeof input?.unitDocId === 'string' && input.unitDocId.length > 0,
+    hasUnitNameMatch:
+      typeof input?.unitNameMatch === 'string' && input.unitNameMatch.length > 0,
+    maxUnits: input?.maxUnits,
+  });
   const parsed = fetchSpikeSummaryInput.safeParse(input);
   if (!parsed.success) {
     return { error: `Invalid input: ${parsed.error.message}` };

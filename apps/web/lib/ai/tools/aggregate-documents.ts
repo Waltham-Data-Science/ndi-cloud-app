@@ -26,7 +26,7 @@ import {
   makeReference,
   type Reference,
 } from '../references';
-import { baseUrl, type ToolResult } from './shared';
+import { baseUrl, logToolInvocation, type ToolResult } from './shared';
 
 const TOOL_TIMEOUT_MS = 15_000; // longer than ndi_query — we may fetch up to 50k docs
 
@@ -194,6 +194,15 @@ export interface AggregateDocumentsToolResult {
 export async function aggregateDocumentsHandler(
   input: AggregateDocumentsInput,
 ): Promise<ToolResult<AggregateDocumentsToolResult>> {
+  logToolInvocation('aggregate_documents', {
+    scope: input?.scope,
+    clauseCount: Array.isArray(input?.searchstructure)
+      ? input.searchstructure.length
+      : 0,
+    valueField: input?.valueField,
+    hasGroupBy: typeof input?.groupBy === 'string' && input.groupBy.length > 0,
+    maxDocs: input?.maxDocs,
+  });
   const parsed = aggregateDocumentsInput.safeParse(input);
   if (!parsed.success) {
     return { error: `Invalid input: ${parsed.error.message}` };

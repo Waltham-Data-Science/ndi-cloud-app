@@ -19,7 +19,13 @@
 import { z } from 'zod';
 
 import { makeReference, type Reference } from '../references';
-import { baseUrl, fetchJson, isErrorResult, type ToolResult } from './shared';
+import {
+  baseUrl,
+  fetchJson,
+  isErrorResult,
+  logToolInvocation,
+  type ToolResult,
+} from './shared';
 
 export const getDocumentInput = z.object({
   /** Dataset ID (24-char hex). */
@@ -61,6 +67,10 @@ export interface GetDocumentToolResult {
 export async function getDocumentHandler(
   input: GetDocumentInput,
 ): Promise<ToolResult<GetDocumentToolResult>> {
+  logToolInvocation('get_document', {
+    datasetId: input?.datasetId,
+    docId: input?.docId,
+  });
   const parsed = getDocumentInput.safeParse(input);
   if (!parsed.success) {
     return { error: `Invalid input: ${parsed.error.message}` };

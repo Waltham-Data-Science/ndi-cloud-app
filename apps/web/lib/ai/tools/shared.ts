@@ -49,6 +49,36 @@ export function isErrorResult<T>(r: ToolResult<T>): r is ToolError {
 }
 
 /**
+ * Structured-log emitter for /api/ask + tool handlers. Writes
+ * single-line JSON to stdout via console.log so Vercel's function-logs
+ * surface aggregates one event per row. Centralized here so the event
+ * shape stays consistent across the request lifecycle and the 14 tool
+ * handlers.
+ *
+ * Intentionally NEVER logs message bodies / PII — props should be
+ * sizes, ids, counts, error kinds. Compaction follow-up if log volume
+ * becomes a cost concern; the prototype budget is generous.
+ */
+export function logEvent(event: string, props: Record<string, unknown> = {}): void {
+  // Structured prod logs go to console.log so Vercel's function-logs
+  // surface aggregates them per-request.
+  console.log(JSON.stringify({ event, ts: Date.now(), ...props }));
+}
+
+/**
+ * One-liner for tool-handler entry — records the tool name + a small,
+ * non-sensitive subset of input args. Callers pass a sanitized props
+ * object (ids + sizes only) — DO NOT pass raw input objects that may
+ * contain free-form natural-language queries.
+ */
+export function logToolInvocation(
+  name: string,
+  props: Record<string, unknown> = {},
+): void {
+  logEvent(`chat.tool.${name}.invoked`, props);
+}
+
+/**
  * Typed GET against the FastAPI proxy. Same contract as the helper in
  * the main `tools.ts` — duplicated here so per-tool files don't reach
  * across into another module. Resolves to either the parsed JSON body
