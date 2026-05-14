@@ -41,6 +41,10 @@ import {
   type Reference,
 } from './references';
 import {
+  aggregateDocumentsHandler,
+  aggregateDocumentsInput,
+} from './tools/aggregate-documents';
+import {
   fetchSignalHandler,
   fetchSignalInput,
 } from './tools/fetch-signal';
@@ -602,6 +606,48 @@ export const tools = {
       'before the fence — never just dump the chart without context.',
     inputSchema: fetchSignalInput,
     execute: fetchSignalHandler,
+  }),
+  aggregate_documents: tool({
+    description:
+      'Compute summary statistics (mean, median, std, min, max, count) ' +
+      'across a Query-matched set of NDI documents. Use this WHENEVER a ' +
+      "user asks for an average / mean / median / range / spread across " +
+      'many docs — even small numbers (10+) where you might be tempted to ' +
+      'do arithmetic yourself. Doing the math server-side is deterministic; ' +
+      'LLMs drift on long sums.\n' +
+      '\n' +
+      'INPUTS:\n' +
+      '  - scope + searchstructure: same DSL as ndi_query (see that ' +
+      "tool's description for operations + examples).\n" +
+      '  - valueField: DOTTED PATH to the numeric field in each doc, ' +
+      'e.g. "data.subject.weight_grams", ' +
+      '"data.vmspikesummary.mean_firing_rate", "data.probe.impedance_ohms". ' +
+      'Use ndi_query first if you need to discover the field name; ' +
+      'then call this with the path.\n' +
+      '  - groupBy: optional dotted path to a categorical field. ' +
+      'Returns one stats block per distinct value (e.g. ' +
+      'groupBy="data.subject.strain" splits by strain).\n' +
+      '  - maxDocs: optional cap on docs scanned (default 5000, max 50000).\n' +
+      '\n' +
+      'EXAMPLES:\n' +
+      '  "Average firing rate of all units in dataset X" →\n' +
+      '    scope="<dsId>"\n' +
+      '    searchstructure=[{operation:"isa", param1:"vmspikesummary"}]\n' +
+      '    valueField="data.vmspikesummary.mean_firing_rate"\n' +
+      '\n' +
+      '  "Subject weight by strain across the catalog" →\n' +
+      '    scope="public"\n' +
+      '    searchstructure=[{operation:"isa", param1:"subject"}]\n' +
+      '    valueField="data.subject.weight_grams"\n' +
+      '    groupBy="data.subject.strain"\n' +
+      '\n' +
+      'OUTPUT: per-group {count, mean, median, std, min, max}. ' +
+      '`numeric_matches` says how many docs actually had a finite ' +
+      'numeric value at valueField (others were skipped). ' +
+      '`total_items` is the total query matches before numeric filtering. ' +
+      '`truncated` is true when more docs matched than maxDocs scanned.',
+    inputSchema: aggregateDocumentsInput,
+    execute: aggregateDocumentsHandler,
   }),
   ndi_query: tool({
     description:

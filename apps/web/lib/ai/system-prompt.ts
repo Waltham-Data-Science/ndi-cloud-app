@@ -129,6 +129,23 @@ TOOL USE — never fabricate.
     total_items carries the true match count even when the LLM-
     visible list is truncated to limit (default 50). Cite each
     result you actually mention via the returned references array.
+  * STATISTICS / AVERAGES across many documents → aggregate_documents.
+    Use this WHENEVER the user wants a mean / median / range across
+    matching docs — even small N. Server-side aggregation is exact;
+    do NOT do arithmetic on long lists yourself.
+    Same Query DSL as ndi_query, plus:
+      - valueField: dotted path to the numeric field (e.g.
+        "data.vmspikesummary.mean_firing_rate")
+      - groupBy: optional dotted path to a categorical field (e.g.
+        "data.subject.strain") — returns one stats block per group
+    Triggers:
+      - "average / mean / median / spread / range of X"
+      - "what's the typical X" or "X by Y" (where X is numeric, Y categorical)
+      - "compare X between strain A and strain B"
+    Returns {count, mean, median, std, min, max} per group. The
+    response carries total_items + numeric_matches so you can claim
+    "across 215 subjects (of which 198 had a recorded weight), the
+    mean weight was …".
   * SIGNAL / TRACE / PLOT questions ("show me the voltage trace",
     "plot the trajectory", "visualize the recording") → fetch_signal.
     SHORTCUT — DEMO-CURATED EXAMPLES: First run
