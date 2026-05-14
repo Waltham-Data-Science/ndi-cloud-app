@@ -35,10 +35,18 @@ import { tools } from '@/lib/ai/chat-tools';
 import { logEvent } from '@/lib/ndi/tools/shared';
 
 export const runtime = 'nodejs';
-// Allow up to 60s — gives Claude room for 4 tool roundtrips at
-// 8s each plus output streaming. Vercel default is 10s on Hobby
-// and 60s on Pro for serverless functions.
-export const maxDuration = 60;
+// Allow up to 180s. Trajectory of bumps:
+//   60s — initial cap; covered 4 tool roundtrips at ~8s each + compose.
+//   180s — current; exploratory dataset overview prompts ("how many
+//          subjects, what classes, figure coverage…") chain 5-7 tools
+//          and at 60s the stream was being cut off mid-compose with
+//          no assistant summary text emitted (caught live during
+//          2026-05-14 tutorial-parity smoke). 180s gives the model
+//          comfortable headroom; 99th-percentile latency on healthy
+//          chains is still ~25-40s so this only bites pathologically
+//          long traces. Vercel Pro tier allows up to 300s; 180s
+//          leaves margin to grow.
+export const maxDuration = 180;
 
 function clientIp(req: Request): string {
   // Vercel sets x-forwarded-for; first hop is the real client.
