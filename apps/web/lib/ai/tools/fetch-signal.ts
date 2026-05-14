@@ -28,6 +28,14 @@
  * shape to write the fence. Compromise: cap the channels list at
  * names + sample counts; the chart re-fetches the full arrays
  * client-side on mount (cheap second hit; backend cache friendly).
+ *
+ * Multi-channel responses are FIRST-CLASS — the backend's
+ * `channels: {name: [values]}` map already supports them. When the
+ * decoded doc has >1 channel (Dabrowska I-V sweeps, electrode arrays,
+ * stim+response pairs), the chart renders one trace per channel with
+ * an auto color ramp. The LLM can OPTIONALLY include a `colorbar`
+ * object in the `chart_payload` it echoes — when present, SignalChart
+ * draws a vertical colorbar with the supplied min/max/label/scale.
  */
 import { z } from 'zod';
 
@@ -73,6 +81,28 @@ interface BackendSignalResponse {
 }
 
 /**
+ * Optional colorbar metadata the LLM may include in the chart_payload
+ * fence body when the decoded doc has multiple monotonically-ordered
+ * channels (e.g. injection-current sweeps where each channel name
+ * encodes a numeric step). The chart_payload type lets this flow
+ * through verbatim from tool result → LLM → fence body → renderer.
+ *
+ *   scale defaults to 'viridis' (sequential, colorblind-safe). Use
+ *   'cool-warm' for diverging data centered on zero (e.g. step from
+ *   -20 pA to +60 pA); 'plasma' for an alternative sequential ramp.
+ */
+export interface ChartPayloadColorbar {
+  /** Axis label rendered next to the colorbar, e.g. "Injection (pA)". */
+  label: string;
+  /** Numeric min of the ramp (bottom of the bar). */
+  min: number;
+  /** Numeric max of the ramp (top of the bar). */
+  max: number;
+  /** Colormap. Defaults to viridis. */
+  scale?: 'viridis' | 'plasma' | 'cool-warm';
+}
+
+/**
  * What we send back to the LLM. The full data arrays are NOT echoed
  * (would blow the context window for any non-trivial trace); we keep
  * just the metadata + the per-channel sample count. The chart
@@ -94,6 +124,11 @@ export interface FetchSignalResult {
    * these params. The chart re-fetches the data over the network;
    * the round-trip is fast because the backend caches the decoded
    * arrays for the lifetime of the lambda invocation.
+   *
+   * The LLM is free to ADD a `colorbar` field to this object when it
+   * echoes the fence — useful for I-V sweeps and electrode arrays
+   * where a perceptual color ramp helps. The renderer treats it as
+   * optional; omit for categorical multi-channel data.
    */
   chart_payload: {
     datasetId: string;
@@ -101,7 +136,9 @@ export interface FetchSignalResult {
     downsample: number;
     t0?: number;
     t1?: number;
+    file?: string;
     title: string;
+    colorbar?: ChartPayloadColorbar;
   };
   references: Reference[];
 }

@@ -204,4 +204,94 @@ describe('fetch_signal', () => {
     });
     expect(result).toEqual({ error: expect.stringMatching(/invalid/i) });
   });
+
+  // -------------------------------------------------------------------
+  // Multi-channel + colorbar pass-through
+  // -------------------------------------------------------------------
+  describe('multi-channel responses', () => {
+    it('summarizes multi-channel responses as N entries of name+count', async () => {
+      mockFetchOnce(
+        mockSignalResponse({
+          channels: {
+            'voltage_+10pA': Array.from({ length: 200 }, (_, i) => i),
+            'voltage_+20pA': Array.from({ length: 200 }, (_, i) => i * 2),
+            'voltage_+30pA': Array.from({ length: 200 }, (_, i) => i * 3),
+          },
+        }),
+      );
+      const result = await fetchSignalHandler({
+        datasetId: 'ds1',
+        docId: 'doc1',
+      });
+      if ('error' in result) throw new Error('expected success');
+      expect(result.channels).toEqual([
+        { name: 'voltage_+10pA', sample_count: 200 },
+        { name: 'voltage_+20pA', sample_count: 200 },
+        { name: 'voltage_+30pA', sample_count: 200 },
+      ]);
+      // Multi-channel reference snippet reads naturally (the
+      // pluralization is correct).
+      expect(result.references[0]!.snippet).toContain('3 channels');
+    });
+
+    it('chart_payload allows but does not require a colorbar field (LLM may add it)', async () => {
+      // The HANDLER itself does not synthesize a colorbar — the LLM
+      // adds one at echo-time when it knows the channel names encode
+      // a numeric ramp (per system-prompt guidance). The TYPE permits
+      // it as an optional field; this test verifies the type compiles
+      // when the handler's chart_payload is round-tripped through
+      // the FetchSignalResult shape with a colorbar attached.
+      mockFetchOnce(
+        mockSignalResponse({
+          channels: {
+            'voltage_+10pA': [1, 2, 3],
+            'voltage_+20pA': [2, 3, 4],
+          },
+        }),
+      );
+      const result = await fetchSignalHandler({
+        datasetId: 'ds1',
+        docId: 'doc1',
+      });
+      if ('error' in result) throw new Error('expected success');
+      // The handler returns chart_payload WITHOUT a colorbar (the
+      // LLM is responsible for adding it when appropriate).
+      expect(result.chart_payload).not.toHaveProperty('colorbar');
+      // But the TYPE permits the LLM to splice one in. Spread-clone +
+      // assert the augmented shape type-checks under FetchSignalResult.
+      const echoedByLLM: typeof result.chart_payload = {
+        ...result.chart_payload,
+        colorbar: {
+          label: 'Injection (pA)',
+          min: 10,
+          max: 20,
+          scale: 'viridis',
+        },
+      };
+      expect(echoedByLLM.colorbar).toEqual({
+        label: 'Injection (pA)',
+        min: 10,
+        max: 20,
+        scale: 'viridis',
+      });
+    });
+
+    it('preserves the file field in chart_payload when passed (multi-file binary docs)', async () => {
+      mockFetchOnce(
+        mockSignalResponse({
+          channels: {
+            ch0: [1, 2, 3],
+            ch1: [4, 5, 6],
+          },
+        }),
+      );
+      const result = await fetchSignalHandler({
+        datasetId: 'ds1',
+        docId: 'doc1',
+        file: 'ai_group1_seg.nbf_1',
+      });
+      if ('error' in result) throw new Error('expected success');
+      expect(result.chart_payload.file).toBe('ai_group1_seg.nbf_1');
+    });
+  });
 });

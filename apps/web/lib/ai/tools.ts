@@ -45,9 +45,17 @@ import {
   aggregateDocumentsInput,
 } from './tools/aggregate-documents';
 import {
+  fetchImageHandler,
+  fetchImageInput,
+} from './tools/fetch-image';
+import {
   fetchSignalHandler,
   fetchSignalInput,
 } from './tools/fetch-signal';
+import {
+  fetchSpikeSummaryHandler,
+  fetchSpikeSummaryInput,
+} from './tools/fetch-spike-summary';
 import {
   lookupOntologyHandler,
   lookupOntologyInput,
@@ -64,6 +72,10 @@ import {
   tabularQueryHandler,
   tabularQueryInput,
 } from './tools/tabular-query';
+import {
+  treatmentTimelineHandler,
+  treatmentTimelineInput,
+} from './tools/treatment-timeline';
 import {
   walkProvenanceHandler,
   walkProvenanceInput,
@@ -566,9 +578,18 @@ export const tools = {
       'className values: probe, subject, element, element_epoch, ' +
       'stimulus_presentation, stimulus_response, vmspikesummary, ' +
       'tuningcurve_calc, treatment, openminds_subject, epochid. Returns ' +
-      'columns + rows in a tabular shape, plus a `references` array — ' +
-      'one citation per row when the row has a self document ID, ' +
-      'otherwise a citation to the dataset overview.',
+      'columns + rows in a tabular shape, a `totalRows` count of all ' +
+      'rows available (not just the page slice), a `distinctSummary` ' +
+      'mapping each column to `{distinct_count, top_values: [{value, ' +
+      'count}, …]}` computed over ALL rows so you can answer "how many ' +
+      'distinct values" without paging the whole table, and a ' +
+      '`references` array — one citation per row when the row has a ' +
+      'self document ID, otherwise a citation to the dataset overview. ' +
+      'When distinctSummary shows a column has distinct_count=1 across ' +
+      'many rows, treat that as a SIGNAL: the conceptual question may ' +
+      'need a different className (e.g. all `treatment` rows sharing ' +
+      'one name often means treatment variation lives in ' +
+      '`ontologyTableRow`, not `treatment`).',
     inputSchema: queryDocumentsInput,
     execute: queryDocumentsHandler,
   }),
@@ -732,6 +753,127 @@ export const tools = {
       'returns a `references` array — cite each result you mention.',
     inputSchema: ndiQueryInput,
     execute: ndiQueryHandler,
+  }),
+  treatment_timeline: tool({
+    description:
+      'Build a horizontal Gantt-style timeline of treatments per subject ' +
+      'in a single dataset. Use this when the user asks to "show the ' +
+      'treatment timeline", "when did each subject get Saline vs CNO", ' +
+      '"plot the training/testing schedule", or any other question about ' +
+      'WHICH treatments WHICH subjects received and (optionally) WHEN.\n' +
+      '\n' +
+      'INPUTS:\n' +
+      '  - datasetId (required)\n' +
+      '  - title (optional): chart title.\n' +
+      '  - maxSubjects (optional, default 30, max 100): cap on distinct ' +
+      'subjects shown. Bars beyond the cap are dropped from the chart.\n' +
+      '\n' +
+      'OUTPUT: chart_payload with `items: [{subject, treatment, start, ' +
+      'end}]` for the gantt-chart fence, plus total_subjects, ' +
+      'total_treatments, and temporal_source ("explicit" | "ordinal" | ' +
+      '"mixed"). When temporal_source is "ordinal", the dataset did not ' +
+      'record per-treatment start/end times — start/end are ordinal ' +
+      'slots (treatment #1, #2, …) per subject. ALWAYS mention this in ' +
+      'prose ("treatments are shown in administration order; the ' +
+      'dataset does not record per-treatment timestamps").\n' +
+      '\n' +
+      'IMPORTANT: when items is non-empty, echo the returned ' +
+      'chart_payload JSON into a fenced code block tagged ' +
+      '"gantt-chart":\n' +
+      '\n' +
+      '    ```gantt-chart\n' +
+      '    {"datasetId":"...","title":"...","items":[{"subject":"...","treatment":"...","start":0,"end":1}, ...]}\n' +
+      '    ```\n' +
+      '\n' +
+      'The chat UI intercepts that fence and mounts GanttChart inline. ' +
+      'Cite source subjects via the returned `references` array. If ' +
+      '`empty_hint` is present, surface it plainly — do NOT emit the ' +
+      'fence with an empty items array.',
+    inputSchema: treatmentTimelineInput,
+    execute: treatmentTimelineHandler,
+  }),
+  fetch_image: tool({
+    description:
+      'Fetch a 2D image array from an NDI binary document (microscopy ' +
+      'frame, fluorescence image, patch-encounter map, cell image) and ' +
+      "render it inline as a Plotly heatmap. Use this when the user " +
+      "asks to 'show', 'plot', 'visualize', or 'display' an IMAGE — " +
+      "specifically: patch-encounter maps (Haley accept-reject-foraging), " +
+      'cell images / fluorescence frames (Bhar memory, Dabrowska), ' +
+      'microscopy stacks, or any 2D pixel data inside a document.\n' +
+      '\n' +
+      'NOT for timeseries traces — that is fetch_signal. NOT for ' +
+      'tabular comparisons — that is tabular_query.\n' +
+      '\n' +
+      'INPUTS:\n' +
+      '  - datasetId + docId of a document with an image file ' +
+      '(typically class "image", "imageStack", or "thumbnail").\n' +
+      '  - frame (optional, default 0): index for multi-frame TIFF / ' +
+      'animated GIF stacks. Out-of-range clamps to the last frame.\n' +
+      '  - title (optional): chart caption.\n' +
+      '\n' +
+      'IMPORTANT: when the response is non-error, echo the returned ' +
+      "`chart_payload` JSON back into your answer inside a fenced code " +
+      'block tagged "image-chart":\n' +
+      '\n' +
+      '    ```image-chart\n' +
+      '    {"datasetId":"...","docId":"...","frame":0,"title":"Patch encounter map S1"}\n' +
+      '    ```\n' +
+      '\n' +
+      'The chat UI intercepts that fence and renders the heatmap ' +
+      'inline. Cite the source document via the `references` array. ' +
+      'Always describe what the image shows in plain English before ' +
+      'the fence.\n' +
+      '\n' +
+      'If errorKind is `notfound` / `decode` / `unsupported`, do NOT ' +
+      "emit the chart fence — tell the user plainly what failed. " +
+      "'unsupported' fires for raw NDI-native image formats (.nim) " +
+      "that Pillow can't decode.",
+    inputSchema: fetchImageInput,
+    execute: fetchImageHandler,
+  }),
+  fetch_spike_summary: tool({
+    description:
+      'Pull spike-time arrays from `vmspikesummary` documents and ' +
+      'render either a spike raster (one row per unit, vertical tick ' +
+      'per spike) or an ISI (inter-spike interval) histogram — or BOTH.\n' +
+      '\n' +
+      'Use when the user asks:\n' +
+      '  - "show me the spike raster for unit X"\n' +
+      '  - "ISI histogram for the patch-Vm recording"\n' +
+      '  - "compare firing rates between Saline and CNO units"\n' +
+      '  - "visualize the spike train"\n' +
+      '\n' +
+      'INPUTS:\n' +
+      '  - datasetId (required)\n' +
+      '  - kind: "raster" | "isi_histogram" | "both" (required)\n' +
+      '  - unitDocId (optional): specific vmspikesummary docId. When ' +
+      'omitted, the tool queries vmspikesummary docs in the dataset.\n' +
+      '  - unitNameMatch (optional): substring match against unit names ' +
+      'when discovering units (broad substring like "Saline" or "BNST").\n' +
+      '  - tWindow (optional): [start_s, end_s] time window for raster ' +
+      '(seconds).\n' +
+      '  - maxUnits (optional, default 10, max 50): cap on units shown.\n' +
+      '  - title (optional): chart title.\n' +
+      '\n' +
+      'OUTPUT: chart_payload (kind=raster | isi_histogram) OR ' +
+      'chart_payloads (kind=both — two payloads). For each, you MUST ' +
+      'echo the JSON back into your answer in a fenced code block:\n' +
+      '\n' +
+      '    ```spike-raster\n' +
+      '    {"datasetId":"...","units":[{"name":"Unit 12","spikeTimes":[...]}, ...],"tWindow":[0,2]}\n' +
+      '    ```\n' +
+      '\n' +
+      '    ```isi-histogram\n' +
+      '    {"datasetId":"...","intervals":[...],"unitName":"Unit 12","logBins":true}\n' +
+      '    ```\n' +
+      '\n' +
+      'The chat UI intercepts both fences and mounts SpikeRaster / ' +
+      'IsiHistogram inline. Cite each unit via the `references` ' +
+      'array. ISI defaults to log-spaced bins (electrophysiology ' +
+      'convention).',
+    inputSchema: fetchSpikeSummaryInput,
+    execute: fetchSpikeSummaryHandler,
   }),
   tabular_query: tool({
     description:

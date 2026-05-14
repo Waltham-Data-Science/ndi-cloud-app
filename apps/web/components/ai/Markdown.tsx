@@ -7,6 +7,10 @@ import remarkGfm from 'remark-gfm';
 
 import { parseFootnotes, type Reference } from '@/lib/ai/references';
 
+import { GanttChart, type GanttChartProps } from '@/components/charts/GanttChart';
+import { ImageChart, type ImageChartProps } from '@/components/charts/ImageChart';
+import { IsiHistogram, type IsiHistogramProps } from '@/components/charts/IsiHistogram';
+import { SpikeRaster, type SpikeRasterProps } from '@/components/charts/SpikeRaster';
 import { ViolinChart, type ViolinChartProps } from '@/components/charts/ViolinChart';
 
 import { CitationChip } from './CitationChip';
@@ -144,6 +148,23 @@ export function Markdown({ content }: Props) {
               const props = parseViolinChartPayload(children);
               if (props) return <ViolinChart {...props} />;
             }
+            // Phase C+: additional chart fences for the labchat scope-up.
+            if (className === 'language-gantt-chart' && typeof children === 'string') {
+              const props = parseGanttChartPayload(children);
+              if (props) return <GanttChart {...props} />;
+            }
+            if (className === 'language-image-chart' && typeof children === 'string') {
+              const props = parseImageChartPayload(children);
+              if (props) return <ImageChart {...props} />;
+            }
+            if (className === 'language-spike-raster' && typeof children === 'string') {
+              const props = parseSpikeRasterPayload(children);
+              if (props) return <SpikeRaster {...props} />;
+            }
+            if (className === 'language-isi-histogram' && typeof children === 'string') {
+              const props = parseIsiHistogramPayload(children);
+              if (props) return <IsiHistogram {...props} />;
+            }
             return (
               <code className="px-1 py-0.5 rounded bg-gray-100 text-[0.92em] font-mono">
                 {children}
@@ -162,7 +183,12 @@ export function Markdown({ content }: Props) {
             // always a single <code> element node; we inspect its
             // props.className to decide.
             const onlyChild =
-              childIsSignalChart(children) ?? childIsViolinChart(children);
+              childIsSignalChart(children) ??
+              childIsViolinChart(children) ??
+              childIsGanttChart(children) ??
+              childIsImageChart(children) ??
+              childIsSpikeRaster(children) ??
+              childIsIsiHistogram(children);
             if (onlyChild) return onlyChild;
             return (
               <pre className="my-2 p-3 rounded-md bg-gray-50 border border-gray-200 overflow-x-auto text-[0.92em]">
@@ -261,6 +287,99 @@ function parseViolinChartPayload(raw: string): ViolinChartProps | null {
 
 function childIsViolinChart(children: React.ReactNode): React.ReactNode | null {
   return childIsChartComponent(children, 'ViolinChart');
+}
+
+/**
+ * Parse a ```gantt-chart JSON payload into GanttChart props.
+ * Same defensive shape as the other parsers — null on malformed input.
+ */
+function parseGanttChartPayload(raw: string): GanttChartProps | null {
+  try {
+    const obj = JSON.parse(raw.trim()) as Partial<GanttChartProps>;
+    if (
+      typeof obj.datasetId !== 'string' ||
+      obj.datasetId.length === 0 ||
+      !Array.isArray(obj.items)
+    ) {
+      return null;
+    }
+    return obj as GanttChartProps;
+  } catch {
+    return null;
+  }
+}
+
+function childIsGanttChart(children: React.ReactNode): React.ReactNode | null {
+  return childIsChartComponent(children, 'GanttChart');
+}
+
+/**
+ * Parse a ```image-chart JSON payload into ImageChart props.
+ */
+function parseImageChartPayload(raw: string): ImageChartProps | null {
+  try {
+    const obj = JSON.parse(raw.trim()) as Partial<ImageChartProps>;
+    if (
+      typeof obj.datasetId !== 'string' ||
+      obj.datasetId.length === 0 ||
+      typeof obj.docId !== 'string' ||
+      obj.docId.length === 0
+    ) {
+      return null;
+    }
+    return obj as ImageChartProps;
+  } catch {
+    return null;
+  }
+}
+
+function childIsImageChart(children: React.ReactNode): React.ReactNode | null {
+  return childIsChartComponent(children, 'ImageChart');
+}
+
+/**
+ * Parse a ```spike-raster JSON payload into SpikeRaster props.
+ * Requires a non-empty `units` array — the rest of the props are
+ * optional.
+ */
+function parseSpikeRasterPayload(raw: string): SpikeRasterProps | null {
+  try {
+    const obj = JSON.parse(raw.trim()) as Partial<SpikeRasterProps>;
+    if (!Array.isArray(obj.units) || obj.units.length === 0) return null;
+    return obj as SpikeRasterProps;
+  } catch {
+    return null;
+  }
+}
+
+function childIsSpikeRaster(children: React.ReactNode): React.ReactNode | null {
+  return childIsChartComponent(children, 'SpikeRaster');
+}
+
+/**
+ * Parse an ```isi-histogram JSON payload into IsiHistogram props.
+ * Accepts either raw intervals (length ≥ 1) or pre-binned bins+counts
+ * (bins.length === counts.length + 1). Returns null when neither
+ * shape is present.
+ */
+function parseIsiHistogramPayload(raw: string): IsiHistogramProps | null {
+  try {
+    const obj = JSON.parse(raw.trim()) as Partial<IsiHistogramProps>;
+    const hasIntervals =
+      Array.isArray(obj.intervals) && obj.intervals.length > 0;
+    const hasBins =
+      Array.isArray(obj.bins) &&
+      Array.isArray(obj.counts) &&
+      obj.bins.length === (obj.counts as number[]).length + 1;
+    if (!hasIntervals && !hasBins) return null;
+    return obj as IsiHistogramProps;
+  } catch {
+    return null;
+  }
+}
+
+function childIsIsiHistogram(children: React.ReactNode): React.ReactNode | null {
+  return childIsChartComponent(children, 'IsiHistogram');
 }
 
 /**

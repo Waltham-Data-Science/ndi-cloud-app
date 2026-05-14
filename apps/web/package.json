@@ -13,6 +13,7 @@
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
     "test:e2e:install": "playwright install --with-deps chromium firefox",
+    "test:replay": "playwright test --config=playwright.replay.config.ts",
     "build-ask-index": "node scripts/build-ask-index.mjs"
   },
   "dependencies": {

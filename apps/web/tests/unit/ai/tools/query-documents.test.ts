@@ -142,4 +142,91 @@ describe('query_documents', () => {
     expect(r1).toEqual({ error: expect.stringMatching(/invalid/i) });
     expect(r2).toEqual({ error: expect.stringMatching(/invalid/i) });
   });
+
+  it('surfaces distinctSummary from the backend response', async () => {
+    // Smoke-tested case (Dabrowska BNST treatment table): 49 rows all
+    // sharing one treatmentName. distinct_summary must surface the
+    // collapse so the LLM knows to pivot to ontologyTableRow.
+    mockFetchOnce({
+      columns: [
+        { key: 'treatmentName', label: 'Treatment' },
+        { key: 'treatmentOntology', label: 'Treatment Ontology' },
+      ],
+      rows: [
+        {
+          treatmentName: 'Optogenetic Tetanus Stimulation Target Location',
+          treatmentOntology: 'UBERON:0001234',
+        },
+      ],
+      total: 49,
+      distinct_summary: {
+        treatmentName: {
+          distinct_count: 1,
+          top_values: [
+            {
+              value: 'Optogenetic Tetanus Stimulation Target Location',
+              count: 49,
+            },
+          ],
+        },
+        treatmentOntology: {
+          distinct_count: 1,
+          top_values: [{ value: 'UBERON:0001234', count: 49 }],
+        },
+      },
+    });
+    const result = await queryDocumentsHandler({
+      datasetId: 'ds1',
+      className: 'treatment',
+    });
+    if ('error' in result) throw new Error('expected success');
+    expect(result.distinctSummary).toBeDefined();
+    expect(result.distinctSummary).toMatchObject({
+      treatmentName: {
+        distinct_count: 1,
+        top_values: [
+          {
+            value: 'Optogenetic Tetanus Stimulation Target Location',
+            count: 49,
+          },
+        ],
+      },
+    });
+    expect(result.totalRows).toBe(49);
+  });
+
+  it('passes through the _meta sentinel when backend skipped the scan', async () => {
+    mockFetchOnce({
+      columns: [{ key: 'x', label: 'X' }],
+      rows: [{ x: 1 }],
+      total: 20000,
+      distinct_summary: { _meta: 'skipped due to large row count' },
+    });
+    const result = await queryDocumentsHandler({
+      datasetId: 'ds1',
+      className: 'subject',
+    });
+    if ('error' in result) throw new Error('expected success');
+    expect(result.distinctSummary).toEqual({
+      _meta: 'skipped due to large row count',
+    });
+  });
+
+  it('omits distinctSummary when the backend does not provide one', async () => {
+    // Backwards-compat: older backends (pre-distinct_summary) just
+    // return columns+rows+total. The tool must not crash and the field
+    // is simply absent on the response.
+    mockFetchOnce({
+      columns: [{ key: 'name', label: 'Name' }],
+      rows: [{ name: 'A' }],
+      total: 1,
+    });
+    const result = await queryDocumentsHandler({
+      datasetId: 'ds1',
+      className: 'subject',
+    });
+    if ('error' in result) throw new Error('expected success');
+    expect(result.distinctSummary).toBeUndefined();
+    expect(result.rows).toHaveLength(1);
+  });
 });

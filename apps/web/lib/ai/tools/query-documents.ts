@@ -60,10 +60,36 @@ export interface TableColumn {
   label: string;
 }
 
+/**
+ * Per-column cardinality + top-K values across ALL rows the backend
+ * built (NOT just the page we slice for the LLM). Lets the model say
+ * "9 distinct strains across 215 subjects" without sampling every row.
+ *
+ * When the backing table has more than ~10K rows the backend skips the
+ * scan and returns `{_meta: "skipped due to large row count"}` instead;
+ * the LLM should pivot to `ndi_query` or `get_facets` at that scale.
+ *
+ * Surfaced 2026-05-14 after a smoke test where `query_documents(
+ * className=treatment)` on Dabrowska BNST returned 49 rows all named
+ * "Optogenetic Tetanus Stimulation Target Location"; the LLM assumed
+ * only optogenetic treatments existed because every row looked the
+ * same. distinct_summary shows the collapse — see
+ * `lib/ai/system-prompt.ts` for the guidance text.
+ */
+export interface DistinctSummaryEntry {
+  distinct_count: number;
+  top_values: Array<{ value: unknown; count: number }>;
+}
+
+export type DistinctSummary =
+  | Record<string, DistinctSummaryEntry>
+  | { _meta: string };
+
 interface RawTableResponse {
   columns?: TableColumn[];
   rows?: Array<Record<string, unknown>>;
   total?: number;
+  distinct_summary?: DistinctSummary;
 }
 
 export interface QueryDocumentsResult {
@@ -72,6 +98,13 @@ export interface QueryDocumentsResult {
   rows: Array<Record<string, unknown> & { _reference: Reference }>;
   /** Total number of rows available; the `rows` array may be a paged subset. */
   totalRows: number;
+  /**
+   * Per-column distinct-value summary computed over ALL backend rows
+   * (not the page slice). Use this to detect single-value collapse
+   * (e.g. `treatmentName: [{value: 'Optogenetic…', count: 49}]` —
+   * conceptual question may need a different className).
+   */
+  distinctSummary?: DistinctSummary;
   /** Cardinal references — same set the row-level `_reference` fields point at. */
   references: Reference[];
 }
@@ -156,6 +189,7 @@ export async function queryDocumentsHandler(
     columns,
     rows,
     totalRows: totalAvailable,
+    distinctSummary: result.distinct_summary,
     references,
   };
 }

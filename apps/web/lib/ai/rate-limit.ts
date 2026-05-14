@@ -1,59 +1,131 @@
 /**
  * Per-IP in-memory token bucket for /api/ask.
  *
- * Bucket: 10 requests per 10 minutes per IP. Sliding window — each
- * bucket records the timestamp of the first request in the current
- * window; once 10 minutes pass since that first request, the bucket
- * resets.
+ * Two layered limits:
  *
- * Edge-runtime caveat: the Map lives in a single edge-function
+ *   1. Short window — 10 requests / 10 minutes per IP.
+ *      Catches a runaway client (browser-tab spam, fast retry loop).
+ *
+ *   2. Daily cap — 100 requests / 24 hours per IP. Added 2026-05-14.
+ *      Even if a single IP stays under the short-window cap forever,
+ *      they could queue 1,440 requests/day at the per-window ceiling
+ *      = ~$72/IP/day at 5¢/request. The daily cap pins worst-case
+ *      single-IP spend at ~$5/IP/day. 10,000 distinct anonymous IPs
+ *      hitting the daily cap = $50,000 — still a real spend, but at
+ *      that point Vercel/Anthropic dashboard alerts catch it.
+ *
+ * Both buckets check on every /api/ask call; the FIRST one that
+ * rejects wins (with the longer `retryAfterSeconds` if it's the
+ * daily cap).
+ *
+ * Edge-runtime caveat: the Map lives in a single Node-runtime
  * instance. Under multi-instance load the effective limit becomes
- * `10 × instances`, which is fine for a demo. If this surfaces past
- * the prototype phase, swap in Vercel KV (the public API of this
- * module stays the same).
+ * `cap × instances`, which is fine for an anonymous-only demo. If
+ * this surfaces past the prototype phase, swap in Vercel KV (the
+ * public API of this module stays the same).
  */
 
-const MAX_REQUESTS = 10;
-const WINDOW_MS = 10 * 60 * 1000;
+const SHORT_WINDOW_MAX = 10;
+const SHORT_WINDOW_MS = 10 * 60 * 1000;
+
+const DAILY_MAX = 100;
+const DAILY_WINDOW_MS = 24 * 60 * 60 * 1000;
 
 type Bucket = {
   count: number;
   windowStart: number; // ms epoch
 };
 
-const buckets = new Map<string, Bucket>();
+// Two independent maps so the daily and short-window buckets evict
+// on their own cadences. Both keyed by ip-or-"unknown".
+const shortBuckets = new Map<string, Bucket>();
+const dailyBuckets = new Map<string, Bucket>();
 
 export type RateLimitResult =
   | { ok: true; remaining: number }
-  | { ok: false; retryAfterSeconds: number };
+  | { ok: false; retryAfterSeconds: number; bucket: 'short' | 'daily' };
 
-export function checkRateLimit(ip: string): RateLimitResult {
-  const key = ip || 'unknown';
-  const now = Date.now();
-  const bucket = buckets.get(key);
+function checkBucket(
+  store: Map<string, Bucket>,
+  key: string,
+  windowMs: number,
+  cap: number,
+  now: number,
+): { ok: true; remaining: number } | { ok: false; retryAfterSeconds: number } {
+  const bucket = store.get(key);
 
-  if (!bucket || now - bucket.windowStart >= WINDOW_MS) {
-    // Fresh window.
-    buckets.set(key, { count: 1, windowStart: now });
-    return { ok: true, remaining: MAX_REQUESTS - 1 };
+  if (!bucket || now - bucket.windowStart >= windowMs) {
+    store.set(key, { count: 1, windowStart: now });
+    return { ok: true, remaining: cap - 1 };
   }
 
-  if (bucket.count >= MAX_REQUESTS) {
+  if (bucket.count >= cap) {
     const retryAfterSeconds = Math.ceil(
-      (bucket.windowStart + WINDOW_MS - now) / 1000,
+      (bucket.windowStart + windowMs - now) / 1000,
     );
     return { ok: false, retryAfterSeconds };
   }
 
   bucket.count += 1;
-  return { ok: true, remaining: MAX_REQUESTS - bucket.count };
+  return { ok: true, remaining: cap - bucket.count };
 }
 
 /**
- * Reset the in-memory bucket store. Test-only — exposes intentionally
+ * Check both short-window and daily limits. Daily is checked FIRST
+ * because if it's exhausted, the short-window admit would be a false
+ * positive (the request will reject downstream anyway). Both buckets
+ * are mutated on admit so they stay in sync.
+ *
+ * NOTE: this means a daily-rejected request does NOT consume a
+ * short-window slot. Inverse: a short-rejected request DOES consume
+ * a daily slot because the daily increment already happened. That
+ * asymmetry is intentional — a daily cap is the harder ceiling.
+ */
+export function checkRateLimit(ip: string): RateLimitResult {
+  const key = ip || 'unknown';
+  const now = Date.now();
+
+  // Daily cap — peek first WITHOUT incrementing.
+  const dailyBucket = dailyBuckets.get(key);
+  if (
+    dailyBucket
+    && now - dailyBucket.windowStart < DAILY_WINDOW_MS
+    && dailyBucket.count >= DAILY_MAX
+  ) {
+    const retryAfterSeconds = Math.ceil(
+      (dailyBucket.windowStart + DAILY_WINDOW_MS - now) / 1000,
+    );
+    return { ok: false, retryAfterSeconds, bucket: 'daily' };
+  }
+
+  // Short window — admits or rejects, mutates the short bucket.
+  const shortResult = checkBucket(
+    shortBuckets, key, SHORT_WINDOW_MS, SHORT_WINDOW_MAX, now,
+  );
+  if (!shortResult.ok) {
+    return { ...shortResult, bucket: 'short' };
+  }
+
+  // Admitted by short window — now consume a daily slot.
+  const dailyResult = checkBucket(
+    dailyBuckets, key, DAILY_WINDOW_MS, DAILY_MAX, now,
+  );
+  if (!dailyResult.ok) {
+    return { ...dailyResult, bucket: 'daily' };
+  }
+
+  return {
+    ok: true,
+    remaining: Math.min(shortResult.remaining, dailyResult.remaining),
+  };
+}
+
+/**
+ * Reset the in-memory bucket store. Test-only — exposed intentionally
  * since vitest can't reach module-level Maps otherwise. Production code
  * should never call this.
  */
 export function _resetForTest(): void {
-  buckets.clear();
+  shortBuckets.clear();
+  dailyBuckets.clear();
 }

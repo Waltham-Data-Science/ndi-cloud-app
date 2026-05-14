@@ -10,16 +10,31 @@
  *     {"datasetId":"...","docId":"...","downsample":2000,"title":"..."}
  *     ```
  *
- * The component fetches its own data from the FastAPI signal endpoint
- * (the same endpoint the `fetch_signal` tool hit on the server side)
- * via TanStack Query — so a re-render after the user clicks a citation
- * chip and returns won't trigger a refetch.
+ * MULTI-TRACE + COLORBAR (added 2026-05-14)
+ * ----------------------------------------
+ * The backend `fetch_signal` response shape already carries
+ * `channels: {name: [values]}` — so any document with a multi-channel
+ * decode (Dabrowska I-V sweeps, electrode arrays) produces multiple
+ * traces naturally. This component renders all of them in one panel
+ * with auto-colored series.
  *
- * Rendering delegates to `TimeseriesChart` which is the production
- * uPlot wrapper already used by the Document Explorer. Reusing it
- * here means the chat-side chart inherits sweep detection, NaN
- * splitting, and the turbo-colormap automatically — no parallel
- * implementation to drift out of sync.
+ *   - Numeric-suffix channel names (`ch0, ch1, ch2`) OR fully numeric
+ *     parses (`voltage_+10pA → 10`) → Viridis perceptual ramp.
+ *   - Otherwise → categorical PALETTE (Tab10-style, accessible).
+ *
+ * When the LLM passes a `colorbar` prop in the fence payload (with
+ * label + min + max), a vertical colorbar is drawn to the right of the
+ * uPlot canvas. Single-channel docs render no legend / no colorbar so
+ * the pre-existing EPM voltage-trace example is unchanged.
+ *
+ * Rendering uses uPlot directly here (rather than delegating to
+ * TimeseriesChart) because the chat-side chart needs different
+ * semantics: chat-side users may request a specific channel subset
+ * via the colorbar metadata, the legend layout matches the chat
+ * figure-caption style, and the chart doesn't need to detect
+ * electrophysiology sweeps (the LLM has already chosen the right
+ * docId via fetch_signal). The 1-channel path stays delegate-to-
+ * TimeseriesChart so the existing EPM example renders identically.
  *
  * Loading + error + empty states are first-class: a malformed binary
  * shouldn't crash the chat thread. The footer includes a citation
@@ -49,6 +64,32 @@ const TimeseriesChart = dynamic(
   },
 );
 
+// Multi-trace renderer lives in its own client-only module so its
+// uPlot import (plus a fresh `window` access) doesn't drag uPlot into
+// the SSR pass when ONLY the 1-channel delegate path runs.
+const MultiTraceChart = dynamic(
+  () => import('./MultiTraceChart').then((m) => m.MultiTraceChart),
+  {
+    ssr: false,
+    loading: () => (
+      <div className="h-[300px] flex items-center justify-center text-[12px] text-gray-500">
+        Loading chart…
+      </div>
+    ),
+  },
+);
+
+export interface SignalChartColorbarSpec {
+  /** Axis label rendered to the right of the colorbar (e.g. "Injection (pA)"). */
+  label: string;
+  /** Numeric min of the ramp (bottom of the bar). */
+  min: number;
+  /** Numeric max of the ramp (top of the bar). */
+  max: number;
+  /** Colormap name. Defaults to "viridis" for perceptual + colorblind-safe. */
+  scale?: 'viridis' | 'plasma' | 'cool-warm';
+}
+
 export interface SignalChartProps {
   datasetId: string;
   docId: string;
@@ -62,6 +103,13 @@ export interface SignalChartProps {
    */
   file?: string;
   title?: string;
+  /**
+   * When present AND the fetched response has 2+ channels, render a
+   * vertical colorbar to the right of the plot showing the colormap
+   * scale. Omit (or set to undefined) for categorical multi-channel
+   * data (e.g. ai+ao+stim) where a discrete legend is more useful.
+   */
+  colorbar?: SignalChartColorbarSpec;
 }
 
 /**
@@ -93,6 +141,7 @@ export function SignalChart({
   t1,
   file,
   title,
+  colorbar,
 }: SignalChartProps) {
   const url = useMemo(() => {
     const qs = new URLSearchParams({ downsample: String(downsample) });
@@ -128,6 +177,7 @@ export function SignalChart({
         isLoading={isLoading}
         isError={isError}
         error={error}
+        colorbar={colorbar}
       />
 
       <div className="mt-2 flex items-center justify-between text-[11px] text-gray-500">
@@ -156,6 +206,7 @@ interface ChartBodyProps {
   isLoading: boolean;
   isError: boolean;
   error: unknown;
+  colorbar?: SignalChartColorbarSpec;
 }
 
 // Explicit displayName so the Markdown component's child-identity
@@ -167,7 +218,7 @@ SignalChart.displayName = 'SignalChart';
  * Inner body — split out so the figure's caption + footer render
  * consistently across loading / error / empty states.
  */
-function ChartBody({ data, isLoading, isError, error }: ChartBodyProps) {
+function ChartBody({ data, isLoading, isError, error, colorbar }: ChartBodyProps) {
   // Error branch FIRST — on rejection `data` is undefined and
   // `isLoading` is already false, but a "loading || !data" check
   // would mask the error and leave the spinner spinning forever.
@@ -211,6 +262,14 @@ function ChartBody({ data, isLoading, isError, error }: ChartBodyProps) {
       </div>
     );
   }
-  // Pass through to the production uPlot wrapper.
-  return <TimeseriesChart data={data} height={300} />;
+  // 1-channel docs keep the original TimeseriesChart delegate — so the
+  // EPM-example regression-free behavior is identical to before.
+  // Multi-channel (or single-channel-but-colorbar-requested) routes
+  // through the new MultiTraceChart which owns auto-color-ramp +
+  // legend + colorbar.
+  const channelCount = Object.keys(data.channels ?? {}).length;
+  if (channelCount <= 1 && !colorbar) {
+    return <TimeseriesChart data={data} height={300} />;
+  }
+  return <MultiTraceChart data={data} height={300} colorbar={colorbar} />;
 }

@@ -54,11 +54,20 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   // 2. Rate limit (before any expensive parsing).
+  // Two layered limits: 10/10min short-window and 100/day daily cap.
+  // The daily cap bounds worst-case per-IP spend at ~$5/day at 5¢/req,
+  // even when the short-window throughput stays under threshold. See
+  // `lib/ai/rate-limit.ts` for the rationale and Bucket-rejection
+  // logging.
   const ip = clientIp(req);
   const rl = checkRateLimit(ip);
   if (!rl.ok) {
     return Response.json(
-      { error: 'rate_limited', retryAfterSeconds: rl.retryAfterSeconds },
+      {
+        error: 'rate_limited',
+        bucket: rl.bucket,
+        retryAfterSeconds: rl.retryAfterSeconds,
+      },
       { status: 429, headers: { 'Retry-After': String(rl.retryAfterSeconds) } },
     );
   }

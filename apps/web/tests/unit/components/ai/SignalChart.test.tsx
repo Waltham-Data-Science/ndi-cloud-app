@@ -1,8 +1,12 @@
 /**
  * SignalChart — verifies the fetch + state surface (loading, error,
- * empty, soft-error, success). The actual uPlot rendering is owned
- * by `TimeseriesChart` (already covered by its own test file); we
- * mock it here so we don't drag uPlot's DOM dependencies into the
+ * empty, soft-error, success) and the routing between the legacy
+ * 1-channel TimeseriesChart delegate vs. the new multi-trace
+ * renderer (covered in MultiTraceChart.test.tsx).
+ *
+ * The actual uPlot rendering is owned by `TimeseriesChart` (already
+ * covered by its own test file) and `MultiTraceChart`; we mock both
+ * here so we don't drag uPlot's DOM dependencies into the
  * SignalChart test.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
@@ -17,6 +21,30 @@ import type { ReactNode } from 'react';
 vi.mock('@/components/app/TimeseriesChart', () => ({
   TimeseriesChart: ({ data }: { data: { sample_count: number } }) => (
     <div data-testid="timeseries-chart">samples={data.sample_count}</div>
+  ),
+}));
+
+// Mock MultiTraceChart in the same way — we have a separate unit
+// test file (MultiTraceChart.test.tsx) for its color-ramp + legend +
+// colorbar semantics. Here we only care that SignalChart routes to
+// the right renderer based on channel count + colorbar prop.
+vi.mock('@/components/ai/MultiTraceChart', () => ({
+  MultiTraceChart: ({
+    data,
+    colorbar,
+  }: {
+    data: { sample_count: number; channels: Record<string, unknown> };
+    colorbar?: { label: string };
+  }) => (
+    <div data-testid="multitrace-chart">
+      <span data-testid="multitrace-channel-count">
+        {Object.keys(data.channels ?? {}).length}
+      </span>
+      <span data-testid="multitrace-samples">samples={data.sample_count}</span>
+      {colorbar && (
+        <span data-testid="multitrace-colorbar-label">{colorbar.label}</span>
+      )}
+    </div>
   ),
 }));
 
@@ -53,6 +81,15 @@ const baseSignalResponse = {
     document_id: 'doc1',
     doc_class: 'element_epoch',
     doc_name: 'Sweep 5',
+  },
+};
+
+const multiChannelResponse = {
+  ...baseSignalResponse,
+  channels: {
+    'voltage_+10pA': [1, 2, 3],
+    'voltage_+20pA': [2, 3, 4],
+    'voltage_+30pA': [3, 4, 5],
   },
 };
 
@@ -198,5 +235,79 @@ describe('SignalChart', () => {
         screen.getByText(/Downsampled from 50,000 samples to 500/),
       ).toBeInTheDocument(),
     );
+  });
+
+  // -------------------------------------------------------------------
+  // Multi-trace + colorbar routing
+  // -------------------------------------------------------------------
+  describe('multi-trace + colorbar', () => {
+    it('routes 2+ channels to MultiTraceChart (not the legacy single-channel delegate)', async () => {
+      mockedApiFetch.mockResolvedValueOnce(multiChannelResponse);
+      render(<SignalChart datasetId="ds1" docId="doc1" />, {
+        wrapper: withClient(),
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId('multitrace-chart')).toBeInTheDocument(),
+      );
+      expect(screen.queryByTestId('timeseries-chart')).not.toBeInTheDocument();
+      // Verifies the channels payload was passed through verbatim.
+      expect(screen.getByTestId('multitrace-channel-count')).toHaveTextContent('3');
+    });
+
+    it('passes the colorbar prop through to MultiTraceChart when set', async () => {
+      mockedApiFetch.mockResolvedValueOnce(multiChannelResponse);
+      render(
+        <SignalChart
+          datasetId="ds1"
+          docId="doc1"
+          colorbar={{
+            label: 'Injection (pA)',
+            min: 10,
+            max: 30,
+            scale: 'viridis',
+          }}
+        />,
+        { wrapper: withClient() },
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('multitrace-chart')).toBeInTheDocument(),
+      );
+      expect(screen.getByTestId('multitrace-colorbar-label')).toHaveTextContent(
+        'Injection (pA)',
+      );
+    });
+
+    it('routes single-channel data through MultiTraceChart when a colorbar is explicitly requested', async () => {
+      // Edge case: the LLM might want a colorbar even on a single
+      // trace to label the y-axis ramp. SignalChart honors that by
+      // routing to MultiTraceChart rather than the legacy delegate.
+      mockedApiFetch.mockResolvedValueOnce(baseSignalResponse);
+      render(
+        <SignalChart
+          datasetId="ds1"
+          docId="doc1"
+          colorbar={{ label: 'Voltage (mV)', min: -80, max: 40 }}
+        />,
+        { wrapper: withClient() },
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('multitrace-chart')).toBeInTheDocument(),
+      );
+      expect(screen.queryByTestId('timeseries-chart')).not.toBeInTheDocument();
+    });
+
+    it('1-channel + no colorbar STILL routes to the legacy TimeseriesChart delegate (regression guard)', async () => {
+      // The pre-existing EPM single-channel example must keep working
+      // exactly as before — TimeseriesChart owns its sweep detection
+      // semantics and we don't want to drift behavior for that path.
+      mockedApiFetch.mockResolvedValueOnce(baseSignalResponse);
+      render(<SignalChart datasetId="ds1" docId="doc1" />, {
+        wrapper: withClient(),
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId('timeseries-chart')).toBeInTheDocument(),
+      );
+      expect(screen.queryByTestId('multitrace-chart')).not.toBeInTheDocument();
+    });
   });
 });

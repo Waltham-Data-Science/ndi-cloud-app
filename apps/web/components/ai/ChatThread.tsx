@@ -2,16 +2,36 @@
 
 import { useEffect, useRef } from 'react';
 
+import type { RecordedToolCall } from '@/lib/ai/code-export/types';
+
 import { ChatMessage, type ChatRole } from './ChatMessage';
 import { ToolCallIndicator } from './ToolCallIndicator';
 
 export type ThreadEntry =
-  | { kind: 'message'; role: ChatRole; content: string }
+  | {
+      kind: 'message';
+      role: ChatRole;
+      content: string;
+      /**
+       * Recorded tool calls for this message (assistant messages only).
+       * Surfaces the "Show code" button when non-empty. Optional —
+       * older callers that don't track tool history still work.
+       */
+      toolCalls?: RecordedToolCall[];
+    }
   | { kind: 'tool-call'; toolName: string };
 
 type Props = {
   entries: ThreadEntry[];
   isStreaming: boolean;
+  /**
+   * Latest user question, propagated to each assistant message so the
+   * exported snippet's banner can include it. Optional — the snippet
+   * renders a generic header when absent.
+   */
+  question?: string;
+  /** Browser URL of the chat, also pasted into the snippet banner. */
+  chatUrl?: string;
 };
 
 /**
@@ -23,7 +43,7 @@ type Props = {
  * near the bottom. If they've scrolled up to re-read, don't yank
  * them back down.
  */
-export function ChatThread({ entries, isStreaming }: Props) {
+export function ChatThread({ entries, isStreaming, question, chatUrl }: Props) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const wasNearBottomRef = useRef(true);
 
@@ -54,6 +74,9 @@ export function ChatThread({ entries, isStreaming }: Props) {
               key={idx}
               role={entry.role}
               content={entry.content}
+              toolCalls={entry.toolCalls}
+              question={question}
+              chatUrl={chatUrl}
             />
           );
         }
