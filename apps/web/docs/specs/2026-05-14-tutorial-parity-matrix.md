@@ -96,10 +96,13 @@ Convention used below:
 Sign-in is the only thing that gates the GUI smoke. To run the matrix end-to-end signed-in:
 
 ```bash
-export PLAYWRIGHT_PREVIEW_URL="https://ndi-cloud-app-web-git-feat-experiment-c5da7d-ndi-cloud-a83eb4e7.vercel.app"
-export PLAYWRIGHT_TEST_EMAIL="audri@walthamdatascience.com"
+export PLAYWRIGHT_PREVIEW_URL="<vercel preview URL for this branch>"
+export PLAYWRIGHT_TEST_EMAIL="<your account email>"
 export PLAYWRIGHT_TEST_PASSWORD="<your preview password>"
-export VERCEL_SHARE="SuMAAzx33EA71RdkyGmJMUS3dkKT9dOP"   # bypasses preview SSO
+# Vercel-share bypass token — grab it from the `?_vercel_share=...` query
+# param the first time you open the preview URL signed-in. Each preview
+# deployment gets a new one; do NOT commit yours here.
+export VERCEL_SHARE="<bypass-token-from-preview-URL>"
 cd apps/web && pnpm exec playwright test tests/e2e/workspace-tutorial-parity.spec.ts --headed
 ```
 

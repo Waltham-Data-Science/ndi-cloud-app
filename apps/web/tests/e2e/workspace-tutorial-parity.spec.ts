@@ -17,10 +17,10 @@
  *
  * To run:
  *
- *   export PLAYWRIGHT_PREVIEW_URL="https://ndi-cloud-app-web-git-feat-experiment-c5da7d-ndi-cloud-a83eb4e7.vercel.app"
- *   export PLAYWRIGHT_TEST_EMAIL="audri@walthamdatascience.com"
+ *   export PLAYWRIGHT_PREVIEW_URL="<vercel preview URL>"
+ *   export PLAYWRIGHT_TEST_EMAIL="<your account email>"
  *   export PLAYWRIGHT_TEST_PASSWORD="<your preview password>"
- *   export VERCEL_SHARE="SuMAAzx33EA71RdkyGmJMUS3dkKT9dOP"
+ *   export VERCEL_SHARE="<bypass token from preview URL>"
  *   pnpm exec playwright test tests/e2e/workspace-tutorial-parity.spec.ts --headed
  *
  * What's NOT in scope here (kept out so this spec stays under ~5 min):
