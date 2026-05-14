@@ -49,6 +49,10 @@ import {
   fetchSignalInput,
 } from './tools/fetch-signal';
 import {
+  lookupOntologyHandler,
+  lookupOntologyInput,
+} from './tools/lookup-ontology';
+import {
   ndiQueryHandler,
   ndiQueryInput,
 } from './tools/ndi-query';
@@ -606,6 +610,29 @@ export const tools = {
       'before the fence — never just dump the chart without context.',
     inputSchema: fetchSignalInput,
     execute: fetchSignalHandler,
+  }),
+  lookup_ontology: tool({
+    description:
+      'Resolve an ontology CURIE (e.g. "UBERON:0001870", "CL:0000540", ' +
+      '"NCBITaxon:10116", "WBStrain:00000001", "NDIC:0000123") to its ' +
+      'human-readable name + definition + synonyms.\n' +
+      '\n' +
+      'Use this WHENEVER you encounter a bare CURIE in tabular_query / ' +
+      'query_documents / ndi_query output and the user might want to ' +
+      'know what it means. Common cases:\n' +
+      '  - subject.species = "NCBITaxon:10116" → "Rattus norvegicus"\n' +
+      '  - subject.strain = "WBStrain:00000001" → "N2 wild-type"\n' +
+      '  - probe.brainRegion = "UBERON:0001870" → "frontal cortex"\n' +
+      '  - element.cellType = "CL:0000540" → "neuron"\n' +
+      '\n' +
+      'Backed by public providers (UBERON / CL / NCBITaxon via OLS at ' +
+      'EBI) with NDI-python fallback for lab-specific prefixes ' +
+      '(WBStrain, NDIC, Cre lines). Returns name, definition, synonyms, ' +
+      'and the source that resolved the term. `found: false` means no ' +
+      'provider had the term — surface that plainly rather than ' +
+      'inventing a definition.',
+    inputSchema: lookupOntologyInput,
+    execute: lookupOntologyHandler,
   }),
   aggregate_documents: tool({
     description:

@@ -129,6 +129,18 @@ TOOL USE — never fabricate.
     total_items carries the true match count even when the LLM-
     visible list is truncated to limit (default 50). Cite each
     result you actually mention via the returned references array.
+  * ONTOLOGY CURIE LOOKUP — whenever you see a bare CURIE in any
+    tool result and the user might want to know what it means →
+    lookup_ontology. Examples of bare CURIEs you'll encounter:
+      - NCBITaxon:10090, NCBITaxon:10116      (species)
+      - UBERON:0001870, UBERON:0000955        (brain region)
+      - CL:0000540, CL:0008034                (cell type)
+      - WBStrain:00000001                     (worm strain, NDI-only)
+      - NDIC:0000xxx                          (NDI-specific identifier)
+    DO NOT GUESS what a CURIE means — call lookup_ontology. The tool
+    chains public providers (OLS at EBI for UBERON/CL/etc.) with an
+    NDI-python fallback for lab-specific prefixes. Returns name +
+    definition + synonyms. If found:false comes back, say so plainly.
   * STATISTICS / AVERAGES across many documents → aggregate_documents.
     Use this WHENEVER the user wants a mean / median / range across
     matching docs — even small N. Server-side aggregation is exact;
