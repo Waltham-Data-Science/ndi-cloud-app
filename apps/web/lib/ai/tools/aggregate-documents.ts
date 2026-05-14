@@ -175,6 +175,20 @@ export interface AggregateDocumentsToolResult {
   /** Per-group stats. Single entry with group="all" when groupBy is unset. */
   groups: GroupStats[];
   references: Reference[];
+  /**
+   * Citation coverage metadata. The LLM is taught to disclose this
+   * in prose when truncated=true so users know the aggregation may
+   * be over a SAMPLE of matching docs, not all of them.
+   */
+  references_summary: {
+    cited: number;
+    datasets_cited: number;
+    groups_cited: number;
+    scanned_docs: number;
+    total_available: number;
+    truncated: boolean;
+    cap: number;
+  };
 }
 
 export async function aggregateDocumentsHandler(
@@ -237,8 +251,14 @@ export async function aggregateDocumentsHandler(
   const scanned = allDocs.slice(0, cap);
   const truncated = totalItems > scanned.length || allDocs.length > cap;
 
-  // Bucket values by group. When groupBy is unset, everything goes to "all".
+  // Bucket values by group. When groupBy is unset, everything goes
+  // to "all". We ALSO track one sample doc per bucket (first
+  // contributing) so the frontend can build per-group sample-doc
+  // citation chips — granular sourcing so users can verify "what
+  // does ONE Saline subject look like" vs "what does ONE CNO
+  // subject look like" without manually paging.
   const buckets = new Map<string, number[]>();
+  const bucketSampleDocs = new Map<string, BackendDocument>();
   const groupOrder: string[] = [];
   let numericMatches = 0;
 
@@ -256,6 +276,8 @@ export async function aggregateDocumentsHandler(
     if (!buckets.has(groupKey)) {
       buckets.set(groupKey, []);
       groupOrder.push(groupKey);
+      // First contributing doc per group is the sample for the chip.
+      bucketSampleDocs.set(groupKey, doc);
     }
     buckets.get(groupKey)!.push(v);
   }
@@ -268,14 +290,55 @@ export async function aggregateDocumentsHandler(
     })
     .filter((g): g is GroupStats => g !== null);
 
-  // References: cite each distinct dataset present in the matched docs
-  // (capped at 20). For single-dataset scope, fall back to a dataset-
-  // level reference even if no datasetId came back per-doc.
+  // References, layered for granular traceability:
+  //
+  // 1. PER-GROUP sample docs (only when groupBy is set AND we have
+  //    multiple groups): one chip per group, pointing at the first
+  //    contributing document so the user can drill into a concrete
+  //    example of what each bucket looks like.
+  //
+  // 2. DATASET-LEVEL refs: one per distinct contributing dataset
+  //    (capped at 20). Lets the user verify scope coverage —
+  //    "which datasets did this aggregation pull from?"
+  //
+  // 3. SINGLE-doc fallback: when only one doc contributed at all,
+  //    surface it as a clickable chip (n=1 aggregations need to be
+  //    cited specifically, not as a dataset-level claim).
+  const REFERENCE_CAP = 30;
   const refs: Reference[] = [];
+
+  if (groupBy && groups.length > 1) {
+    for (const groupStat of groups) {
+      const sampleDoc = bucketSampleDocs.get(groupStat.group);
+      if (!sampleDoc) continue;
+      const id = (sampleDoc.id ?? sampleDoc._id ?? sampleDoc.ndiId ?? '').toString();
+      const ds = (sampleDoc.datasetId ?? sampleDoc.dataset ?? '').toString();
+      const cls = sampleDoc.document_class?.class_name ?? 'document';
+      if (id && ds) {
+        refs.push(
+          makeReference({
+            datasetId: ds,
+            doc_id: id,
+            class: cls,
+            title: `Sample ${groupStat.group}: ${cls}`,
+            snippet:
+              `One of ${groupStat.count} ` +
+              `doc${groupStat.count === 1 ? '' : 's'} contributing to the ` +
+              `${groupStat.group} group (${valueField}=${
+                Number.isFinite(groupStat.mean)
+                  ? groupStat.mean.toFixed(2)
+                  : 'NaN'
+              } mean). Click to inspect.`,
+          }),
+        );
+      }
+    }
+  }
+
   const seenDatasets = new Set<string>();
   for (const doc of scanned) {
     const ds = (doc.datasetId ?? doc.dataset ?? '').toString();
-    if (!ds || seenDatasets.has(ds) || refs.length >= 20) continue;
+    if (!ds || seenDatasets.has(ds) || refs.length >= REFERENCE_CAP) continue;
     seenDatasets.add(ds);
     refs.push(
       makeDatasetReference({
@@ -296,7 +359,7 @@ export async function aggregateDocumentsHandler(
   }
   // For groups dominated by a single doc, surface a doc-level ref to make
   // the chip a useful entry point.
-  if (numericMatches === 1 && refs.length < 20) {
+  if (numericMatches === 1 && refs.length < REFERENCE_CAP) {
     const doc = scanned.find((d) => extractNumeric(d, valueField) !== null);
     if (doc) {
       const id = (doc.id ?? doc._id ?? doc.ndiId ?? '').toString();
@@ -323,6 +386,18 @@ export async function aggregateDocumentsHandler(
     valueField,
     groups,
     references: refs,
+    // Granular citation transparency. When truncated=true, the LLM
+    // is taught to disclose the ratio so the user knows the
+    // aggregation may be over a SAMPLE of matching docs.
+    references_summary: {
+      cited: refs.length,
+      datasets_cited: seenDatasets.size,
+      groups_cited: groupBy ? groups.length : 0,
+      scanned_docs: scanned.length,
+      total_available: totalItems,
+      truncated,
+      cap: REFERENCE_CAP,
+    },
   };
 }
 

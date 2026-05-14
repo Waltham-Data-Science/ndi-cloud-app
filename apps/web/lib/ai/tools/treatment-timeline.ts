@@ -143,6 +143,18 @@ export interface TreatmentTimelineResult {
   temporal_source: 'explicit' | 'ordinal' | 'mixed';
   references: Reference[];
   /**
+   * Citation coverage metadata. The LLM is taught to disclose
+   * cited-vs-total subject count whenever truncated=true, so the
+   * user can't assume the chip set is exhaustive.
+   */
+  references_summary: {
+    cited: number;
+    total_subjects: number;
+    total_treatments: number;
+    truncated: boolean;
+    cap: number;
+  };
+  /**
    * Present ONLY when the endpoint returned zero rows and the
    * tabular_query fallback was also empty. The LLM should surface
    * this to the user plainly rather than emit an empty chart.
@@ -280,6 +292,16 @@ export async function treatmentTimelineHandler(
     if (referencesBySubject.size >= 20) break;
   }
   const references: Reference[] = Array.from(referencesBySubject.values());
+  // Truncation transparency: when the dataset has more subjects than
+  // we cite, the LLM must disclose the ratio so the user knows the
+  // chart's chip set is a sample, not an exhaustive list.
+  const referencesSummary = {
+    cited: references.length,
+    total_subjects: seenSubjects.length,
+    total_treatments: items.length,
+    truncated: seenSubjects.length > references.length,
+    cap: 20,
+  };
 
   // empty_hint when there are zero items to chart.
   let empty_hint: TreatmentTimelineEmptyHint | undefined;
@@ -311,6 +333,7 @@ export async function treatmentTimelineHandler(
     total_treatments: items.length,
     temporal_source: temporalSource,
     references,
+    references_summary: referencesSummary,
     ...(empty_hint ? { empty_hint } : {}),
   };
 }

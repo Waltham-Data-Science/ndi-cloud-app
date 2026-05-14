@@ -132,6 +132,18 @@ export interface FetchSpikeSummaryToolResult {
    * to emit each as a fenced code block.
    */
   chart_payloads: SpikeChartPayload[];
+  /**
+   * Citation coverage metadata. The LLM is taught to disclose the
+   * units_shown vs total_matching ratio whenever truncated=true so
+   * the user knows the raster/ISI is a sample of available units.
+   */
+  references_summary?: {
+    cited: number;
+    units_shown: number;
+    total_matching: number;
+    truncated: boolean;
+    cap: number;
+  };
   references: Reference[];
   /**
    * Diagnostic surface for empty results. The LLM is taught to read
@@ -199,10 +211,15 @@ export async function fetchSpikeSummaryHandler(
 
   // ── Discovery ───────────────────────────────────────────────────
   let docs: BackendDocument[];
+  // `totalMatching` is the count BEFORE the maxUnits slice — surfaced
+  // in references_summary so the LLM can disclose "showed 10 of N
+  // units" when the cap was hit.
+  let totalMatching = 0;
   if (unitDocId) {
     const fetched = await fetchSingleDoc(base, datasetId, unitDocId);
     if ('error' in fetched) return fetched;
     docs = [fetched.doc];
+    totalMatching = 1;
   } else {
     const searchstructure: Array<Record<string, unknown>> = [
       { operation: 'isa', param1: 'vmspikesummary' },
@@ -216,6 +233,7 @@ export async function fetchSpikeSummaryHandler(
     }
     const queried = await runQuery(base, datasetId, searchstructure);
     if ('error' in queried) return queried;
+    totalMatching = queried.docs.length;
     docs = queried.docs.slice(0, maxUnits);
   }
 
@@ -334,6 +352,13 @@ export async function fetchSpikeSummaryHandler(
     time_range: Number.isFinite(minT) ? { min: minT, max: maxT } : null,
     chart_payloads,
     references,
+    references_summary: {
+      cited: references.length,
+      units_shown: units.length,
+      total_matching: totalMatching,
+      truncated: totalMatching > units.length,
+      cap: maxUnits,
+    },
   };
 }
 

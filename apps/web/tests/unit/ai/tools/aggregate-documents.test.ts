@@ -96,6 +96,21 @@ describe('aggregate_documents', () => {
     const b = res.groups.find((g) => g.group === 'B');
     expect(a).toMatchObject({ count: 2, mean: 15, min: 10, max: 20 });
     expect(b).toMatchObject({ count: 2, mean: 150, min: 100, max: 200 });
+    // Per-group sample-doc references: the first contributing doc
+    // for each group should be cited so users can drill into one
+    // concrete A subject vs one concrete B subject.
+    const sampleA = res.references.find((r) => r.title?.includes('Sample A'));
+    const sampleB = res.references.find((r) => r.title?.includes('Sample B'));
+    expect(sampleA?.doc_id).toBe('d1');
+    expect(sampleA?.url).toBe(`/datasets/${DSID_A}/documents/d1`);
+    expect(sampleB?.doc_id).toBe('d3');
+    expect(sampleB?.url).toBe(`/datasets/${DSID_A}/documents/d3`);
+    // Citation transparency.
+    expect(res.references_summary).toMatchObject({
+      groups_cited: 2,
+      truncated: false,
+      total_available: 4,
+    });
   });
 
   it('skips docs with no finite numeric value at valueField', async () => {
