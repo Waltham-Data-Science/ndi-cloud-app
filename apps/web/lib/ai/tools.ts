@@ -49,6 +49,10 @@ import {
   queryDocumentsInput,
 } from './tools/query-documents';
 import {
+  tabularQueryHandler,
+  tabularQueryInput,
+} from './tools/tabular-query';
+import {
   walkProvenanceHandler,
   walkProvenanceInput,
 } from './tools/walk-provenance';
@@ -585,5 +589,36 @@ export const tools = {
       'before the fence — never just dump the chart without context.',
     inputSchema: fetchSignalInput,
     execute: fetchSignalHandler,
+  }),
+  tabular_query: tool({
+    description:
+      'Aggregate a behavioral / measurement table (ontologyTableRow) ' +
+      'into per-group statistics + raw values for a violin / jitter ' +
+      'plot. Use this for "compare X across treatment groups", "show ' +
+      'EPM open-arm entries Saline vs CNO", "plot fear-startle by ' +
+      'condition", or anything else that asks for a categorical ' +
+      'comparison of a numeric measurement. Inputs: datasetId + ' +
+      'variableNameContains (substring match against the table\'s ' +
+      'variable name — e.g. "ElevatedPlusMaze", "Fear_potentiated' +
+      'Startle", "Chemotaxis_McCutcheon"). Optional: groupBy (e.g. ' +
+      '"treatment_group", "strain"), groupOrder (left-to-right ' +
+      'ordering), title.\n' +
+      '\n' +
+      'Returns per-group summary stats (mean, median, std, q1/q3, ' +
+      'min/max, count) + a `chart_payload` object — IMPORTANT: when ' +
+      'you call this tool, you MUST also echo the returned ' +
+      "`chart_payload` JSON back into your answer inside a fenced " +
+      'code block tagged "violin-chart":\n' +
+      '\n' +
+      '    ```violin-chart\n' +
+      '    {"datasetId":"...","variableNameContains":"...","groupBy":"...","title":"..."}\n' +
+      '    ```\n' +
+      '\n' +
+      'The chat UI intercepts that fence and renders the actual ' +
+      'violin plot inline. Also include a footnote citation to the ' +
+      'source via the returned `references` array. Always describe ' +
+      'in plain English what the comparison shows before the fence.',
+    inputSchema: tabularQueryInput,
+    execute: tabularQueryHandler,
   }),
 } as const;

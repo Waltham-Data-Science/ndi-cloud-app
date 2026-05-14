@@ -7,6 +7,8 @@ import remarkGfm from 'remark-gfm';
 
 import { parseFootnotes, type Reference } from '@/lib/ai/references';
 
+import { ViolinChart, type ViolinChartProps } from '@/components/charts/ViolinChart';
+
 import { CitationChip } from './CitationChip';
 import { SignalChart, type SignalChartProps } from './SignalChart';
 import { SourcesPanel } from './SourcesPanel';
@@ -136,6 +138,12 @@ export function Markdown({ content }: Props) {
               const props = parseSignalChartPayload(children);
               if (props) return <SignalChart {...props} />;
             }
+            // Phase B: same pattern for the violin-chart fence emitted
+            // after a tabular_query tool call.
+            if (className === 'language-violin-chart' && typeof children === 'string') {
+              const props = parseViolinChartPayload(children);
+              if (props) return <ViolinChart {...props} />;
+            }
             return (
               <code className="px-1 py-0.5 rounded bg-gray-100 text-[0.92em] font-mono">
                 {children}
@@ -143,18 +151,18 @@ export function Markdown({ content }: Props) {
             );
           },
           pre: ({ children }) => {
-            // If the <pre> wraps a signal-chart fence, the inner
-            // <code> renderer above has already produced a
-            // SignalChart element — but it sits inside this <pre>.
-            // Unwrap by detecting the SignalChart child and
-            // returning it bare so the chart isn't stuck inside a
-            // <pre> tag (which clips its overflow and squeezes the
-            // figure's caption).
+            // If the <pre> wraps a chart fence, the inner <code>
+            // renderer above has already produced the chart element —
+            // but it sits inside this <pre>. Unwrap by detecting the
+            // chart child and returning it bare so the chart isn't
+            // stuck inside a <pre> tag (which clips its overflow and
+            // squeezes the figure's caption).
             //
             // react's children for <pre> from a fenced code block is
             // always a single <code> element node; we inspect its
             // props.className to decide.
-            const onlyChild = childIsSignalChart(children);
+            const onlyChild =
+              childIsSignalChart(children) ?? childIsViolinChart(children);
             if (onlyChild) return onlyChild;
             return (
               <pre className="my-2 p-3 rounded-md bg-gray-50 border border-gray-200 overflow-x-auto text-[0.92em]">
@@ -225,17 +233,50 @@ function parseSignalChartPayload(raw: string): SignalChartProps | null {
  * identity test.
  */
 function childIsSignalChart(children: React.ReactNode): React.ReactNode | null {
-  // The children of <pre> is a single <code> element from
-  // react-markdown. Our code renderer returns SignalChart directly
-  // when the className matches, so we get either a SignalChart
-  // element OR a <code> element. Walk one level into the React tree.
+  return childIsChartComponent(children, 'SignalChart');
+}
+
+/**
+ * Parse a ```violin-chart JSON payload into ViolinChart props.
+ * Mirrors `parseSignalChartPayload`'s defensive shape — returns null
+ * on any malformed input so the fence falls back to default code
+ * styling instead of crashing the message.
+ */
+function parseViolinChartPayload(raw: string): ViolinChartProps | null {
+  try {
+    const obj = JSON.parse(raw.trim()) as Partial<ViolinChartProps>;
+    if (
+      typeof obj.datasetId !== 'string' ||
+      obj.datasetId.length === 0 ||
+      typeof obj.variableNameContains !== 'string' ||
+      obj.variableNameContains.length === 0
+    ) {
+      return null;
+    }
+    return obj as ViolinChartProps;
+  } catch {
+    return null;
+  }
+}
+
+function childIsViolinChart(children: React.ReactNode): React.ReactNode | null {
+  return childIsChartComponent(children, 'ViolinChart');
+}
+
+/**
+ * Shared chart-child detector. The chart components set explicit
+ * `displayName` for robustness across minification, but we also
+ * fall back to `.name` for non-minified dev builds.
+ */
+function childIsChartComponent(
+  children: React.ReactNode,
+  componentName: string,
+): React.ReactNode | null {
   const node = children as React.ReactElement<{ children?: React.ReactNode }> | undefined;
   if (!node || typeof node !== 'object') return null;
-  // SignalChart is the component itself if our renderer fired; the
-  // type field on a React element is the component function.
   if (typeof (node as { type?: unknown }).type === 'function') {
     const fn = (node as { type: { displayName?: string; name?: string } }).type;
-    if (fn.displayName === 'SignalChart' || fn.name === 'SignalChart') {
+    if (fn.displayName === componentName || fn.name === componentName) {
       return node;
     }
   }
