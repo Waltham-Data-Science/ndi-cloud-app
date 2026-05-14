@@ -80,7 +80,20 @@ export function ChatThread({ entries, isStreaming, question, chatUrl }: Props) {
             />
           );
         }
-        return <ToolCallIndicator key={idx} toolName={entry.toolName} />;
+        // Pulse + italic ONLY for the actively-running tool call: the
+        // trailing entry of an active stream. Everything else (earlier
+        // tool calls in the same turn, or any entry on a hydrated/
+        // post-stream thread) renders static. Fixes P0-C: refresh of a
+        // page mid-stream no longer shows a perpetual fake "spinner".
+        const isLast = idx === entries.length - 1;
+        const inProgress = isStreaming && isLast;
+        return (
+          <ToolCallIndicator
+            key={idx}
+            toolName={entry.toolName}
+            inProgress={inProgress}
+          />
+        );
       })}
     </div>
   );

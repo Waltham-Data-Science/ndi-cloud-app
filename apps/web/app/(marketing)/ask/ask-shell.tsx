@@ -39,7 +39,7 @@
  */
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 
 import { ChatInput } from '@/components/ai/ChatInput';
 import { ChatThread, type ThreadEntry } from '@/components/ai/ChatThread';
@@ -128,7 +128,7 @@ function AskChat({
     [],
   );
 
-  const { messages, sendMessage, status } = useChat({
+  const { messages, sendMessage, status, stop } = useChat({
     transport,
     id: conversationId,
     messages: initialMessages,
@@ -146,6 +146,42 @@ function AskChat({
       }
     },
   });
+
+  // Watchdog timer: the server function has `maxDuration = 60s`, but
+  // Vercel's edge can drop the response body without emitting a typed
+  // SSE error frame — `useChat`'s `status` then stays in `'streaming'`
+  // indefinitely and the UI shows a frozen "using <tool>…" indicator.
+  // We fire a client-side fallback at ~65s (5s headroom over the server
+  // cap so the legitimate stream finish almost always wins): call
+  // `stop()` so the in-flight tool indicator drops to its static
+  // "completed/restored" rendering, then surface a friendly recovery
+  // banner. (P0-B, 2026-05-14.)
+  const STREAM_TIMEOUT_MS = 65_000;
+  const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const isStreamingNow = status === 'streaming' || status === 'submitted';
+  useEffect(() => {
+    if (isStreamingNow) {
+      if (timeoutRef.current) clearTimeout(timeoutRef.current);
+      timeoutRef.current = setTimeout(() => {
+        stop();
+        setErrorBanner(
+          "The model took too long to answer. Try again with a more specific question, or wait a moment.",
+        );
+        timeoutRef.current = null;
+      }, STREAM_TIMEOUT_MS);
+      return () => {
+        if (timeoutRef.current) {
+          clearTimeout(timeoutRef.current);
+          timeoutRef.current = null;
+        }
+      };
+    }
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    return undefined;
+  }, [isStreamingNow, stop]);
 
   // Retry-after countdown (re-renders every second while we're rate-limited).
   useEffect(() => {
@@ -295,6 +331,19 @@ function AskChat({
     void sendMessage({ text: prompt });
   };
 
+  // Explicit user-initiated abort. Calling `stop()` cancels the in-
+  // flight stream and clears `status` back to `'ready'`. The watchdog
+  // useEffect handles the rest of the cleanup. Surface a brief banner
+  // so the user knows the request was cancelled (not silently dropped).
+  const handleStop = () => {
+    stop();
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+    setErrorBanner('Stopped. Try a different question or rephrase.');
+  };
+
   const hasAnyMessages = messages.length > 0;
 
   return (
@@ -311,16 +360,33 @@ function AskChat({
           </div>
           <div className="flex items-center gap-2 shrink-0">
             <ShareConversationButton shareUrl={shareUrl} />
-            {hasAnyMessages && (
+            {isStreaming ? (
+              // Stop button visible only while streaming. Replaces the
+              // "New chat" button to keep the header crowd-free. Gives
+              // the user an escape hatch on slow/runaway streams that
+              // would otherwise hit the 65s watchdog. (P0-B fix —
+              // 2026-05-14.)
               <button
                 type="button"
-                onClick={onNewConversation}
-                className="inline-flex items-center rounded-md px-2 py-1 text-[12.5px] font-medium border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 transition-colors duration-(--duration-base) ease-(--ease-out)"
-                aria-label="Start a new conversation"
-                title="Start a new conversation"
+                onClick={handleStop}
+                className="inline-flex items-center rounded-md px-2 py-1 text-[12.5px] font-medium border border-gray-200 bg-white text-gray-700 hover:bg-red-50 hover:border-red-200 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 transition-colors duration-(--duration-base) ease-(--ease-out)"
+                aria-label="Stop generating"
+                title="Stop generating"
               >
-                New chat
+                Stop
               </button>
+            ) : (
+              hasAnyMessages && (
+                <button
+                  type="button"
+                  onClick={onNewConversation}
+                  className="inline-flex items-center rounded-md px-2 py-1 text-[12.5px] font-medium border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 transition-colors duration-(--duration-base) ease-(--ease-out)"
+                  aria-label="Start a new conversation"
+                  title="Start a new conversation"
+                >
+                  New chat
+                </button>
+              )
             )}
           </div>
         </div>

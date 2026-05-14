@@ -222,6 +222,24 @@ export function Header() {
                   // eligible for prefetch. (Caught by bundle/perf
                   // audit, 2026-05-14.)
                   prefetch={link.href === '/ask' ? false : undefined}
+                  // Defensive: reject synthetic clicks. The visual-UX
+                  // audit observed dataset detail pages auto-redirecting
+                  // to /ask after 3-10s dwell on the experimental
+                  // preview (PR #160). Real user clicks set
+                  // `event.isTrusted = true`; synthetic JS-dispatched
+                  // clicks (React event-queue replay during hydration,
+                  // a11y framework auto-activations, etc.) set it to
+                  // `false`. Blocking them on the /ask Link only — the
+                  // single nav target that's plausibly the symptom's
+                  // destination — costs nothing for real users.
+                  // (P0-D defense-in-depth, 2026-05-14.)
+                  onClick={
+                    link.href === '/ask'
+                      ? (e) => {
+                          if (!e.isTrusted) e.preventDefault();
+                        }
+                      : undefined
+                  }
                   className={clsx(
                     'text-[13.5px] font-medium px-3 py-2 rounded-md no-underline transition-all duration-(--duration-base) ease-(--ease-out)',
                     isActive(link.href)

@@ -329,7 +329,15 @@ export function useConversation(): UseConversationResult {
 }
 
 function flushPersist(id: string, messages: UIMessage[]): void {
-  if (messages.length === 0) {
+  // Strip trailing in-flight state before serializing. Without this,
+  // a refresh during streaming restores a half-message containing
+  // tool parts whose `state !== 'output-available'`. The UI flattener
+  // then surfaces them as "using <tool>…" indicators that never
+  // resolve (P0-C, 2026-05-14). Normalizing to a terminal state means
+  // a refreshed page either shows a CLEAN stopping point or the
+  // last fully-completed assistant turn.
+  const normalized = normalizeForPersist(messages);
+  if (normalized.length === 0) {
     // Don't persist empty threads — they create stale "New conversation"
     // entries that take up an LRU slot.
     return;
@@ -340,8 +348,52 @@ function flushPersist(id: string, messages: UIMessage[]): void {
   saveConversation(id, {
     createdAt: existing?.createdAt ?? now,
     lastMessageAt: now,
-    title: deriveTitle(messages),
-    messages,
+    title: deriveTitle(normalized),
+    messages: normalized,
   });
   evictLruIfNeeded();
+}
+
+/**
+ * Drop the trailing assistant message if any of its tool parts are
+ * still in a pre-terminal state (`input-streaming`, `input-available`,
+ * or anything that's not `output-available` / `output-error`). The
+ * AI SDK marks completed tool calls with `state: 'output-available'`
+ * (and failed ones with `'output-error'`); anything else means the
+ * stream got cut off — typically a page refresh, tab close, Vercel
+ * `maxDuration` cutoff, or the user hitting "Stop." Saving such a
+ * message would resurrect it on next load as a perpetual fake
+ * "spinner."
+ *
+ * Behaviour:
+ *   - Trailing message is user-role → keep everything (we still want
+ *     to remember what the user asked).
+ *   - Trailing message is assistant-role with at least one tool part
+ *     in pre-terminal state → drop just that assistant message; the
+ *     rest of the thread (and the user's question) is intact.
+ *   - Trailing message has no tool parts or all terminal → keep.
+ *
+ * Why drop the WHOLE message rather than just the in-flight parts:
+ * the model's text often arrives interleaved with tool parts, and
+ * partial text from a cut-off turn is rarely useful. The cleanest UX
+ * is "the assistant didn't get to answer — re-ask if you still
+ * need it." The user's message survives, so the question is still
+ * visible.
+ */
+function normalizeForPersist(messages: UIMessage[]): UIMessage[] {
+  if (messages.length === 0) return messages;
+  const last = messages[messages.length - 1];
+  if (!last || last.role !== 'assistant') return messages;
+  const parts = (last.parts ?? []) as Array<{ type: string; state?: string }>;
+  const hasInFlightTool = parts.some(
+    (p) =>
+      typeof p.type === 'string' &&
+      p.type.startsWith('tool-') &&
+      p.state !== 'output-available' &&
+      p.state !== 'output-error',
+  );
+  if (hasInFlightTool) {
+    return messages.slice(0, -1);
+  }
+  return messages;
 }

@@ -10,8 +10,20 @@
  *
  * Visually a tight inline chip — small enough not to break the flow of
  * a sentence, big enough to be a comfortable click target.
+ *
+ * # Why plain `<a>` instead of next/link
+ *
+ * Pre-2026-05-14 this rendered a Next.js `<Link>` with `target="_blank"`.
+ * Despite the new-tab target, `<Link>` installs a click interceptor on
+ * the underlying anchor for SPA navigation. During chat streaming the
+ * citation chips appear mid-message and get focus from the `aria-live`
+ * log; on at least Chrome and Safari, the SPA router occasionally
+ * fired `router.push(reference.url)` against the chip's href instead
+ * of letting the new-tab navigation happen — tearing the user off
+ * /ask onto the dataset detail page mid-stream. Plain `<a>` removes
+ * the click interceptor entirely; new-tab navigation always wins.
+ * (Visual-UX audit, 2026-05-14, P0-A.)
  */
-import Link from 'next/link';
 import { useId, useState } from 'react';
 
 import type { Reference } from '@/lib/ai/references';
@@ -27,7 +39,7 @@ export function CitationChip({ number, reference }: Props) {
 
   return (
     <span className="relative inline-block align-baseline">
-      <Link
+      <a
         href={reference.url}
         target="_blank"
         rel="noopener noreferrer"
@@ -39,7 +51,7 @@ export function CitationChip({ number, reference }: Props) {
         className="inline-flex items-center justify-center min-w-[18px] h-[18px] px-1 mx-0.5 -mt-0.5 align-middle text-[10px] font-semibold leading-none rounded-md bg-brand-blue/10 text-brand-blue hover:bg-brand-blue hover:text-white transition-colors no-underline cursor-pointer"
       >
         {number}
-      </Link>
+      </a>
       {open && (
         <span
           role="tooltip"

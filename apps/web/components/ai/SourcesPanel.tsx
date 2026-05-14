@@ -9,9 +9,11 @@
  * panel. We override remark-gfm's default footnote-definition list
  * styling so the resulting panel matches the rest of the chat UI
  * rather than looking like raw markdown footnotes.
+ *
+ * # Plain `<a>` only — see CitationChip.tsx for the rationale. SPA
+ * navigation via Next's `<Link>` was tearing users off /ask onto the
+ * dataset detail page during streaming (visual-UX audit, P0-A).
  */
-import Link from 'next/link';
-
 import type { Reference } from '@/lib/ai/references';
 
 interface Props {
@@ -33,14 +35,14 @@ export function SourcesPanel({ references }: Props) {
               {i + 1}
             </span>
             <span className="flex-1 min-w-0">
-              <Link
+              <a
                 href={ref.url}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-gray-900 hover:text-brand-blue no-underline hover:underline font-medium"
               >
                 {ref.title}
-              </Link>
+              </a>
               <span className="ml-2 inline-block px-1.5 py-0.5 rounded bg-gray-100 text-[10px] font-mono text-gray-600 align-baseline">
                 {ref.class}
               </span>

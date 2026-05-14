@@ -225,4 +225,111 @@ describe('useConversation', () => {
       expect(result.current.initialMessages).toBe(initial);
     });
   });
+
+  describe('persist normalization (P0-C, 2026-05-14)', () => {
+    /**
+     * `flushPersist` drops the trailing assistant message if any of
+     * its tool parts are not in a terminal state. This prevents the
+     * "perpetual spinner after refresh" symptom where a half-message
+     * with `state: 'input-available'` tool parts gets resurrected on
+     * the next page load as a "using <tool>…" indicator that never
+     * resolves.
+     */
+    function assistantMsgWithTool(toolState: string, hasOutput: boolean): UIMessage {
+      return {
+        id: 'a-1',
+        role: 'assistant',
+        parts: [
+          {
+            type: 'tool-fetch_signal',
+            state: toolState,
+            toolCallId: 'tc-1',
+            input: { datasetId: 'X' },
+            ...(hasOutput ? { output: { ok: true } } : {}),
+          },
+        ],
+      } as UIMessage;
+    }
+
+    it('drops a trailing assistant message whose tool parts are still mid-flight', () => {
+      vi.useFakeTimers();
+      const { result } = renderHook(() => useConversation());
+      const id = result.current.conversationId;
+
+      const user = userMsg('show me a trace');
+      const inFlightAssistant = assistantMsgWithTool('input-available', false);
+
+      act(() => {
+        result.current.persist([user, inFlightAssistant]);
+        vi.advanceTimersByTime(400);
+      });
+
+      const stored = loadConversation(id);
+      expect(stored).not.toBeNull();
+      // Just the user message survives — the half-finished assistant
+      // turn is dropped so a refresh shows a clean "asked but never
+      // answered" state instead of a fake spinner.
+      expect(stored!.messages).toHaveLength(1);
+      expect(stored!.messages[0]?.role).toBe('user');
+    });
+
+    it('keeps a trailing assistant message whose tool parts all have output', () => {
+      vi.useFakeTimers();
+      const { result } = renderHook(() => useConversation());
+      const id = result.current.conversationId;
+
+      const user = userMsg('show me a trace');
+      const completedAssistant = assistantMsgWithTool('output-available', true);
+
+      act(() => {
+        result.current.persist([user, completedAssistant]);
+        vi.advanceTimersByTime(400);
+      });
+
+      const stored = loadConversation(id);
+      expect(stored).not.toBeNull();
+      // Both messages preserved — the tool call completed (state =
+      // 'output-available'), nothing was in flight.
+      expect(stored!.messages).toHaveLength(2);
+      expect(stored!.messages[1]?.role).toBe('assistant');
+    });
+
+    it('keeps assistant messages with output-error state (terminal failure is preserved)', () => {
+      vi.useFakeTimers();
+      const { result } = renderHook(() => useConversation());
+      const id = result.current.conversationId;
+
+      const user = userMsg('show me a trace');
+      const errorAssistant = assistantMsgWithTool('output-error', false);
+
+      act(() => {
+        result.current.persist([user, errorAssistant]);
+        vi.advanceTimersByTime(400);
+      });
+
+      const stored = loadConversation(id);
+      expect(stored).not.toBeNull();
+      // output-error is terminal — the tool ran but errored. We keep
+      // the message so the user sees the error context after refresh.
+      expect(stored!.messages).toHaveLength(2);
+    });
+
+    it('keeps trailing user messages even with no assistant response yet', () => {
+      vi.useFakeTimers();
+      const { result } = renderHook(() => useConversation());
+      const id = result.current.conversationId;
+
+      // A turn that's still mid-submission: only the user message
+      // exists, no assistant yet. This should persist normally — the
+      // normalization only targets in-flight assistant turns.
+      act(() => {
+        result.current.persist([userMsg('a'), userMsg('b')]);
+        vi.advanceTimersByTime(400);
+      });
+
+      const stored = loadConversation(id);
+      expect(stored).not.toBeNull();
+      expect(stored!.messages).toHaveLength(2);
+    });
+  });
 });
