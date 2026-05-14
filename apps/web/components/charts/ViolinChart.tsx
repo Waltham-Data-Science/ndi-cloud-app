@@ -216,8 +216,20 @@ export function ViolinChart({
     return { traces, layout };
   }, [data, groupOrder, title, yLabel, xLabel]);
 
+  // a834 P1 #I-6 accessibility audit (2026-05-14): screen readers
+  // announced this figure as "graphic" with no description. Title
+  // wins; otherwise we compose a domain-specific fallback from the
+  // ontology variable + groupBy column so SR users still get context.
+  const ariaLabel =
+    title ??
+    `Violin plot of ${variableNameContains}` +
+      (groupBy ? ` by ${groupBy}` : '');
+
   return (
-    <figure className="my-4 p-3 rounded-md border border-gray-200 bg-white">
+    <figure
+      className="my-4 p-3 rounded-md border border-gray-200 bg-white"
+      aria-label={ariaLabel}
+    >
       <figcaption className="mb-2 flex items-baseline gap-2 text-[13px]">
         <span className="font-semibold text-gray-900 truncate flex-1 min-w-0">
           {title ?? variableNameContains}

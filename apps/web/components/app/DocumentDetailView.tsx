@@ -37,6 +37,8 @@ import { Badge } from '@/components/ui/Badge';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Separator } from '@/components/ui/Separator';
 import { formatDateTime } from '@/lib/format';
+import { OntologyPopover } from '@/components/ontology/OntologyPopover';
+import { isOntologyTerm } from '@/components/ontology/ontology-utils';
 
 interface DocumentDetailViewProps {
   document: DocumentSummary;
@@ -64,6 +66,29 @@ function JsonTree({
     return <span className="text-emerald-600">{data}</span>;
   }
   if (typeof data === 'string') {
+    // Ontology resolution (ontology-sweep audit B4/F2, 2026-05-14): when a
+    // string value is a recognized CURIE (e.g. "NCBITaxon:10116",
+    // "UBERON:0001870", "CL:0000540"), route it through OntologyPopover
+    // so the user sees the resolved label + a click-through to the
+    // provider page. Without this, the JsonTree on every
+    // /datasets/.../documents/[docId] page renders raw CURIEs as bare
+    // quoted strings — the same data the SummaryTableView already
+    // resolves elsewhere.
+    //
+    // Capture `isOntologyTerm`'s boolean result without using the
+    // predicate as a type guard — the predicate is `value is string`,
+    // and applying it to an already-string value collapses the negative
+    // branch to `never` in TS's control-flow analysis.
+    const looksOntological: boolean = isOntologyTerm(data);
+    if (looksOntological) {
+      const trimmed = data.trim();
+      const findEverywherePath = `/query?op=contains_string&field=openminds.fields.preferredOntologyIdentifier&param1=${encodeURIComponent(trimmed)}`;
+      return (
+        <span className="inline-block">
+          <OntologyPopover termId={trimmed} findEverywherePath={findEverywherePath} />
+        </span>
+      );
+    }
     if (data.length > 200) {
       return <span className="text-amber-700">&quot;{data.slice(0, 200)}…&quot;</span>;
     }

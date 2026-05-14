@@ -159,8 +159,18 @@ export function SignalChart({
     retry: 0,
   });
 
+  // a834 P1 #I-6 accessibility audit (2026-05-14): screen readers
+  // announced this figure as "graphic" with no description. Label
+  // resolves title → doc_name → fallback so multi-channel rasters
+  // and single-trace EPM examples both get a meaningful announcement.
+  const ariaLabel =
+    title ?? data?.source?.doc_name ?? 'Signal time series chart';
+
   return (
-    <figure className="my-4 p-3 rounded-md border border-gray-200 bg-white">
+    <figure
+      className="my-4 p-3 rounded-md border border-gray-200 bg-white"
+      aria-label={ariaLabel}
+    >
       <figcaption className="mb-2 flex items-baseline gap-2 text-[13px]">
         <span className="font-semibold text-gray-900 truncate flex-1 min-w-0">
           {title ?? data?.source?.doc_name ?? 'Signal'}

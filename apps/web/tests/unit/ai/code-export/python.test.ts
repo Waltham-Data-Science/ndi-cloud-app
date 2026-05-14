@@ -234,6 +234,73 @@ describe('generatePythonSnippet', () => {
     expect(snip).toContain('ai_group1_seg.nbf_1');
   });
 
+  // a834 P1 #C-1 (2026-05-14) — chart-tool snippet branches.
+  it('renders fetch_image with openbinarydoc + Pillow decode', () => {
+    const snip = gen([
+      {
+        toolName: 'fetch_image',
+        args: {
+          datasetId: 'DS1',
+          docId: 'DOC1',
+          frame: 2,
+          title: 'Patch encounter map',
+        },
+      },
+    ]);
+    expect(snip).toContain('ndi.database.openbinarydoc("DOC1")');
+    expect(snip).toContain('from PIL import Image');
+    expect(snip).toContain('img.seek(2)');
+    expect(snip).toContain('Patch encounter map');
+  });
+
+  it('renders treatment_timeline with broken_barh + treatment ndi_query', () => {
+    const snip = gen([
+      {
+        toolName: 'treatment_timeline',
+        args: { datasetId: 'DS1', title: 'Dabrowska CNO' },
+      },
+    ]);
+    expect(snip).toContain('"isa", "treatment"');
+    expect(snip).toContain('ax.broken_barh');
+    expect(snip).toContain('subjectDocumentIdentifier');
+    expect(snip).toContain('Dabrowska CNO');
+  });
+
+  it('renders fetch_spike_summary with vmspikesummary query + raster', () => {
+    const snip = gen([
+      {
+        toolName: 'fetch_spike_summary',
+        args: {
+          datasetId: 'DS1',
+          unitNameMatch: 'Saline',
+          kind: 'raster',
+          maxUnits: 5,
+        },
+      },
+    ]);
+    expect(snip).toContain('"isa", "vmspikesummary"');
+    expect(snip).toContain('"vmspikesummary.name", "contains_string", "Saline"');
+    expect(snip).toContain('plt.eventplot');
+    expect(snip).toContain('page_size=5');
+  });
+
+  it('renders fetch_spike_summary ISI histogram for kind=isi_histogram', () => {
+    const snip = gen([
+      {
+        toolName: 'fetch_spike_summary',
+        args: {
+          datasetId: 'DS1',
+          unitDocId: 'UNIT_X',
+          kind: 'isi_histogram',
+        },
+      },
+    ]);
+    expect(snip).toContain('ndi.cloud.api.documents.getDocument');
+    expect(snip).toContain('"UNIT_X"');
+    expect(snip).toContain('np.logspace');
+    expect(snip).toContain('ISI (ms)');
+  });
+
   it('renders walk_provenance with a recursive helper', () => {
     const snip = gen([
       {

@@ -157,6 +157,13 @@ function renderToolBody(call: RecordedToolCall): string {
       return renderTabularQuery(args);
     case 'fetch_signal':
       return renderFetchSignal(args);
+    // a834 P1 #C-1 (2026-05-14) — chart-tool snippets added below.
+    case 'fetch_image':
+      return renderFetchImage(args);
+    case 'treatment_timeline':
+      return renderTreatmentTimeline(args);
+    case 'fetch_spike_summary':
+      return renderFetchSpikeSummary(args);
     case 'walk_provenance':
       return renderWalkProvenance(args);
     case 'lookup_ontology':
@@ -462,4 +469,140 @@ function renderLookupOntology(args: unknown): string {
     `result = ndi.ontology.lookup(${formatPythonValue(term)})\n` +
     `print(result.name, '—', result.definition)\n`
   );
+}
+
+// a834 P1 #C-1 (2026-05-14) — fetch_image snippet.
+function renderFetchImage(args: unknown): string {
+  const datasetId = pickString(args, 'datasetId') ?? '<dataset-id>';
+  const docId = pickString(args, 'docId') ?? '<doc-id>';
+  const frame = pickNumber(args, 'frame') ?? 0;
+  const title = pickString(args, 'title');
+  // Open the image-bearing binary doc via NDI-python's session loader,
+  // decode the bytes with Pillow (matches the FastAPI backend's
+  // Pillow path), and visualize with matplotlib. See ndi-python
+  // ndi.database.openbinarydoc + ndi.cloud.api.documents.getDocument.
+  const lines = [
+    `# Pull a 2D image from an NDI binary document (TIFF / PNG / etc.).`,
+    `# Mirrors the chat's /api/datasets/:id/documents/:docId/image path:`,
+    `# open the doc binary via NDI-python, decode with Pillow, plot.`,
+    `import matplotlib.pyplot as plt`,
+    `from PIL import Image`,
+    ``,
+    `doc = ndi.cloud.api.documents.getDocument(`,
+    `    ${formatPythonValue(datasetId)}, ${formatPythonValue(docId)}`,
+    `)`,
+    `# openbinarydoc returns a file-like handle pointing at the doc's`,
+    `# binary file (TIFF / PNG / JPEG / GIF auto-detected by Pillow).`,
+    `with ndi.database.openbinarydoc(${formatPythonValue(docId)}) as fh:`,
+    `    img = Image.open(fh)`,
+    `    img.seek(${frame})  # multi-frame TIFF / animated GIF: pick frame`,
+    `    arr = img.convert("F")  # float grayscale; matches the chart backend`,
+    `plt.imshow(arr, cmap="gray")`,
+    `plt.colorbar()`,
+  ];
+  if (title) lines.push(`plt.title(${formatPythonValue(title)})`);
+  lines.push(`plt.show()`);
+  return lines.join('\n') + '\n';
+}
+
+// a834 P1 #C-1 (2026-05-14) — treatment_timeline snippet.
+function renderTreatmentTimeline(args: unknown): string {
+  const datasetId = pickString(args, 'datasetId') ?? '<dataset-id>';
+  const title = pickString(args, 'title');
+  // Pull every treatment doc inside the dataset via the ndi_query
+  // "isa" path, parse start/end from numericValue (the chat's
+  // canonical timing source), and render with matplotlib broken_barh.
+  // See ndi-python ndi.query + ndi.cloud.api.documents.ndiqueryAll.
+  const lines = [
+    `# Build a Gantt-style timeline of treatment documents across subjects.`,
+    `# Each treatment doc carries {subjectDocumentIdentifier, treatmentName,`,
+    `# numericValue: [start, end]?}. We project to (subject, treatment, start,`,
+    `# end) rows then plot with matplotlib broken_barh — one row per subject.`,
+    `import matplotlib.pyplot as plt`,
+    ``,
+    `q = ndi.query.ndi_query.from_search("", "isa", "treatment")`,
+    `treatments = ndi.cloud.api.documents.ndiqueryAll(`,
+    `    ${formatPythonValue(datasetId)}, q.search_structure, page_size=500`,
+    `)`,
+    `rows: dict[str, list[tuple[float, float, str]]] = {}`,
+    `for i, doc in enumerate(treatments):`,
+    `    body = (doc.get("data", {}) or {}).get("treatment", {}) or {}`,
+    `    subject = body.get("subjectDocumentIdentifier") or "(unknown)"`,
+    `    name = body.get("treatmentName") or body.get("stringValue") or "treatment"`,
+    `    nv = body.get("numericValue") or []`,
+    `    if isinstance(nv, list) and len(nv) >= 2:`,
+    `        t0, t1 = float(nv[0]), float(nv[1])`,
+    `    else:`,
+    `        t0, t1 = float(i), float(i) + 1  # ordinal fallback`,
+    `    rows.setdefault(subject, []).append((t0, t1 - t0, name))`,
+    `fig, ax = plt.subplots(figsize=(10, max(2, 0.4 * len(rows))))`,
+    `for y, (subject, bars) in enumerate(rows.items()):`,
+    `    ax.broken_barh([(s, w) for s, w, _ in bars], (y - 0.4, 0.8))`,
+    `ax.set_yticks(range(len(rows)))`,
+    `ax.set_yticklabels(list(rows.keys()))`,
+  ];
+  if (title) lines.push(`ax.set_title(${formatPythonValue(title)})`);
+  lines.push(`plt.show()`);
+  return lines.join('\n') + '\n';
+}
+
+// a834 P1 #C-1 (2026-05-14) — fetch_spike_summary snippet.
+function renderFetchSpikeSummary(args: unknown): string {
+  const datasetId = pickString(args, 'datasetId') ?? '<dataset-id>';
+  const unitDocId = pickString(args, 'unitDocId');
+  const unitNameMatch = pickString(args, 'unitNameMatch');
+  const kind = pickString(args, 'kind') ?? 'raster';
+  const maxUnits = pickNumber(args, 'maxUnits') ?? 10;
+  // Pull vmspikesummary docs (either a specific unit or by name match),
+  // read data.vmspikesummary.spike_times, then render either a raster
+  // (matplotlib eventplot) or an ISI histogram. Spike-time field path
+  // matches the chat backend's extractor.
+  const lines = [
+    `# Pull spike-train data from vmspikesummary documents and render`,
+    `# the same raster / ISI histogram the chat showed. Spike times live`,
+    `# at data.vmspikesummary.spike_times (seconds).`,
+    `import matplotlib.pyplot as plt`,
+    `import numpy as np`,
+    ``,
+  ];
+  if (unitDocId) {
+    lines.push(
+      `# Direct fetch of one unit:`,
+      `docs = [ndi.cloud.api.documents.getDocument(`,
+      `    ${formatPythonValue(datasetId)}, ${formatPythonValue(unitDocId)}`,
+      `)]`,
+    );
+  } else {
+    lines.push(
+      `q = ndi.query.ndi_query.from_search("", "isa", "vmspikesummary")`,
+    );
+    if (unitNameMatch) {
+      lines.push(
+        `q = q & ndi.query.ndi_query.from_search(`,
+        `    "vmspikesummary.name", "contains_string", ${formatPythonValue(unitNameMatch)}`,
+        `)`,
+      );
+    }
+    lines.push(
+      `docs = list(ndi.cloud.api.documents.ndiqueryAll(`,
+      `    ${formatPythonValue(datasetId)}, q.search_structure, page_size=${maxUnits}`,
+      `))[:${maxUnits}]`,
+    );
+  }
+  lines.push(
+    `trains = [d.get("data", {}).get("vmspikesummary", {}).get("spike_times") or []`,
+    `          for d in docs]`,
+    `trains = [np.asarray(t, dtype=float) for t in trains if len(t) > 0]`,
+  );
+  if (kind === 'isi_histogram') {
+    lines.push(
+      `isi_ms = np.concatenate([np.diff(np.sort(t)) for t in trains]) * 1000`,
+      `plt.hist(isi_ms, bins=np.logspace(0, 4, 60)); plt.xscale("log")`,
+      `plt.xlabel("ISI (ms)")`,
+    );
+  } else {
+    lines.push(`plt.eventplot(trains); plt.xlabel("Time (s)")`);
+  }
+  lines.push(`plt.show()`);
+  return lines.join('\n') + '\n';
 }

@@ -168,8 +168,22 @@ export function ImageChart({ datasetId, docId, frame = 0, title }: ImageChartPro
     return { traces, layout };
   }, [data, title]);
 
+  // a834 P1 #I-6 accessibility audit (2026-05-14): screen readers
+  // announced this figure as "graphic" with no description. Match
+  // the figcaption's resolution chain (title → doc_name → filename)
+  // and append a stable type suffix so SR users always know it's
+  // an imaging frame, not a chart of imagery.
+  const ariaLabel =
+    title ??
+    data?.source?.doc_name ??
+    data?.source?.filename ??
+    'NDI imaging frame heatmap';
+
   return (
-    <figure className="my-4 p-3 rounded-md border border-gray-200 bg-white">
+    <figure
+      className="my-4 p-3 rounded-md border border-gray-200 bg-white"
+      aria-label={ariaLabel}
+    >
       <figcaption className="mb-2 flex items-baseline gap-2 text-[13px]">
         <span className="font-semibold text-gray-900 truncate flex-1 min-w-0">
           {title ?? data?.source?.doc_name ?? data?.source?.filename ?? 'Image'}

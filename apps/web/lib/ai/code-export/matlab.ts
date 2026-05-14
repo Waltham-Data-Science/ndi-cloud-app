@@ -114,6 +114,13 @@ function renderToolBody(call: RecordedToolCall): string {
       return renderTabularQuery(args);
     case 'fetch_signal':
       return renderFetchSignal(args);
+    // a834 P1 #C-1 (2026-05-14) — chart-tool snippets added below.
+    case 'fetch_image':
+      return renderFetchImage(args);
+    case 'treatment_timeline':
+      return renderTreatmentTimeline(args);
+    case 'fetch_spike_summary':
+      return renderFetchSpikeSummary(args);
     case 'walk_provenance':
       return renderWalkProvenance(args);
     case 'lookup_ontology':
@@ -396,4 +403,123 @@ function renderLookupOntology(args: unknown): string {
     `% stable function name lands, call the HTTP endpoint directly:\n` +
     `% result = webread(sprintf('https://api.ndi-cloud.com/api/ontology/lookup?term=%s', urlencode(${formatMatlabValue(term)})));`
   );
+}
+
+// a834 P1 #C-1 (2026-05-14) — fetch_image snippet.
+function renderFetchImage(args: unknown): string {
+  const datasetId = pickString(args, 'datasetId') ?? '<dataset-id>';
+  const docId = pickString(args, 'docId') ?? '<doc-id>';
+  const frame = pickNumber(args, 'frame') ?? 0;
+  const title = pickString(args, 'title');
+  // Load a 2D image binary via NDI-matlab's openbinarydoc, decode
+  // with imread (TIFF / PNG / JPEG handled natively), display via
+  // imshow. See ndi-matlab +ndi/+database/openbinarydoc.m.
+  const lines = [
+    `% Pull a 2D image from an NDI binary document (TIFF / PNG / etc.).`,
+    `% Mirrors the chat's image endpoint: open the doc binary, decode,`,
+    `% then imshow. Frame ${frame} selected for multi-frame containers.`,
+    ``,
+    `doc = ndi.cloud.api.documents.getDocument(${formatMatlabValue(datasetId)}, ${formatMatlabValue(docId)});`,
+    `% openbinarydoc returns a file handle to the doc's binary file.`,
+    `% Requires an active ndi.session S; uncomment + wire as needed:`,
+    `%   S = ndi.session.dir(<localPath>);`,
+    `%   fh = ndi.database.openbinarydoc(S, ${formatMatlabValue(docId)});`,
+    `% Then read via imread on the file path (or the handle's filename).`,
+    `img = imread('<path-to-image-binary>');`,
+    `if size(img, 3) > 1; img = rgb2gray(img); end`,
+    `figure; imshow(img, []);`,
+  ];
+  if (title) lines.push(`title(${formatMatlabValue(title)});`);
+  return lines.join('\n');
+}
+
+// a834 P1 #C-1 (2026-05-14) — treatment_timeline snippet.
+function renderTreatmentTimeline(args: unknown): string {
+  const datasetId = pickString(args, 'datasetId') ?? '<dataset-id>';
+  const title = pickString(args, 'title');
+  // Pull treatment docs via ndi.query "isa", extract per-subject
+  // timing from numericValue, render with patch() — one Y-row per
+  // subject. NDI-matlab has no built-in Gantt helper; this is the
+  // closest base-MATLAB equivalent.
+  const lines = [
+    `% Build a Gantt-style timeline of treatment documents.`,
+    `% Each treatment doc carries subjectDocumentIdentifier + treatmentName +`,
+    `% numericValue ([start, end] when present). We project to (subject,`,
+    `% start, dur) tuples and draw one bar per treatment via patch().`,
+    ``,
+    `q = ndi.query('', 'isa', 'treatment');`,
+    `treatments = ndi.cloud.api.documents.ndiqueryAll(${formatMatlabValue(datasetId)}, q.searchstructure, 'pageSize', 500);`,
+    `subjects = {};`,
+    `bars = {};   % each: [t0, dur, yIdx]`,
+    `for i = 1:numel(treatments)`,
+    `    body = treatments{i}.data.treatment;`,
+    `    subj = '(unknown)'; if isfield(body, 'subjectDocumentIdentifier'); subj = body.subjectDocumentIdentifier; end`,
+    `    yIdx = find(strcmp(subjects, subj), 1);`,
+    `    if isempty(yIdx); subjects{end+1} = subj; yIdx = numel(subjects); end %#ok<AGROW>`,
+    `    nv = []; if isfield(body, 'numericValue'); nv = body.numericValue; end`,
+    `    if numel(nv) >= 2; t0 = nv(1); dur = nv(2) - nv(1); else; t0 = i; dur = 1; end`,
+    `    bars{end+1} = [t0, dur, yIdx]; %#ok<AGROW>`,
+    `end`,
+    `figure; hold on;`,
+    `for k = 1:numel(bars); b = bars{k}; patch([b(1) b(1)+b(2) b(1)+b(2) b(1)], [b(3)-0.4 b(3)-0.4 b(3)+0.4 b(3)+0.4], [0.3 0.6 0.9]); end`,
+    `yticks(1:numel(subjects)); yticklabels(subjects);`,
+  ];
+  if (title) lines.push(`title(${formatMatlabValue(title)});`);
+  return lines.join('\n');
+}
+
+// a834 P1 #C-1 (2026-05-14) — fetch_spike_summary snippet.
+function renderFetchSpikeSummary(args: unknown): string {
+  const datasetId = pickString(args, 'datasetId') ?? '<dataset-id>';
+  const unitDocId = pickString(args, 'unitDocId');
+  const unitNameMatch = pickString(args, 'unitNameMatch');
+  const kind = pickString(args, 'kind') ?? 'raster';
+  const maxUnits = pickNumber(args, 'maxUnits') ?? 10;
+  // Pull vmspikesummary docs and read data.vmspikesummary.spike_times.
+  // NDI-matlab exposes the doc class via ndi.cloud.api.documents.ndiqueryAll;
+  // raster uses plot with 'Marker', '|', ISI uses histogram.
+  const lines = [
+    `% Pull spike-train data from vmspikesummary documents and render a`,
+    `% raster (or ISI histogram). Spike times live at`,
+    `% data.vmspikesummary.spike_times (seconds).`,
+    ``,
+  ];
+  if (unitDocId) {
+    lines.push(
+      `docs = {ndi.cloud.api.documents.getDocument(${formatMatlabValue(datasetId)}, ${formatMatlabValue(unitDocId)})};`,
+    );
+  } else {
+    lines.push(`q = ndi.query('', 'isa', 'vmspikesummary');`);
+    if (unitNameMatch) {
+      lines.push(
+        `q = q & ndi.query('vmspikesummary.name', 'contains_string', ${formatMatlabValue(unitNameMatch)});`,
+      );
+    }
+    lines.push(
+      `docs = ndi.cloud.api.documents.ndiqueryAll(${formatMatlabValue(datasetId)}, q.searchstructure, 'pageSize', ${maxUnits});`,
+      `if numel(docs) > ${maxUnits}; docs = docs(1:${maxUnits}); end`,
+    );
+  }
+  lines.push(
+    `figure; hold on;`,
+    `for k = 1:numel(docs)`,
+    `    body = docs{k}.data.vmspikesummary;`,
+    `    if ~isfield(body, 'spike_times'); continue; end`,
+    `    t = double(body.spike_times);`,
+  );
+  if (kind === 'isi_histogram') {
+    lines.push(
+      `    isi_ms = diff(sort(t)) * 1000;`,
+      `    histogram(isi_ms, logspace(0, 4, 60)); set(gca, 'XScale', 'log');`,
+      `    xlabel('ISI (ms)');`,
+    );
+  } else {
+    lines.push(
+      `    plot(t, k * ones(size(t)), '|');  % one row per unit`,
+      `end`,
+      `xlabel('Time (s)'); ylabel('Unit');`,
+    );
+  }
+  if (kind === 'isi_histogram') lines.push(`end`);
+  return lines.join('\n');
 }
