@@ -19,8 +19,7 @@ import { ShowCodeButton } from '@/components/workspace/ShowCodeButton';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
-import { apiFetch } from '@/lib/api/client';
-import { ApiError } from '@/lib/api/errors';
+import { ApiError, apiFetch } from '@/lib/api/client';
 
 export interface BehavioralComparePanelProps {
   datasetId: string;
@@ -126,6 +125,9 @@ export function BehavioralComparePanel({
   const mutation = useMutation<RunResult, unknown, RunArgs>({
     mutationFn: (args) => runTabularQuery(datasetId, args),
   });
+  // NB: stale-state reset on dataset change happens at the parent
+  // (`workspace-client.tsx` keys the panel stack by `datasetId` so
+  // React full-remounts the tree). No per-panel effect needed.
 
   const lastArgs: RunArgs | null = useMemo(() => {
     if (!mutation.data && !mutation.variables) return null;

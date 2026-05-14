@@ -85,7 +85,7 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
       setError('Document ID is required. Paste a 24-char hex ID from the Document Explorer.');
       return;
     }
-    if (!/^[0-9a-fA-F]{20,}$/.test(id)) {
+    if (!/^[0-9a-fA-F]{24}$/.test(id)) {
       setError('Document ID must be a 24-char hex string.');
       return;
     }

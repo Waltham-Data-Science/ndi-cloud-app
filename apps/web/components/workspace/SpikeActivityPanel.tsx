@@ -148,6 +148,8 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
     }
     mutation.mutate(result);
   }, [form, mutation]);
+  // NB: stale-state reset on dataset change happens at the parent
+  // (`workspace-client.tsx` keys the panel stack by `datasetId`).
 
   // Pull the two chart payloads out of the latest response. The
   // backend returns `chart_payloads: SpikeChartPayload[]` with 0, 1,

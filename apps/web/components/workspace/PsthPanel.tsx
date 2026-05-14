@@ -157,6 +157,8 @@ export function PsthPanel({ datasetId }: PsthPanelProps) {
     },
     [form, mutation],
   );
+  // NB: stale-state reset on dataset change happens at the parent
+  // (`workspace-client.tsx` keys the panel stack by `datasetId`).
 
   // Pull the success-shape result out of the mutation envelope.
   const result = useMemo<PsthToolResult | null>(() => {

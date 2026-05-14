@@ -131,7 +131,16 @@ export function WorkspaceClient({ datasetId }: WorkspaceClientProps) {
 
       {/* ── Panels ─────────────────────────────────────────────────── */}
       <section className="mx-auto max-w-[1200px] px-7 py-8 bg-bg-canvas">
-        <div className="space-y-5">
+        {/* `key={datasetId}` forces React to fully unmount + remount
+            the entire panel stack when the user navigates between two
+            `/my/workspace/[id]` pages. Without this, each panel would
+            keep its previous mutation result/form state mounted (the
+            workspace layout above keeps the panel tree alive across
+            id-only param changes), and the previous dataset's chart
+            could flash under the new dataset's header until the user
+            pressed Run again. Cheaper than per-panel useEffect resets
+            and avoids the react-hooks/set-state-in-effect lint rule. */}
+        <div className="space-y-5" key={datasetId}>
           <DatasetStructurePanel datasetId={datasetId} />
           <SignalViewerPanel datasetId={datasetId} />
           <SpikeActivityPanel datasetId={datasetId} />

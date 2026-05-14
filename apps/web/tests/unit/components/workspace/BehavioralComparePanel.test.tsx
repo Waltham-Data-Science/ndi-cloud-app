@@ -48,9 +48,19 @@ vi.mock('@/components/ai/CodeExportButton', () => ({
 
 // Mock apiFetch so the mutation runs synchronously against canned
 // responses.
-vi.mock('@/lib/api/client', () => ({
-  apiFetch: vi.fn(),
-}));
+// Partial mock — keep `ApiError` (a real class used by the panel's
+// ErrorBox via `error instanceof ApiError`) and only stub the network
+// boundary. Pattern matches SpikeActivityPanel / PsthPanel tests.
+vi.mock('@/lib/api/client', async () => {
+  const actual =
+    await vi.importActual<typeof import('@/lib/api/client')>(
+      '@/lib/api/client',
+    );
+  return {
+    ...actual,
+    apiFetch: vi.fn(),
+  };
+});
 
 import { BehavioralComparePanel } from '@/components/workspace/BehavioralComparePanel';
 import { apiFetch } from '@/lib/api/client';

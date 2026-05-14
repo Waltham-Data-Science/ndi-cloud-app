@@ -100,6 +100,8 @@ export function TreatmentTimelinePanel({ datasetId }: TreatmentTimelinePanelProp
     setLastRunArgs({ datasetId, ...body });
     mutation.mutate(body);
   }
+  // NB: stale-state reset on dataset change happens at the parent
+  // (`workspace-client.tsx` keys the panel stack by `datasetId`).
 
   return (
     <section
@@ -230,7 +232,12 @@ function ResultArea({ isPending, isError, error, data, datasetId }: ResultAreaPr
   if (!data) return null;
 
   const isEmpty = !data.chart_payload?.items || data.chart_payload.items.length === 0;
-  if (isEmpty && data.empty_hint) {
+  if (isEmpty) {
+    // Backend may return `items: []` WITHOUT an `empty_hint` (the hint
+    // field is optional on the response schema). Use the hint reason
+    // when provided, fall back to a generic message otherwise — the
+    // alternative was to drop through to the success branch and render
+    // an empty GanttChart, which is visibly broken.
     return (
       <div
         role="status"
@@ -238,8 +245,10 @@ function ResultArea({ isPending, isError, error, data, datasetId }: ResultAreaPr
         data-testid="treatment-timeline-empty"
       >
         <p className="font-medium text-gray-900">No treatment timeline data to display.</p>
-        <p className="mt-1">{data.empty_hint.reason}</p>
-        {data.empty_hint.available_columns && data.empty_hint.available_columns.length > 0 && (
+        <p className="mt-1">
+          {data.empty_hint?.reason ?? 'No treatment rows were returned for this dataset.'}
+        </p>
+        {data.empty_hint?.available_columns && data.empty_hint.available_columns.length > 0 && (
           <p className="mt-1 text-[12px] text-gray-500">
             Available columns: {data.empty_hint.available_columns.join(', ')}
           </p>
