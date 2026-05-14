@@ -211,6 +211,17 @@ export function Header() {
                 <Link
                   key={link.label}
                   href={link.href}
+                  // `/ask` is the experimental chat preview. Its static
+                  // chunk imports the AI SDK + chat components (~104 KB
+                  // gz), which Next's default Link prefetch would
+                  // download on every page where this nav link is
+                  // rendered — including all marketing + data-browser
+                  // pages. For users who never click /ask that's pure
+                  // bandwidth waste. Disable prefetch for /ask only;
+                  // every other nav link's destination chunk stays
+                  // eligible for prefetch. (Caught by bundle/perf
+                  // audit, 2026-05-14.)
+                  prefetch={link.href === '/ask' ? false : undefined}
                   className={clsx(
                     'text-[13.5px] font-medium px-3 py-2 rounded-md no-underline transition-all duration-(--duration-base) ease-(--ease-out)',
                     isActive(link.href)
