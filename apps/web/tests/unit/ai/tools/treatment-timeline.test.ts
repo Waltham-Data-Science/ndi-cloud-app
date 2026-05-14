@@ -1,14 +1,25 @@
 /**
- * treatment_timeline — verifies row projection, ordinal-slot fallback,
- * maxSubjects cap, fallback to tabular_query when /tables/treatment is
- * empty, references-per-subject, validation, and error pass-through.
+ * treatment_timeline — chat-tool proxy tests.
+ *
+ * Post-Phase-3 (2026-05-14) the handler is a thin proxy: it POSTs the
+ * input to `/api/datasets/{id}/treatment-timeline` on Railway, then
+ * decorates the raw response with `chart_payload` + `references[]` +
+ * `references_summary`. The orchestration tests (per-subject ordering,
+ * fallback path, temporal_source classification) now live in
+ * `backend/tests/unit/test_treatment_timeline_service.py` on ndb-v2.
+ *
+ * Here we cover ONLY the TS-side contract:
+ *   - Input validation
+ *   - URL + auth header forwarding to Railway
+ *   - chart_payload + references decoration shape
+ *   - empty_hint passthrough
+ *   - Error envelope handling
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { treatmentTimelineHandler } from '@/lib/ndi/tools/treatment-timeline';
 
 const TEST_BASE = 'https://api.example.com';
-const DSID = 'a'.repeat(24);
 
 function mockFetchOnce(body: unknown, status = 200) {
   return vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
@@ -19,331 +30,130 @@ function mockFetchOnce(body: unknown, status = 200) {
   );
 }
 
-function mockFetchSequence(bodies: Array<{ body: unknown; status?: number }>) {
-  const spy = vi.spyOn(globalThis, 'fetch');
-  for (const { body, status = 200 } of bodies) {
-    spy.mockResolvedValueOnce(
-      new Response(JSON.stringify(body), {
-        status,
-        headers: { 'content-type': 'application/json' },
-      }),
-    );
-  }
-  return spy;
-}
+beforeEach(() => {
+  vi.unstubAllEnvs();
+  vi.stubEnv('INTERNAL_API_URL', TEST_BASE);
+});
 
-describe('treatment_timeline', () => {
-  beforeEach(() => {
-    vi.unstubAllEnvs();
-    vi.stubEnv('INTERNAL_API_URL', TEST_BASE);
-  });
+afterEach(() => {
+  vi.restoreAllMocks();
+  vi.unstubAllEnvs();
+});
 
-  afterEach(() => {
-    vi.restoreAllMocks();
-    vi.unstubAllEnvs();
-  });
-
-  it('happy path: rows with ordinal timing → items + chart_payload + references', async () => {
+describe('treatment_timeline (Phase 3 proxy)', () => {
+  it('POSTs the input to the Railway endpoint', async () => {
     const fetchSpy = mockFetchOnce({
-      columns: [
-        { key: 'treatmentName', label: 'Treatment' },
-        { key: 'subjectDocumentIdentifier', label: 'Subject' },
-      ],
-      rows: [
-        {
-          treatmentName: 'Saline',
-          subjectDocumentIdentifier: 'subject-A',
-          numericValue: [],
-          stringValue: null,
-        },
-        {
-          treatmentName: 'CNO',
-          subjectDocumentIdentifier: 'subject-A',
-          numericValue: [],
-          stringValue: null,
-        },
-        {
-          treatmentName: 'Saline',
-          subjectDocumentIdentifier: 'subject-B',
-          numericValue: [],
-          stringValue: null,
-        },
-      ],
+      items: [],
+      total_subjects: 0,
+      total_treatments: 0,
+      temporal_source: 'ordinal',
+      empty_hint: { reason: 'No treatment rows in this dataset.' },
     });
-
-    const res = await treatmentTimelineHandler({ datasetId: DSID });
-    expect(fetchSpy).toHaveBeenCalledWith(
-      `${TEST_BASE}/api/datasets/${DSID}/tables/treatment?page=1&pageSize=500`,
-      expect.any(Object),
-    );
-    if ('error' in res) throw new Error(res.error);
-
-    expect(res.total_subjects).toBe(2);
-    expect(res.total_treatments).toBe(3);
-    expect(res.temporal_source).toBe('ordinal');
-    expect(res.chart_payload.datasetId).toBe(DSID);
-    expect(res.chart_payload.xLabel).toBe('Treatment order (ordinal)');
-    expect(res.chart_payload.items).toEqual([
-      { subject: 'subject-A', treatment: 'Saline', start: 0, end: 1 },
-      { subject: 'subject-A', treatment: 'CNO', start: 1, end: 2 },
-      { subject: 'subject-B', treatment: 'Saline', start: 0, end: 1 },
-    ]);
-    // One reference per distinct subject.
-    expect(res.references).toHaveLength(2);
-    expect(res.references[0]).toMatchObject({
-      class: 'dataset',
-      title: 'Subject subject-A',
+    await treatmentTimelineHandler({
+      datasetId: 'ds1',
+      title: 'Treatment timeline',
     });
-    expect(res.empty_hint).toBeUndefined();
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const [url, init] = fetchSpy.mock.calls[0]!;
+    expect(url).toBe(`${TEST_BASE}/api/datasets/ds1/treatment-timeline`);
+    expect((init as RequestInit).method).toBe('POST');
+    const body = JSON.parse((init as RequestInit).body as string);
+    expect(body).toMatchObject({ title: 'Treatment timeline', maxSubjects: 30 });
   });
 
-  it('explicit [start, end] in numericValue → temporal_source=explicit, values preserved verbatim', async () => {
+  it('decorates raw items with chart_payload + dataset/subject references', async () => {
     mockFetchOnce({
-      rows: [
-        {
-          treatmentName: 'Training',
-          subjectDocumentIdentifier: 'mouse-1',
-          numericValue: [10, 20],
-        },
-        {
-          treatmentName: 'Testing',
-          subjectDocumentIdentifier: 'mouse-1',
-          numericValue: [22, 28],
-        },
+      items: [
+        { subject: 'S1', treatment: 'Saline', start: 0, end: 1 },
+        { subject: 'S1', treatment: 'CNO', start: 1, end: 2 },
+        { subject: 'S2', treatment: 'Saline', start: 0, end: 1 },
       ],
+      total_subjects: 2,
+      total_treatments: 3,
+      temporal_source: 'ordinal',
     });
-    const res = await treatmentTimelineHandler({ datasetId: DSID });
+    const res = await treatmentTimelineHandler({ datasetId: 'ds1' });
     if ('error' in res) throw new Error(res.error);
-    expect(res.temporal_source).toBe('explicit');
-    expect(res.chart_payload.items).toEqual([
-      { subject: 'mouse-1', treatment: 'Training', start: 10, end: 20 },
-      { subject: 'mouse-1', treatment: 'Testing', start: 22, end: 28 },
-    ]);
-    // When timing is explicit, NO ordinal xLabel hint is set.
-    expect(res.chart_payload.xLabel).toBeUndefined();
-  });
 
-  it('caps subjects at maxSubjects (default 30); excess subjects are dropped from items', async () => {
-    // 40 distinct subjects, one treatment each.
-    const rows = Array.from({ length: 40 }, (_, i) => ({
-      treatmentName: 'Treatment',
-      subjectDocumentIdentifier: `subj-${i}`,
-      numericValue: [],
-    }));
-    mockFetchOnce({ rows });
-
-    const res = await treatmentTimelineHandler({ datasetId: DSID });
-    if ('error' in res) throw new Error(res.error);
-    expect(res.total_subjects).toBe(30);
-    expect(res.total_treatments).toBe(30);
-    // First 30 should be kept in first-seen order.
-    expect(res.chart_payload.items[0]?.subject).toBe('subj-0');
-    expect(res.chart_payload.items[29]?.subject).toBe('subj-29');
-    expect(
-      res.chart_payload.items.find((it) => it.subject === 'subj-30'),
-    ).toBeUndefined();
-  });
-
-  it('respects explicit maxSubjects when smaller than default', async () => {
-    const rows = Array.from({ length: 10 }, (_, i) => ({
-      treatmentName: 'Treatment',
-      subjectDocumentIdentifier: `subj-${i}`,
-    }));
-    mockFetchOnce({ rows });
-    const res = await treatmentTimelineHandler({
-      datasetId: DSID,
-      maxSubjects: 3,
-    });
-    if ('error' in res) throw new Error(res.error);
-    expect(res.total_subjects).toBe(3);
     expect(res.chart_payload.items).toHaveLength(3);
+    expect(res.temporal_source).toBe('ordinal');
+    expect(res.chart_payload.xLabel).toBe('Treatment slot');
+
+    // References: dataset chip + one per distinct subject (S1 + S2)
+    expect(res.references.length).toBe(3);
+    expect(res.references[0]?.class).toBe('dataset');
+    expect(res.references_summary).toMatchObject({
+      total_subjects: 2,
+      total_treatments: 3,
+      truncated: false,
+    });
   });
 
-  it('falls back to tabular_query when /tables/treatment returns zero rows', async () => {
-    const fetchSpy = mockFetchSequence([
-      // 1. Primary returns empty.
-      { body: { rows: [], columns: [] } },
-      // 2. Fallback tabular_query returns groups.
-      {
-        body: {
-          groups: [
-            { name: 'Saline', count: 22, values: [] },
-            { name: 'CNO', count: 23, values: [] },
-          ],
-        },
+  it('uses "Time" xLabel when temporal_source is "explicit"', async () => {
+    mockFetchOnce({
+      items: [{ subject: 'S1', treatment: 'CNO', start: 100, end: 200 }],
+      total_subjects: 1,
+      total_treatments: 1,
+      temporal_source: 'explicit',
+    });
+    const res = await treatmentTimelineHandler({ datasetId: 'ds1' });
+    if ('error' in res) throw new Error(res.error);
+    expect(res.chart_payload.xLabel).toBe('Time');
+    expect(res.temporal_source).toBe('explicit');
+  });
+
+  it('passes through empty_hint when Railway returns one', async () => {
+    mockFetchOnce({
+      items: [],
+      total_subjects: 0,
+      total_treatments: 0,
+      temporal_source: 'ordinal',
+      empty_hint: {
+        reason: 'No treatment rows found',
+        available_columns: ['subject', 'Stimulation_Method'],
       },
+    });
+    const res = await treatmentTimelineHandler({ datasetId: 'ds1' });
+    if ('error' in res) throw new Error(res.error);
+    expect(res.empty_hint?.reason).toBe('No treatment rows found');
+    expect(res.empty_hint?.available_columns).toEqual([
+      'subject',
+      'Stimulation_Method',
     ]);
+  });
 
-    const res = await treatmentTimelineHandler({ datasetId: DSID });
-    expect(fetchSpy).toHaveBeenCalledTimes(2);
-    expect(fetchSpy.mock.calls[1]![0]).toContain(
-      'tabular_query?variableNameContains=Treatment',
+  it('returns { error } when Railway returns an error envelope', async () => {
+    mockFetchOnce({ error: 'cloud_unavailable' });
+    const res = await treatmentTimelineHandler({ datasetId: 'ds1' });
+    expect(res).toEqual({ error: 'cloud_unavailable' });
+  });
+
+  it('returns { error } when Railway returns a non-2xx HTTP', async () => {
+    mockFetchOnce({ detail: 'rate-limited' }, 429);
+    const res = await treatmentTimelineHandler({ datasetId: 'ds1' });
+    expect(res).toEqual({ error: 'Upstream returned 429' });
+  });
+
+  it('forwards Cookie + X-XSRF-TOKEN from ctx.authHeaders', async () => {
+    const fetchSpy = mockFetchOnce({
+      items: [],
+      total_subjects: 0,
+      total_treatments: 0,
+      temporal_source: 'ordinal',
+    });
+    await treatmentTimelineHandler(
+      { datasetId: 'ds1' },
+      { authHeaders: { Cookie: 'session=abc', 'X-XSRF-TOKEN': 'def' } },
     );
-    if ('error' in res) throw new Error(res.error);
-    expect(res.total_subjects).toBe(2);
-    expect(res.chart_payload.items.map((it) => it.treatment)).toEqual([
-      'Saline',
-      'CNO',
-    ]);
-    expect(res.chart_payload.items[0]?.subject).toBe('group:Saline');
-    expect(res.empty_hint).toBeUndefined();
+    const init = fetchSpy.mock.calls[0]![1] as RequestInit;
+    const headers = init.headers as Record<string, string>;
+    expect(headers.Cookie).toBe('session=abc');
+    expect(headers['X-XSRF-TOKEN']).toBe('def');
   });
 
-  it('returns empty_hint when both primary and fallback are empty', async () => {
-    mockFetchSequence([
-      { body: { rows: [], columns: [{ key: 'treatmentName', label: 'T' }] } },
-      { body: { groups: [] } },
-    ]);
-    const res = await treatmentTimelineHandler({ datasetId: DSID });
-    if ('error' in res) throw new Error(res.error);
-    expect(res.total_subjects).toBe(0);
-    expect(res.total_treatments).toBe(0);
-    expect(res.chart_payload.items).toEqual([]);
-    expect(res.empty_hint).toBeDefined();
-    expect(res.empty_hint?.reason).toMatch(/no temporal info/);
-    // available_columns is surfaced when present.
-    expect(res.empty_hint?.available_columns).toContain('treatmentName');
-  });
-
-  it('rejects invalid input (missing datasetId)', async () => {
-    const fetchSpy = vi.spyOn(globalThis, 'fetch');
-    // @ts-expect-error — deliberately bad input
-    const res = await treatmentTimelineHandler({});
-    expect('error' in res).toBe(true);
-    if ('error' in res) {
-      expect(res.error).toMatch(/Invalid input/);
-    }
-    expect(fetchSpy).not.toHaveBeenCalled();
-  });
-
-  it('rejects maxSubjects > 100 (zod hard-cap)', async () => {
-    const res = await treatmentTimelineHandler({
-      datasetId: DSID,
-      maxSubjects: 999,
-    });
-    expect('error' in res).toBe(true);
-    if ('error' in res) {
-      expect(res.error).toMatch(/Invalid input/);
-    }
-  });
-
-  it('passes through upstream HTTP errors via fetchJson', async () => {
-    mockFetchOnce({ detail: 'not found' }, 404);
-    const res = await treatmentTimelineHandler({ datasetId: DSID });
-    expect('error' in res).toBe(true);
-    if ('error' in res) {
-      expect(res.error).toMatch(/Upstream returned 404/);
-    }
-  });
-
-  it('skips rows missing subject or treatment label', async () => {
-    mockFetchOnce({
-      rows: [
-        { treatmentName: 'Saline', subjectDocumentIdentifier: 'A' }, // valid
-        { treatmentName: 'Saline' }, // missing subject — skip
-        { subjectDocumentIdentifier: 'B' }, // missing treatment label
-        // missing both — skip
-        {},
-      ],
-    });
-    const res = await treatmentTimelineHandler({ datasetId: DSID });
-    if ('error' in res) throw new Error(res.error);
-    expect(res.total_subjects).toBe(1);
-    expect(res.total_treatments).toBe(1);
-    expect(res.chart_payload.items[0]?.subject).toBe('A');
-  });
-
-  it('falls back to stringValue as treatment label when treatmentName missing', async () => {
-    mockFetchOnce({
-      rows: [
-        {
-          subjectDocumentIdentifier: 'A',
-          stringValue: 'UBERON:0001870',
-        },
-      ],
-    });
-    const res = await treatmentTimelineHandler({ datasetId: DSID });
-    if ('error' in res) throw new Error(res.error);
-    expect(res.chart_payload.items[0]?.treatment).toBe('UBERON:0001870');
-  });
-
-  it('caps references at 20 distinct subjects even when more are present', async () => {
-    const rows = Array.from({ length: 50 }, (_, i) => ({
-      treatmentName: 'Treatment',
-      subjectDocumentIdentifier: `subj-${i}`,
-    }));
-    mockFetchOnce({ rows });
-    const res = await treatmentTimelineHandler({
-      datasetId: DSID,
-      maxSubjects: 100,
-    });
-    if ('error' in res) throw new Error(res.error);
-    expect(res.total_subjects).toBe(50);
-    expect(res.references).toHaveLength(20);
-  });
-
-  it('uses documentId when present to build a per-row reference', async () => {
-    mockFetchOnce({
-      rows: [
-        {
-          treatmentName: 'Saline',
-          subjectDocumentIdentifier: 'A',
-          documentId: 'doc-xyz',
-        },
-      ],
-    });
-    const res = await treatmentTimelineHandler({ datasetId: DSID });
-    if ('error' in res) throw new Error(res.error);
-    expect(res.references[0]).toMatchObject({
-      doc_id: 'doc-xyz',
-      class: 'treatment',
-    });
-  });
-
-  it('mixed temporal sources surfaces temporal_source="mixed"', async () => {
-    mockFetchOnce({
-      rows: [
-        // explicit
-        {
-          treatmentName: 'Training',
-          subjectDocumentIdentifier: 'M1',
-          numericValue: [0, 5],
-        },
-        // ordinal
-        {
-          treatmentName: 'Testing',
-          subjectDocumentIdentifier: 'M1',
-          numericValue: [],
-        },
-      ],
-    });
-    const res = await treatmentTimelineHandler({ datasetId: DSID });
-    if ('error' in res) throw new Error(res.error);
-    expect(res.temporal_source).toBe('mixed');
-    expect(res.chart_payload.items[0]).toEqual({
-      subject: 'M1',
-      treatment: 'Training',
-      start: 0,
-      end: 5,
-    });
-    // Ordinal counter starts at 0 because no prior ordinal-only row.
-    expect(res.chart_payload.items[1]).toEqual({
-      subject: 'M1',
-      treatment: 'Testing',
-      start: 0,
-      end: 1,
-    });
-  });
-
-  it('passes title through to chart_payload', async () => {
-    mockFetchOnce({
-      rows: [{ treatmentName: 'Saline', subjectDocumentIdentifier: 'A' }],
-    });
-    const res = await treatmentTimelineHandler({
-      datasetId: DSID,
-      title: 'Dabrowska treatments',
-    });
-    if ('error' in res) throw new Error(res.error);
-    expect(res.chart_payload.title).toBe('Dabrowska treatments');
+  it('returns { error } on invalid input (missing datasetId)', async () => {
+    const res = await treatmentTimelineHandler({} as never);
+    if (!('error' in res)) throw new Error('expected an error envelope');
+    expect(res.error).toMatch(/Invalid input/i);
   });
 });
