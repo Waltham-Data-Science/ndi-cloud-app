@@ -6,9 +6,9 @@
  * Owns:
  *   - Auth gate (redirect to /login when session resolves to null)
  *   - Hero band (dataset name + back-to-/my link)
- *   - Vertical stack of the 5 workspace panels
+ *   - Vertical stack of the 6 workspace panels
  *
- * The 5 panels live in `@/components/workspace/*Panel.tsx`. Each is
+ * The 6 panels live in `@/components/workspace/*Panel.tsx`. Each is
  * independent — they don't share state, they each own their own data
  * fetch, and they all converge on the same FastAPI proxy at
  * `/api/datasets/.../...`. Adding a 6th panel later is one import +
@@ -27,6 +27,7 @@ import { useEffect } from 'react';
 
 import { BehavioralComparePanel } from '@/components/workspace/BehavioralComparePanel';
 import { DatasetStructurePanel } from '@/components/workspace/DatasetStructurePanel';
+import { ElectrodePositionPanel } from '@/components/workspace/ElectrodePositionPanel';
 import { SignalViewerPanel } from '@/components/workspace/SignalViewerPanel';
 import { SpikeActivityPanel } from '@/components/workspace/SpikeActivityPanel';
 import { TreatmentTimelinePanel } from '@/components/workspace/TreatmentTimelinePanel';
@@ -135,6 +136,7 @@ export function WorkspaceClient({ datasetId }: WorkspaceClientProps) {
           <SpikeActivityPanel datasetId={datasetId} />
           <BehavioralComparePanel datasetId={datasetId} />
           <TreatmentTimelinePanel datasetId={datasetId} />
+          <ElectrodePositionPanel datasetId={datasetId} />
         </div>
 
         {/* Bottom escalation link to the existing Document Explorer —
