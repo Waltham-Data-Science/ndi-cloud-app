@@ -48,9 +48,24 @@ import { SourcesPanel } from './SourcesPanel';
  * paths use next/link for client-side nav; external URLs use
  * `<a target="_blank">`.
  */
-type Props = { content: string };
+type Props = {
+  content: string;
+  /**
+   * The full deduplicated reference set produced by every tool call
+   * on this message. Merged with the LLM's `[^N]: ...` footnote
+   * definitions into the SourcesPanel so granular per-group sample
+   * references are always visible, EVEN IF the LLM chose not to
+   * footnote them in prose.
+   *
+   * Reference matching across the two sources is keyed on URL — a
+   * tool reference whose URL matches an LLM-defined footnote URL
+   * dedupes to a single chip (the LLM's definition wins because it
+   * carries position info for inline-chip rendering).
+   */
+  toolReferences?: Reference[];
+};
 
-export function Markdown({ content }: Props) {
+export function Markdown({ content, toolReferences }: Props) {
   // Parse footnote definitions ONCE per content change. Same map fed
   // to both the inline chip lookup and the bottom SourcesPanel.
   const footnoteMap = useMemo(() => parseFootnotes(content), [content]);
@@ -62,11 +77,25 @@ export function Markdown({ content }: Props) {
   // override below).
   const bodyContent = useMemo(() => stripSourcesSection(content), [content]);
 
+  // Granular-completeness merge: LLM's `### Sources` definitions
+  // (positional + cited in prose) PLUS the full reference set the
+  // tools produced (some of which the LLM may have chosen not to
+  // footnote). Dedupe by URL — LLM-defined entries win when both
+  // sources reference the same URL because they carry the LLM's
+  // chosen title/snippet which may be context-aware. Tool-only
+  // references append after, in tool-emission order, so the user
+  // always sees every chip the tools produced.
   const referencesList: Reference[] = useMemo(() => {
-    return [...footnoteMap.entries()]
+    const fromFootnotes = [...footnoteMap.entries()]
       .sort(([a], [b]) => a - b)
       .map(([, ref]) => ref);
-  }, [footnoteMap]);
+    if (!toolReferences || toolReferences.length === 0) {
+      return fromFootnotes;
+    }
+    const seen = new Set<string>(fromFootnotes.map((r) => r.url));
+    const extras = toolReferences.filter((r) => !seen.has(r.url));
+    return [...fromFootnotes, ...extras];
+  }, [footnoteMap, toolReferences]);
 
   return (
     <>
