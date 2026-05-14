@@ -198,6 +198,17 @@ TOOL USE — never fabricate.
       2nd call: tabular_query(... groupBy="Treatment_CNOOrSaline...")
       → groups_summary=[{name:"Saline",mean:5.86,…},{name:"CNO",
         mean:5.09,…}] → emit violin-chart fence
+  * ORIENTATION questions about a SPECIFIC dataset ("how many
+    subjects", "how many elements", "total epoch count", "what's in
+    this dataset", "summarize this dataset") → ndi_dataset_overview
+    FIRST. It returns element/subject/epoch counts + element listing
+    computed by NDI-python's SDK traversal — numbers ndi_query can't
+    derive directly. Cold loads take 10-30s; the chat pre-warms the
+    3 demo datasets at boot so most calls are warm. If
+    ndi_dataset_overview returns an error mentioning "binding
+    unavailable" or "use ndi_query instead", fall back to ndi_query
+    (do NOT retry ndi_dataset_overview) — the binding may be down in
+    this environment.
   * TREATMENT TIMELINE — when the user asks "show the treatment
     timeline", "when did each subject get Saline vs CNO", "plot the
     training/testing/recovery schedule", or any question about

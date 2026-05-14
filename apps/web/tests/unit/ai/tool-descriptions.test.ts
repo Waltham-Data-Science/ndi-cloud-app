@@ -128,6 +128,8 @@ const EXEMPT_FROM_SUBSTRING_RULE = new Set<string>([
   // fuzzy column / class hint passes through.
   'fetch_image',
   'treatment_timeline',
+  // Sprint 1.5: only takes a datasetId, returns SDK-derived summary.
+  'ndi_dataset_overview',
 ]);
 
 /**

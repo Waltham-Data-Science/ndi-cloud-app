@@ -61,6 +61,10 @@ import {
   lookupOntologyInput,
 } from './tools/lookup-ontology';
 import {
+  ndiDatasetOverviewHandler,
+  ndiDatasetOverviewInput,
+} from './tools/ndi-dataset-overview';
+import {
   ndiQueryHandler,
   ndiQueryInput,
 } from './tools/ndi-query';
@@ -753,6 +757,29 @@ export const tools = {
       'returns a `references` array — cite each result you mention.',
     inputSchema: ndiQueryInput,
     execute: ndiQueryHandler,
+  }),
+  ndi_dataset_overview: tool({
+    description:
+      'High-level SDK-derived summary for ONE dataset: element count, ' +
+      'subject count, TOTAL epoch count across all elements, and the ' +
+      "first 50 element {name, type} pairs. Use this for orientation " +
+      "questions ('what's in this dataset?', 'how many subjects?', " +
+      "'how many recording epochs?'). The numbers come from a " +
+      'NDI-python traversal that ndi_query cannot perform directly.\n' +
+      '\n' +
+      'First call on a cold dataset can take 10-30s while the backend ' +
+      "downloads the dataset's documents; subsequent calls are " +
+      'instant. The chat pre-warms the 3 demo datasets at boot so most ' +
+      'calls hit a warm cache.\n' +
+      '\n' +
+      'If the response is an error mentioning "binding unavailable" ' +
+      'or "use ndi_query instead", fall back to ndi_query for the ' +
+      'underlying documents (e.g. count subjects via ' +
+      'ndi_query(scope=<id>, [{operation:"isa", param1:"subject"}])). ' +
+      'Do NOT retry ndi_dataset_overview after a binding-unavailable ' +
+      'error — the binding may be down in this environment.',
+    inputSchema: ndiDatasetOverviewInput,
+    execute: ndiDatasetOverviewHandler,
   }),
   treatment_timeline: tool({
     description:
