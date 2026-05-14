@@ -54,6 +54,7 @@ import {
   fetchJson,
   isErrorResult,
   logToolInvocation,
+  type ToolContext,
   type ToolResult,
 } from './shared';
 
@@ -170,6 +171,7 @@ export interface TreatmentTimelineResult {
 
 export async function treatmentTimelineHandler(
   input: TreatmentTimelineInput,
+  ctx?: ToolContext,
 ): Promise<ToolResult<TreatmentTimelineResult>> {
   logToolInvocation('treatment_timeline', {
     datasetId: input?.datasetId,
@@ -189,7 +191,7 @@ export async function treatmentTimelineHandler(
   const primaryUrl =
     `${base}/api/datasets/${encodeURIComponent(datasetId)}` +
     `/tables/treatment?page=1&pageSize=500`;
-  const primary = await fetchJson<BackendTreatmentTableResponse>(primaryUrl);
+  const primary = await fetchJson<BackendTreatmentTableResponse>(primaryUrl, ctx);
   if (isErrorResult(primary)) return primary;
 
   let rows: BackendTreatmentRow[] = Array.isArray(primary.rows) ? primary.rows : [];
@@ -200,7 +202,7 @@ export async function treatmentTimelineHandler(
   // --- Fallback: tabular_query?variableNameContains=Treatment --------
   // Only if primary came back empty.
   if (rows.length === 0) {
-    const fallback = await tryTabularQueryFallback(base, datasetId);
+    const fallback = await tryTabularQueryFallback(base, datasetId, ctx);
     if (fallback && fallback.rows.length > 0) {
       rows = fallback.rows;
       if (fallback.columns.length > 0) primaryColumns = fallback.columns;
@@ -366,6 +368,7 @@ export async function treatmentTimelineHandler(
 async function tryTabularQueryFallback(
   base: string,
   datasetId: string,
+  ctx?: ToolContext,
 ): Promise<{ rows: BackendTreatmentRow[]; columns: string[] } | null> {
   const url =
     `${base}/api/datasets/${encodeURIComponent(datasetId)}` +
@@ -379,7 +382,7 @@ async function tryTabularQueryFallback(
     groups: FallbackGroup[];
     _meta?: { columns?: string[] };
   }
-  const res = await fetchJson<FallbackResponse>(url);
+  const res = await fetchJson<FallbackResponse>(url, ctx);
   if (isErrorResult(res)) return null;
   const groups = Array.isArray(res.groups) ? res.groups : [];
   if (groups.length === 0) return null;

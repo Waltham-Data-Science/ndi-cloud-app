@@ -38,7 +38,7 @@
 import { z } from 'zod';
 
 import { makeReference, type Reference } from '../references';
-import { baseUrl, logToolInvocation, type ToolResult } from './shared';
+import { baseUrl, logToolInvocation, type ToolContext, type ToolResult } from './shared';
 
 const TOOL_TIMEOUT_MS = 12_000; // generous — vmspikesummary docs can be heavy
 
@@ -193,6 +193,7 @@ interface BackendSingleDocResponse {
 
 export async function fetchSpikeSummaryHandler(
   input: FetchSpikeSummaryInput,
+  ctx?: ToolContext,
 ): Promise<ToolResult<FetchSpikeSummaryToolResult>> {
   logToolInvocation('fetch_spike_summary', {
     datasetId: input?.datasetId,
@@ -224,7 +225,7 @@ export async function fetchSpikeSummaryHandler(
   // units" when the cap was hit.
   let totalMatching = 0;
   if (unitDocId) {
-    const fetched = await fetchSingleDoc(base, datasetId, unitDocId);
+    const fetched = await fetchSingleDoc(base, datasetId, unitDocId, ctx);
     if ('error' in fetched) return fetched;
     docs = [fetched.doc];
     totalMatching = 1;
@@ -239,7 +240,7 @@ export async function fetchSpikeSummaryHandler(
         param1: unitNameMatch,
       });
     }
-    const queried = await runQuery(base, datasetId, searchstructure);
+    const queried = await runQuery(base, datasetId, searchstructure, ctx);
     if ('error' in queried) return queried;
     totalMatching = queried.docs.length;
     docs = queried.docs.slice(0, maxUnits);
@@ -398,6 +399,7 @@ async function fetchSingleDoc(
   base: string,
   datasetId: string,
   docId: string,
+  ctx?: ToolContext,
 ): Promise<{ doc: BackendDocument } | { error: string }> {
   const url = `${base}/api/datasets/${encodeURIComponent(datasetId)}/documents/${encodeURIComponent(docId)}`;
   const controller = new AbortController();
@@ -405,7 +407,7 @@ async function fetchSingleDoc(
   try {
     const res = await fetch(url, {
       method: 'GET',
-      headers: { Accept: 'application/json' },
+      headers: { Accept: 'application/json', ...(ctx?.authHeaders ?? {}) },
       signal: controller.signal,
       cache: 'no-store',
     });
@@ -433,6 +435,7 @@ async function runQuery(
   base: string,
   datasetId: string,
   searchstructure: Array<Record<string, unknown>>,
+  ctx?: ToolContext,
 ): Promise<{ docs: BackendDocument[] } | { error: string }> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TOOL_TIMEOUT_MS);
@@ -445,6 +448,10 @@ async function runQuery(
         // See ndi-query.ts — Railway's OriginEnforcementMiddleware
         // rejects POST without an allowlisted Origin header.
         Origin: 'https://ndi-cloud.com',
+        // Merge any forwarded auth headers (Cookie + X-XSRF-TOKEN)
+        // from the workspace caller. Empty when called anonymously
+        // from /api/ask (the chat path).
+        ...(ctx?.authHeaders ?? {}),
       },
       signal: controller.signal,
       cache: 'no-store',

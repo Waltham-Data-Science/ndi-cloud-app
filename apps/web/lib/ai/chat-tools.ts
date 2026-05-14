@@ -856,7 +856,11 @@ export const tools = {
       '`empty_hint` is present, surface it plainly — do NOT emit the ' +
       'fence with an empty items array.',
     inputSchema: treatmentTimelineInput,
-    execute: treatmentTimelineHandler,
+    // Chat runs anonymous-only; wrap to satisfy the AI SDK's stricter
+    // `(input) => Promise<R>` callback shape. The workspace wrapper
+    // at /api/datasets/[id]/treatment-timeline forwards auth headers
+    // when present.
+    execute: (input) => treatmentTimelineHandler(input),
   }),
   fetch_image: tool({
     description:
@@ -939,7 +943,12 @@ export const tools = {
       'array. ISI defaults to log-spaced bins (electrophysiology ' +
       'convention).',
     inputSchema: fetchSpikeSummaryInput,
-    execute: fetchSpikeSummaryHandler,
+    // Chat runs anonymous-only; we wrap the handler to drop the
+    // (optional) auth context so the AI SDK's stricter
+    // `(input) => Promise<R>` callback shape is satisfied. The
+    // workspace's wrapper route at /api/datasets/[id]/spike-summary
+    // is what forwards auth headers when present.
+    execute: (input) => fetchSpikeSummaryHandler(input),
   }),
   tabular_query: tool({
     description:

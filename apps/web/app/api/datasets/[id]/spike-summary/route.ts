@@ -25,6 +25,7 @@ import {
   fetchSpikeSummaryHandler,
   fetchSpikeSummaryInput,
 } from '@/lib/ndi/tools/fetch-spike-summary';
+import { authHeadersFromRequest } from '@/lib/ndi/tools/shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -63,7 +64,14 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     );
   }
 
-  const result = await fetchSpikeSummaryHandler(parsed.data);
+  // Forward the caller's auth headers (Cookie + X-XSRF-TOKEN) so
+  // private-dataset reads work — the workspace is auth-gated, so the
+  // panel that hits this endpoint is always logged in. Anonymous chat
+  // path doesn't go through this wrapper, so the only callers we see
+  // are workspace-shaped + already authenticated.
+  const result = await fetchSpikeSummaryHandler(parsed.data, {
+    authHeaders: authHeadersFromRequest(req),
+  });
   // The handler returns either a `ToolError` (`{ error: string }`) or
   // a `FetchSpikeSummaryToolResult` envelope. Both shapes are returned
   // verbatim — the panel discriminates on the presence of `error`.

@@ -1,6 +1,6 @@
 /**
- * Shared infrastructure for Day 2+ tool handlers — anything that isn't
- * specific to a single tool but needs to live outside `lib/ai/tools.ts`
+ * Shared infrastructure for tool handlers — anything that isn't
+ * specific to a single tool but needs to live outside `lib/ai/chat-tools.ts`
  * to keep that file legible.
  */
 import { env } from '@/lib/env';
@@ -9,6 +9,61 @@ const TOOL_TIMEOUT_MS = 8_000;
 
 export type ToolError = { error: string };
 export type ToolResult<T> = T | ToolError;
+
+/**
+ * Per-call execution context threaded through every tool handler.
+ *
+ * The chat runs handlers anonymously by design (the /ask preview is
+ * public-data-only). The workspace, by contrast, is auth-gated and
+ * needs the user's session cookie to reach private datasets. This
+ * context is how we make the same handler work in BOTH modes without
+ * branching per surface.
+ *
+ *   - From chat `/api/ask`: passed as `undefined`. Handler's fetch
+ *     calls go out anonymous. Behavior unchanged.
+ *
+ *   - From workspace wrapper routes (`app/api/datasets/[id]/.../route.ts`):
+ *     extract `Cookie` and `X-XSRF-TOKEN` headers from the incoming
+ *     `NextRequest` and pass them through here. Handler's fetch
+ *     calls forward both, so the FastAPI backend authenticates the
+ *     caller and returns private records the user has access to.
+ *
+ * Adding more fields here is fine (request id, abort signal,
+ * rate-limit subject, etc.) as long as `undefined` remains a valid
+ * shape for anonymous chat callers.
+ */
+export interface ToolContext {
+  /**
+   * Forwarded auth headers (Cookie + optional X-XSRF-TOKEN). When
+   * present, every `fetch` inside the handler MUST merge these into
+   * its `headers` object. `undefined` = anonymous.
+   */
+  authHeaders?: Record<string, string>;
+}
+
+/**
+ * Extract auth headers from a Next.js Request for forwarding to
+ * FastAPI. Server-side helper used by workspace wrapper routes.
+ *
+ * Reads the inbound `Cookie` and `X-XSRF-TOKEN` headers — both are
+ * what FastAPI's auth middleware + CsrfMiddleware look at — and
+ * returns them in the shape `ToolContext.authHeaders` expects. The
+ * tool handler then merges them into its own outbound `fetch` calls.
+ *
+ * Returns `undefined` (the anonymous case) when neither header is
+ * present. Returns a `{ Cookie?, 'X-XSRF-TOKEN'? }` partial when at
+ * least one is present.
+ */
+export function authHeadersFromRequest(
+  req: Request,
+): Record<string, string> | undefined {
+  const out: Record<string, string> = {};
+  const cookie = req.headers.get('cookie');
+  if (cookie) out.Cookie = cookie;
+  const csrf = req.headers.get('x-xsrf-token');
+  if (csrf) out['X-XSRF-TOKEN'] = csrf;
+  return Object.keys(out).length > 0 ? out : undefined;
+}
 
 export function baseUrl(): string | null {
   // Branch-aware override (parallels next.config.ts rewrites()): when the
@@ -80,17 +135,73 @@ export function logToolInvocation(
 
 /**
  * Typed GET against the FastAPI proxy. Same contract as the helper in
- * the main `tools.ts` — duplicated here so per-tool files don't reach
- * across into another module. Resolves to either the parsed JSON body
- * or a `{ error }` object the LLM can handle gracefully.
+ * the main `chat-tools.ts` — duplicated here so per-tool files don't
+ * reach across into another module. Resolves to either the parsed JSON
+ * body or a `{ error }` object the LLM can handle gracefully.
+ *
+ * Accepts an optional ToolContext — when provided, auth headers (Cookie
+ * + X-XSRF-TOKEN) are merged into the outbound request so private-
+ * dataset reads work in the workspace surface. When omitted (the chat
+ * path), the request goes out anonymous as before.
  */
-export async function fetchJson<T>(url: string): Promise<ToolResult<T>> {
+export async function fetchJson<T>(
+  url: string,
+  ctx?: ToolContext,
+): Promise<ToolResult<T>> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TOOL_TIMEOUT_MS);
   try {
     const res = await fetch(url, {
       method: 'GET',
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        ...(ctx?.authHeaders ?? {}),
+      },
+      signal: controller.signal,
+      cache: 'no-store',
+    });
+    if (!res.ok) {
+      return { error: `Upstream returned ${res.status}` };
+    }
+    return (await res.json()) as T;
+  } catch (e) {
+    if (e instanceof Error && e.name === 'AbortError') {
+      return { error: 'Network timeout (8s exceeded)' };
+    }
+    return { error: 'Network error contacting catalog service' };
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+/**
+ * Typed POST against the FastAPI proxy. Same auth + timeout posture
+ * as `fetchJson`, plus a JSON-encoded body and an explicit
+ * `Origin: https://ndi-cloud.com` header so the backend's
+ * OriginEnforcementMiddleware admits the request. (FastAPI rejects
+ * POST without an allowlisted Origin by design — see proxy.ts in
+ * apps/web for the matching frontend enforcement.)
+ *
+ * Same `ctx?` parameter as `fetchJson`: anonymous when omitted,
+ * auth-forwarding when present.
+ */
+export async function postJson<T>(
+  url: string,
+  body: unknown,
+  ctx?: ToolContext,
+): Promise<ToolResult<T>> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), TOOL_TIMEOUT_MS);
+  try {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        Origin: 'https://ndi-cloud.com',
+        ...(ctx?.authHeaders ?? {}),
+      },
+      body: JSON.stringify(body),
       signal: controller.signal,
       cache: 'no-store',
     });
