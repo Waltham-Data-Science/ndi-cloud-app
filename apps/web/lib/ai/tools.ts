@@ -64,6 +64,15 @@ type ToolError = { error: string };
 type ToolResult<T> = T | ToolError;
 
 function baseUrl(): string | null {
+  // Branch-aware override (parallels next.config.ts rewrites() AND the
+  // sibling baseUrl in tools/shared.ts): when the Vercel preview is the
+  // experimental Ask chat branch, route SERVER-side tool calls to the
+  // experimental Railway env so the chat sees the same backend as the
+  // browser-side /api/* rewrites do.
+  const branch = process.env.VERCEL_GIT_COMMIT_REF;
+  if (branch === 'feat/experimental-ask-chat') {
+    return 'https://ndb-v2-experimental.up.railway.app';
+  }
   const u = process.env.INTERNAL_API_URL;
   return typeof u === 'string' && u.length > 0 ? u : null;
 }

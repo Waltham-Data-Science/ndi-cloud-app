@@ -10,6 +10,19 @@ export type ToolError = { error: string };
 export type ToolResult<T> = T | ToolError;
 
 export function baseUrl(): string | null {
+  // Branch-aware override (parallels next.config.ts rewrites()): when the
+  // Vercel preview is the experimental Ask chat branch, route SERVER-side
+  // tool calls to the experimental Railway env instead of production.
+  // Without this, the chat would hit production ndb-v2 which doesn't have
+  // the new Phase A/B endpoints (tabular_query, etc.) — every new-tool
+  // call returns "Upstream returned 404" or a network error.
+  //
+  // Production / main / other-branch previews keep using INTERNAL_API_URL
+  // exactly as before.
+  const branch = process.env.VERCEL_GIT_COMMIT_REF;
+  if (branch === 'feat/experimental-ask-chat') {
+    return 'https://ndb-v2-experimental.up.railway.app';
+  }
   const u = process.env.INTERNAL_API_URL;
   return typeof u === 'string' && u.length > 0 ? u : null;
 }
