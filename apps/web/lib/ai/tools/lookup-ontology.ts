@@ -62,17 +62,21 @@ export const lookupOntologyInput = z.object({
 
 export type LookupOntologyInput = z.infer<typeof lookupOntologyInput>;
 
+/**
+ * Backend response shape — matches `OntologyTerm.to_dict()` in
+ * ndb-v2's `backend/services/ontology_cache.py`. PRE-FIX an earlier
+ * draft of this file used the wrong field names (`id`, `name`,
+ * `short_name`, `prefix`, `synonyms`, `source`, `found`) that the
+ * backend NEVER emits — meaning every chat `lookup_ontology` call
+ * silently reported `found: false` to the LLM, even for terms that
+ * resolved cleanly. The ontology-sweep audit caught the mismatch.
+ */
 interface BackendOntologyResult {
-  id?: string;
-  name?: string;
-  short_name?: string;
-  prefix?: string;
-  definition?: string;
-  synonyms?: string[];
-  /** Set by ndb-v2's OntologyService — "ols4", "ndi_python", etc. */
-  source?: string;
-  /** Truthy on hit; the service returns `{id: null, name: null}` on miss. */
-  found?: boolean;
+  provider?: string;
+  termId?: string;
+  label?: string | null;
+  definition?: string | null;
+  url?: string | null;
 }
 
 export interface LookupOntologyToolResult {
@@ -80,9 +84,9 @@ export interface LookupOntologyToolResult {
   found: boolean;
   name: string | null;
   definition: string | null;
-  synonyms: string[];
   prefix: string | null;
-  source: string | null;
+  /** URL provided by the backend resolver (provider page, OLS, etc.). */
+  source_url: string | null;
   references: Reference[];
 }
 
@@ -102,21 +106,35 @@ export async function lookupOntologyHandler(
   const res = await fetchJson<BackendOntologyResult>(url);
   if (isErrorResult(res)) return res;
 
-  // The OntologyService returns a serialized OntologyResult whose
-  // `name` field is null on miss. We treat null-name as "not found"
-  // for the LLM, but pass through the raw response so the chat can
-  // still surface what was tried.
-  const found = !!res.name;
+  // The OntologyService returns OntologyTerm.to_dict():
+  //   { provider, termId, label, definition, url }
+  // `label` is null on miss; truthy on hit.
+  const label = typeof res.label === 'string' && res.label.length > 0
+    ? res.label
+    : null;
+  const definition = typeof res.definition === 'string' && res.definition.length > 0
+    ? res.definition
+    : null;
+  const found = label !== null || definition !== null;
+  // Prefer the backend's URL (NCBI Taxonomy page, OLS PURL, etc.)
+  // for the citation chip; fall back to our own provider-routing
+  // helper otherwise. NDI-specific prefixes (WBStrain, NDIC) usually
+  // have no public landing page — `ontologyTermUrl` returns `#` for
+  // those, which renders the chip without navigation but preserves
+  // the hover preview.
+  const chipUrl = typeof res.url === 'string' && res.url.length > 0
+    ? res.url
+    : ontologyTermUrl(term);
   const references: Reference[] = found
     ? [
         {
-          doc_id: res.id ?? term,
-          url: ontologyTermUrl(term),
+          doc_id: term,
+          url: chipUrl,
           class: 'ontology',
-          title: res.name ? `${res.name} (${term})` : term,
-          snippet: res.definition
-            ? res.definition.slice(0, 140)
-            : `Ontology term (${res.prefix ?? term.split(':')[0]})`,
+          title: label ? `${label} (${term})` : term,
+          snippet: definition
+            ? definition.slice(0, 140)
+            : `Ontology term (${res.provider ?? term.split(':')[0]})`,
         },
       ]
     : [];
@@ -124,11 +142,10 @@ export async function lookupOntologyHandler(
   return {
     term,
     found,
-    name: res.name ?? null,
-    definition: res.definition ?? null,
-    synonyms: Array.isArray(res.synonyms) ? res.synonyms.slice(0, 10) : [],
-    prefix: res.prefix ?? term.split(':')[0] ?? null,
-    source: res.source ?? null,
+    name: label,
+    definition,
+    prefix: res.provider ?? term.split(':')[0] ?? null,
+    source_url: typeof res.url === 'string' && res.url.length > 0 ? res.url : null,
     references,
   };
 }

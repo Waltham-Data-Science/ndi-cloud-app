@@ -130,6 +130,8 @@ const EXEMPT_FROM_SUBSTRING_RULE = new Set<string>([
   'treatment_timeline',
   // Sprint 1.5: only takes a datasetId, returns SDK-derived summary.
   'ndi_dataset_overview',
+  // Takes a datasetId + docId; chains from ndi_query / query_documents.
+  'get_document',
 ]);
 
 /**

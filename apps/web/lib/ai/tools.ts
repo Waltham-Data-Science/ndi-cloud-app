@@ -49,6 +49,10 @@ import {
   fetchImageInput,
 } from './tools/fetch-image';
 import {
+  getDocumentHandler,
+  getDocumentInput,
+} from './tools/get-document';
+import {
   fetchSignalHandler,
   fetchSignalInput,
 } from './tools/fetch-signal';
@@ -757,6 +761,20 @@ export const tools = {
       'returns a `references` array — cite each result you mention.',
     inputSchema: ndiQueryInput,
     execute: ndiQueryHandler,
+  }),
+  get_document: tool({
+    description:
+      'Fetch the FULL body of a single NDI document by its docId. Use ' +
+      'this after `ndi_query` / `query_documents` identifies a ' +
+      'specific document of interest — those tools surface compact ' +
+      'projections (id + class + label + truncated preview); ' +
+      '`get_document` returns the full data payload, depends_on chain, ' +
+      'file attachments, and all metadata. Inputs: datasetId + docId. ' +
+      'Returns the unmodified document object from the backend plus a ' +
+      'citation. Use sparingly — full bodies are large and only useful ' +
+      'when the projection didn\'t carry the field you need.',
+    inputSchema: getDocumentInput,
+    execute: getDocumentHandler,
   }),
   ndi_dataset_overview: tool({
     description:

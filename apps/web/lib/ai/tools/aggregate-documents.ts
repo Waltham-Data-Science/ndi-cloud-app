@@ -265,14 +265,20 @@ export async function aggregateDocumentsHandler(
   for (const doc of scanned) {
     const v = extractNumeric(doc, valueField);
     if (v === null) continue;
-    numericMatches++;
 
     let groupKey = 'all';
     if (groupBy) {
       const g = extractString(doc, groupBy);
-      if (g === null) continue; // skip docs without a group label
+      // Doc has a valid numeric value but no group label — skip
+      // entirely so it doesn't inflate numericMatches. Pre-this-fix,
+      // numericMatches was incremented BEFORE the group-null check,
+      // producing claims like "across 215 subjects" when only a
+      // subset actually got bucketed.
+      if (g === null) continue;
       groupKey = g;
     }
+    // Only count after we've confirmed the doc will be bucketed.
+    numericMatches++;
     if (!buckets.has(groupKey)) {
       buckets.set(groupKey, []);
       groupOrder.push(groupKey);

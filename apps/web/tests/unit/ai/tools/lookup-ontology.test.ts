@@ -36,14 +36,19 @@ describe('lookup_ontology', () => {
   });
 
   it('hits /api/ontology/lookup?term=… and returns name + definition', async () => {
+    // Mock the REAL backend response shape (OntologyTerm.to_dict in
+    // ndb-v2): { provider, termId, label, definition, url }. The
+    // earlier test used a fictional shape (id, name, short_name,
+    // prefix, synonyms, source, found) — that's also what the
+    // production tool handler was reading, and it had been silently
+    // returning `found: false` for every successful lookup. This is
+    // the bug the ontology-sweep audit caught.
     const fetchSpy = mockFetchOnce({
-      id: 'UBERON:0001870',
-      name: 'frontal cortex',
-      short_name: 'frontal cortex',
-      prefix: 'UBERON',
+      provider: 'UBERON',
+      termId: '0001870',
+      label: 'frontal cortex',
       definition: 'A region of the cerebral cortex…',
-      synonyms: ['anterior cortex'],
-      source: 'ols4',
+      url: 'http://purl.obolibrary.org/obo/UBERON_0001870',
     });
     const res = await lookupOntologyHandler({ term: 'UBERON:0001870' });
     expect(fetchSpy).toHaveBeenCalledWith(
@@ -56,48 +61,59 @@ describe('lookup_ontology', () => {
       found: true,
       name: 'frontal cortex',
       definition: 'A region of the cerebral cortex…',
-      source: 'ols4',
+      prefix: 'UBERON',
     });
     expect(res.references).toHaveLength(1);
+    // The backend's `url` field (PURL) is preferred over our own
+    // provider-routing helper for the citation chip.
     expect(res.references[0]?.url).toBe(
-      'https://www.ebi.ac.uk/ols/ontologies/uberon/terms?iri=http://purl.obolibrary.org/obo/UBERON_0001870',
+      'http://purl.obolibrary.org/obo/UBERON_0001870',
     );
     expect(res.references[0]?.title).toMatch(/frontal cortex/);
   });
 
-  it('routes NCBITaxon to the NCBI Taxonomy browser', async () => {
+  it('preserves the backend URL for NCBITaxon (NCBI Taxonomy page)', async () => {
     mockFetchOnce({
-      id: 'NCBITaxon:10116',
-      name: 'Rattus norvegicus',
-      prefix: 'NCBITaxon',
-      definition: 'Brown rat',
-      synonyms: [],
-      source: 'ols4',
+      provider: 'NCBITaxon',
+      termId: '10116',
+      label: 'Rattus norvegicus',
+      definition: null,
+      url: 'http://purl.obolibrary.org/obo/NCBITaxon_10116',
     });
     const res = await lookupOntologyHandler({ term: 'NCBITaxon:10116' });
     if ('error' in res) throw new Error(res.error);
     expect(res.references[0]?.url).toBe(
-      'https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=10116',
+      'http://purl.obolibrary.org/obo/NCBITaxon_10116',
+    );
+    expect(res.source_url).toBe(
+      'http://purl.obolibrary.org/obo/NCBITaxon_10116',
     );
   });
 
-  it('gives a "#" URL for NDI-only prefixes (no public provider page)', async () => {
+  it('falls back to provider-routed URL when backend omits url (NDI-python path)', async () => {
     mockFetchOnce({
-      id: 'WBStrain:00000001',
-      name: 'N2 wild-type',
-      prefix: 'WBStrain',
-      definition: 'The standard C. elegans wild-type laboratory strain.',
-      synonyms: ['Bristol N2'],
-      source: 'ndi_python',
+      provider: 'NDIC',
+      termId: '1',
+      label: 'Purpose: Assessing spatial frequency tuning',
+      definition: 'States that the purpose of the stimulus is to assess spatial frequency tuning',
+      url: null,
     });
-    const res = await lookupOntologyHandler({ term: 'WBStrain:00000001' });
+    const res = await lookupOntologyHandler({ term: 'NDIC:1' });
     if ('error' in res) throw new Error(res.error);
+    expect(res.found).toBe(true);
+    expect(res.name).toBe('Purpose: Assessing spatial frequency tuning');
+    // No public landing page for NDIC; ontologyTermUrl returns "#".
     expect(res.references[0]?.url).toBe('#');
-    expect(res.source).toBe('ndi_python');
   });
 
-  it('reports found:false with no references when name is null', async () => {
-    mockFetchOnce({ id: null, name: null, prefix: 'BOGUS', synonyms: [] });
+  it('reports found:false with no references when label is null AND definition is null', async () => {
+    mockFetchOnce({
+      provider: 'BOGUS',
+      termId: '99999',
+      label: null,
+      definition: null,
+      url: null,
+    });
     const res = await lookupOntologyHandler({ term: 'BOGUS:99999' });
     if ('error' in res) throw new Error(res.error);
     expect(res.found).toBe(false);

@@ -164,7 +164,22 @@ export interface TabularQueryToolResult {
 export async function tabularQueryHandler(
   input: TabularQueryInput,
 ): Promise<ToolResult<TabularQueryToolResult>> {
-  const { datasetId, variableNameContains, groupBy, groupOrder, title } = input;
+  // Runtime validation. The earlier draft of this handler relied on
+  // TS-only typing of the inputs and crashed inside the stream when
+  // the LLM passed a malformed payload — the AI SDK turns that
+  // exception into a broken tool response that's hard to recover
+  // from. Run the same zod-safeParse pattern as every other handler.
+  const parsed = tabularQueryInput.safeParse(input);
+  if (!parsed.success) {
+    return { error: `Invalid input: ${parsed.error.message}` };
+  }
+  const { datasetId, variableNameContains, groupBy, groupOrder, title } = parsed.data;
+
+  // Same null-baseUrl guard the other handlers use — without this,
+  // the URL construction below becomes `"null/api/datasets/..."` and
+  // Node's fetch throws TypeError out of the stream.
+  const base = baseUrl();
+  if (!base) return { error: 'Catalog service not configured' };
 
   const params = new URLSearchParams({ variableNameContains });
   if (groupBy) params.set('groupBy', groupBy);
@@ -172,14 +187,21 @@ export async function tabularQueryHandler(
     params.set('groupOrder', groupOrder.join(','));
   }
 
-  const url = `${baseUrl()}/api/datasets/${encodeURIComponent(datasetId)}/tabular_query?${params}`;
+  const url = `${base}/api/datasets/${encodeURIComponent(datasetId)}/tabular_query?${params}`;
   const res = await fetchJson<BackendTabularResponse>(url);
   if (isErrorResult(res)) return res;
+
+  // Defensive: backend response shape change during a deploy could
+  // surface `groups` as null / undefined / non-array. `aggregate-
+  // documents.ts` uses the same Array.isArray guard pattern; do
+  // the same here so a malformed body becomes an empty result
+  // instead of a TypeError that breaks the stream.
+  const groupsRaw: BackendGroup[] = Array.isArray(res.groups) ? res.groups : [];
 
   // Strip raw values from the LLM-facing summary — keep only stats.
   // Renderer re-fetches the full arrays from the same endpoint on
   // mount via TanStack Query.
-  const groups_summary = res.groups.map((g) => ({
+  const groups_summary = groupsRaw.map((g) => ({
     name: g.name,
     count: g.count,
     mean: g.mean,
@@ -217,7 +239,7 @@ export async function tabularQueryHandler(
       ...(groupBy ? { groupBy } : {}),
     }),
   ];
-  for (const group of res.groups) {
+  for (const group of groupsRaw) {
     const sampleDocId = group.docIds?.[0];
     if (!sampleDocId) continue;
     const groupTotal = group.totalRows ?? group.count;

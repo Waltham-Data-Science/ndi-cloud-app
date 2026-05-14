@@ -288,7 +288,16 @@ function parseSignalChartPayload(raw: string): SignalChartProps | null {
  * identity test.
  */
 function childIsSignalChart(children: React.ReactNode): React.ReactNode | null {
-  return childIsChartComponent(children, 'SignalChart');
+  // SignalChart routes multi-channel + colorbar payloads through
+  // MultiTraceChart internally (see SignalChart's ChartBody). When
+  // that happens, react-markdown's <pre> wrap contains a
+  // MultiTraceChart element rather than a SignalChart one — so we
+  // also detect that case, otherwise the multi-trace + colorbar
+  // legend gets clipped inside the <pre> overflow box.
+  return (
+    childIsChartComponent(children, 'SignalChart') ??
+    childIsChartComponent(children, 'MultiTraceChart')
+  );
 }
 
 /**

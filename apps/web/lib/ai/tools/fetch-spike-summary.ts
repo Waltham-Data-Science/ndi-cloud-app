@@ -311,12 +311,31 @@ export async function fetchSpikeSummaryHandler(
   }
 
   // ── Build chart payloads per `kind` ────────────────────────────
+  //
+  // The LLM is taught to echo `chart_payloads` verbatim inside a
+  // fenced code block. For dense rasters (10 units × 5000 spikes
+  // each), the raw arrays balloon to >300 KB of JSON which both
+  // exceeds the token budget AND breaks the AI SDK stream when
+  // serialized. We stride-sample spike times per unit before they
+  // enter the payload — preserves visual density of the raster
+  // while keeping the wire size bounded. Each unit caps at 500
+  // spikes (Plotly comfortably renders this and the visual shape
+  // is preserved for any reasonable spike train).
+  const MAX_RASTER_SPIKES_PER_UNIT = 500;
+  // ISI histogram: full intervals computed from FULL spike trains
+  // (preserves the histogram's statistical accuracy) but then
+  // stride-sampled for the payload to bound wire size.
+  const MAX_ISI_INTERVALS_PER_PAYLOAD = 5000;
   const chart_payloads: SpikeChartPayload[] = [];
   if (kind === 'raster' || kind === 'both') {
+    const sampledUnits: SpikeRasterUnitPayload[] = units.map((u) => ({
+      name: u.name,
+      spikeTimes: strideSample(u.spikeTimes, MAX_RASTER_SPIKES_PER_UNIT),
+    }));
     const rasterPayload: SpikeRasterChartPayload = {
       kind: 'raster',
       datasetId,
-      units,
+      units: sampledUnits,
       ...(tWindow ? { tWindow } : {}),
       ...(title ? { title } : {}),
     };
@@ -334,10 +353,11 @@ export async function fetchSpikeSummaryHandler(
         if (Number.isFinite(dt) && dt > 0) intervals.push(dt);
       }
     }
+    const sampledIntervals = strideSample(intervals, MAX_ISI_INTERVALS_PER_PAYLOAD);
     const isiPayload: IsiHistogramChartPayload = {
       kind: 'isi_histogram',
       datasetId,
-      intervals,
+      intervals: sampledIntervals,
       logBins: true,
       ...(units.length === 1 ? { unitName: units[0]!.name } : {}),
       ...(title ? { title } : {}),
@@ -509,4 +529,33 @@ function pickUnitName(doc: BackendDocument, docId: string): string {
 
 function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
+}
+
+/**
+ * Stride-sample an array down to `cap` entries while preserving the
+ * first + last samples (so the raster's visual envelope stays
+ * unchanged). When `arr.length <= cap` returns a shallow copy.
+ *
+ * Mirrors the backend's `_stride_sample` for the violin chart's
+ * jitter overlay (tabular_query_service.py). Used here to bound the
+ * spikeTimes / ISI arrays inside `chart_payloads` so the LLM-facing
+ * fence body stays under a reasonable token budget — the FULL
+ * arrays are still used for ISI bin computation upstream so the
+ * histogram remains statistically accurate; only the rendered
+ * raster + the visualization payload are downsampled.
+ */
+function strideSample(arr: number[], cap: number): number[] {
+  const n = arr.length;
+  if (n <= cap) return [...arr];
+  if (cap <= 2) return [arr[0]!, arr[n - 1]!].slice(0, cap);
+  const step = (n - 1) / (cap - 1);
+  const seen = new Set<number>();
+  const out: number[] = [];
+  for (let i = 0; i < cap; i++) {
+    const idx = Math.round(i * step);
+    if (seen.has(idx)) continue;
+    seen.add(idx);
+    out.push(arr[idx]!);
+  }
+  return out;
 }

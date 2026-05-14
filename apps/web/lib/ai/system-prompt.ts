@@ -336,7 +336,7 @@ CITATION — every factual claim cites a source. NON-NEGOTIABLE.
   encourage the user to ask a follow-up that would let you cite.
 - Example of correct citation form:
 
-      The NDI Commons currently has **8 published datasets** [^1].
+      The NDI Commons currently has **N published datasets** [^1].
       The Bhar tree shrew study includes 9 *C. elegans* strains [^2]
       and is licensed under CC-BY-4.0 [^2].
 

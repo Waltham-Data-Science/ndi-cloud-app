@@ -201,6 +201,13 @@ export function MultiTraceChart({
   height = 300,
   colorbar,
 }: MultiTraceChartProps) {
+  // displayName is required at the function-decl level for the
+  // Markdown.tsx `<pre>` unwrap detector (`childIsChartComponent`)
+  // to identify this component across minified production builds.
+  // Without it, multi-channel signal charts render INSIDE a `<pre>`
+  // element with `overflow-x-auto`, clipping the legend + colorbar.
+  // Set below the function body too — Function.prototype.name is
+  // mangled in production, so we rely on `.displayName` first.
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<uPlot | null>(null);
 
@@ -400,3 +407,7 @@ function Colorbar({ spec }: ColorbarProps) {
     </div>
   );
 }
+
+// Display name required for the Markdown.tsx `<pre>` unwrap detector.
+// See comment inside MultiTraceChart for why this is needed.
+MultiTraceChart.displayName = 'MultiTraceChart';
