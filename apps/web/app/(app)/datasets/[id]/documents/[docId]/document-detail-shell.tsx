@@ -67,16 +67,23 @@ export function DocumentDetailShell({
   const eyebrowTail =
     docClass ?? (docId.length > 24 ? `${docId.slice(0, 24)}…` : docId);
   // Smarter H1 fallback chain — many NDI doc classes (epoch, vmspikesummary,
-  // element_epoch, treatment timeline) have no `name` field. Before the
-  // fix this rendered as a literal "Document" placeholder H1
-  // (visual-UX audit, a395 P0 #5, 2026-05-14). Prefer the class name +
-  // truncated doc-id so the page identifies WHICH document the user is
-  // looking at instead of showing the same H1 on every nameless doc.
+  // element_epoch, ontologyTableRow, treatment timeline) have no useful
+  // `name` field. Some return the literal "Document" placeholder, others
+  // return undefined. Before the fix both paths rendered as just
+  // "Document" in the H1 (visual-UX audit, a395 P0 #5, 2026-05-14).
+  //
+  // Treat the literal "Document" (any casing) as equivalent to no name —
+  // it carries no information beyond what the eyebrow already shows.
+  // The H1 then falls back to "<className> <truncatedId>" so each
+  // document has a distinguishable headline.
   const shortDocId =
     docId.length > 16 ? `${docId.slice(0, 8)}…${docId.slice(-4)}` : docId;
+  const isGenericPlaceholderName =
+    !docName || docName.trim().toLowerCase() === 'document';
   const h1Fallback = docClass
     ? `${docClass} ${shortDocId}`
     : `Document ${shortDocId}`;
+  const h1Text = isGenericPlaceholderName ? h1Fallback : docName;
 
   return (
     <>
@@ -128,7 +135,7 @@ export function DocumentDetailShell({
               id="doc-detail-hero"
               className="text-white font-display font-extrabold tracking-tight leading-tight text-[2rem] md:text-[2.25rem] mb-2 max-w-4xl break-words"
             >
-              {docName ?? h1Fallback}
+              {h1Text}
             </h1>
           )}
 
