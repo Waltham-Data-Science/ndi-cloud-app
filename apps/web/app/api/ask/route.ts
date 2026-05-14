@@ -23,6 +23,7 @@ import {
   convertToModelMessages,
   stepCountIs,
   streamText,
+  type ModelMessage,
   type UIMessage,
 } from 'ai';
 
@@ -86,10 +87,42 @@ export async function POST(req: Request): Promise<Response> {
   }
 
   // 4. Stream.
+  //
+  // # Anthropic prompt caching (added 2026-05-14)
+  //
+  // The SYSTEM_PROMPT is ~10K tokens of stable instructions (tool
+  // usage hints, citation rules, dataset disambiguation). Pre-cache,
+  // every tool roundtrip paid the full input cost again — and a
+  // multi-tool turn can roundtrip 4-7 times. At Sonnet 4.5 pricing
+  // ($3/MTok input), that's ~30¢ per turn just on the system prompt.
+  // With `cacheControl: { type: 'ephemeral' }` on the system message,
+  // Anthropic caches the prompt for 5 minutes after first write and
+  // bills cache reads at 10% of the input rate (~$0.30/MTok). Within
+  // a conversation, the second turn onward hits the cache → input
+  // cost on system drops to ~3¢ per turn (a ~10× reduction on the
+  // system slice of the budget).
+  //
+  // The cache breakpoint here goes on the system message ONLY — that
+  // captures the largest stable prefix without forcing us to manage
+  // breakpoints across the user's growing message history. Anthropic
+  // allows up to 4 breakpoints per request; if we wanted to also cache
+  // accumulated history we'd add one to the last assistant message.
+  // Future work — for now the single-breakpoint win is large enough.
+  //
+  // The `system` arg is replaced by a `system`-role message at the
+  // front of `messages` because that's where the AI SDK exposes
+  // per-message `providerOptions`. Functionally equivalent — the
+  // Anthropic-side API receives the system instruction the same way.
+  const systemMessage: ModelMessage = {
+    role: 'system',
+    content: SYSTEM_PROMPT,
+    providerOptions: {
+      anthropic: { cacheControl: { type: 'ephemeral' } },
+    },
+  };
   const result = streamText({
     model: chatModel(),
-    system: SYSTEM_PROMPT,
-    messages: convertToModelMessages(messages),
+    messages: [systemMessage, ...convertToModelMessages(messages)],
     tools,
     // Cap output + tool loops to bound cost. See spec §Cost.
     //
