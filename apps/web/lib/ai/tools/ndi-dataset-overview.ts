@@ -30,7 +30,12 @@
 import { z } from 'zod';
 
 import { makeDatasetReference, type Reference } from '../references';
-import { baseUrl, type ToolError, type ToolResult } from './shared';
+import {
+  baseUrl,
+  logToolInvocation,
+  type ToolError,
+  type ToolResult,
+} from './shared';
 
 // Cold loads on the backend can take up to ~30s for the demo
 // datasets; 45s gives margin while still capping the chat's
@@ -86,6 +91,9 @@ export interface NdiDatasetOverviewResult {
 export async function ndiDatasetOverviewHandler(
   input: NdiDatasetOverviewInput,
 ): Promise<ToolResult<NdiDatasetOverviewResult>> {
+  logToolInvocation('ndi_dataset_overview', {
+    datasetId: input?.datasetId,
+  });
   const parsed = ndiDatasetOverviewInput.safeParse(input);
   if (!parsed.success) {
     return { error: `Invalid input: ${parsed.error.message}` };
@@ -128,19 +136,37 @@ export async function ndiDatasetOverviewHandler(
   // unreachable". We translate to a structured hint so the LLM falls
   // back to ndi_query cleanly. Treating 503 as a hard error would
   // surface a generic failure in the chat — bad UX.
+  //
+  // The backend now emits a stable `code` alongside `reason`:
+  //   phase_a_unavailable   — NDI-python Phase A imports failed
+  //   binding_unavailable   — ndi.dataset / ndi.cloud.orchestration missing
+  //   cache_dir_unwritable  — /tmp not writable (rare)
+  //   cold_load_timeout     — downloadDataset exceeded its 90s wall clock
+  //   cold_load_failed      — downloadDataset raised (usually cloud auth)
+  // Surface both so the LLM's fallback prose can be specific
+  // ("the dataset binding isn't installed on this server" vs "the
+  // download timed out — try again in a moment"). The generic
+  // "use ndi_query" recovery instruction stays in place regardless.
   if (res.status === 503) {
     let reason = 'binding unavailable';
+    let code = 'binding_unavailable';
     try {
-      const body = (await res.json()) as { reason?: unknown };
+      const body = (await res.json()) as {
+        reason?: unknown;
+        code?: unknown;
+      };
       if (typeof body.reason === 'string' && body.reason.length > 0) {
         reason = body.reason;
       }
+      if (typeof body.code === 'string' && body.code.length > 0) {
+        code = body.code;
+      }
     } catch {
-      // Body wasn't JSON; keep the default reason.
+      // Body wasn't JSON; keep the defaults.
     }
     return {
       error: (
-        `Dataset binding unavailable (${reason}). ` +
+        `Dataset binding unavailable [${code}]: ${reason}. ` +
         'Use ndi_query instead to retrieve raw documents from this dataset.'
       ),
     };

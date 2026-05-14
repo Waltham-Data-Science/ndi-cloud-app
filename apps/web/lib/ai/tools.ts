@@ -86,6 +86,7 @@ import {
   treatmentTimelineHandler,
   treatmentTimelineInput,
 } from './tools/treatment-timeline';
+import { logToolInvocation } from './tools/shared';
 import {
   walkProvenanceHandler,
   walkProvenanceInput,
@@ -182,6 +183,11 @@ interface DatasetListResponse {
 export async function listPublishedDatasetsHandler(
   input: z.infer<typeof listPublishedDatasetsInput>,
 ): Promise<ToolResult<DatasetListResponse & { references: Reference[] }>> {
+  logToolInvocation('list_published_datasets', {
+    page: input?.page,
+    pageSize: input?.pageSize,
+    hasQuery: typeof input?.query === 'string' && input.query.length > 0,
+  });
   const parsed = listPublishedDatasetsInput.safeParse(input);
   if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
 
@@ -232,6 +238,7 @@ interface DatasetRecord {
 export async function getDatasetHandler(
   input: z.infer<typeof getDatasetInput>,
 ): Promise<ToolResult<DatasetRecord & { references: Reference[] }>> {
+  logToolInvocation('get_dataset', { id: input?.id });
   const parsed = getDatasetInput.safeParse(input);
   if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
 
@@ -269,6 +276,7 @@ interface DatasetSummary {
 export async function getDatasetSummaryHandler(
   input: z.infer<typeof getDatasetSummaryInput>,
 ): Promise<ToolResult<DatasetSummary & { references: Reference[] }>> {
+  logToolInvocation('get_dataset_summary', { id: input?.id });
   const parsed = getDatasetSummaryInput.safeParse(input);
   if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
 
@@ -308,6 +316,7 @@ interface ClassCountsResponse {
 export async function getDatasetClassCountsHandler(
   input: z.infer<typeof getDatasetClassCountsInput>,
 ): Promise<ToolResult<ClassCountsResponse & { references: Reference[] }>> {
+  logToolInvocation('get_dataset_class_counts', { id: input?.id });
   const parsed = getDatasetClassCountsInput.safeParse(input);
   if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
 
@@ -348,6 +357,7 @@ interface FacetsResponse {
 export async function getFacetsHandler(
   _input: z.infer<typeof getFacetsInput>,
 ): Promise<ToolResult<FacetsResponse & { references: Reference[] }>> {
+  logToolInvocation('get_facets');
   const base = baseUrl();
   if (!base) return { error: 'Catalog service not configured' };
 
@@ -409,6 +419,10 @@ export async function semanticSearchDatasetsHandler(
     references: Reference[];
   }>
 > {
+  logToolInvocation('semantic_search_datasets', {
+    queryLength: typeof input?.query === 'string' ? input.query.length : 0,
+    limit: input?.limit,
+  });
   const parsed = semanticSearchDatasetsInput.safeParse(input);
   if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
 
@@ -594,6 +608,12 @@ export const tools = {
       'distinct values" without paging the whole table, and a ' +
       '`references` array — one citation per row when the row has a ' +
       'self document ID, otherwise a citation to the dataset overview. ' +
+      'CLASS-NAME ALIAS: passing className="probe" will transparently ' +
+      'fall back to className="element" when the dataset has 0 probe ' +
+      'docs (modern datasets — Dabrowska BNST, etc. — emit element, ' +
+      'not probe). Same for className="epoch" → "element_epoch". You ' +
+      'do NOT need to pre-check which name the dataset uses; ask for ' +
+      'the user-friendly name and the backend resolves the alias. ' +
       'When distinctSummary shows a column has distinct_count=1 across ' +
       'many rows, treat that as a SIGNAL: the conceptual question may ' +
       'need a different className (e.g. all `treatment` rows sharing ' +
