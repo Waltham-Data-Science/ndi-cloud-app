@@ -92,10 +92,16 @@ describe('tabular_query', () => {
       variableNameContains: 'ElevatedPlusMaze_OpenArmNorth_Entries',
       groupBy: 'Treatment',
     });
+    // Reference should point to the TABLE view (not an arbitrary single
+    // row's docId). The chart aggregates across many rows; citing one
+    // would mislead the user when they click through.
+    expect(res.references).toHaveLength(1);
     expect(res.references[0]).toMatchObject({
-      doc_id: 'doc-123',
-      class: 'ontologyTableRow',
+      class: 'ontologyTable',
+      url: `/datasets/${DSID}/tables/ontology`,
     });
+    expect(res.references[0]?.snippet).toMatch(/Aggregated from 7 rows across 2 groups/);
+    expect(res.references[0]?.title).toContain('ElevatedPlusMaze_OpenArmNorth_Entries');
     expect(res.empty_hint).toBeUndefined();
   });
 

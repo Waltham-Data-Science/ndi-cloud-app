@@ -27,8 +27,7 @@
 import { z } from 'zod';
 
 import {
-  makeReference,
-  makeDatasetReference,
+  makeOntologyTableReference,
   type Reference,
 } from '../references';
 import { baseUrl, fetchJson, isErrorResult, type ToolResult } from './shared';
@@ -182,27 +181,25 @@ export async function tabularQueryHandler(
     q3: g.q3,
   }));
 
-  // Build references. Prefer the source ontologyTableRow doc when the
-  // backend surfaces one; otherwise cite the dataset overview.
-  const totalObs = groups_summary
-    .reduce((s, g) => s + g.count, 0)
-    .toLocaleString();
+  // Build references. Pre-this-fix the citation pointed to a single
+  // arbitrary ontologyTableRow doc (`doc_ids[0]` from the backend),
+  // which was misleading — the chart aggregates across MANY rows.
+  // A click on the chip took the user to a single-row JSON viewer,
+  // not the table that backs the chart.
+  //
+  // Fix: cite the ontology-tables view in the data browser. The user
+  // lands on the same surface that shows the column they're seeing
+  // compared, plus its sibling columns, so they can verify the
+  // analysis against the source data.
+  const totalObs = groups_summary.reduce((s, g) => s + g.count, 0);
   const references: Reference[] = [
-    res.source?.document_id
-      ? makeReference({
-          datasetId,
-          doc_id: res.source.document_id,
-          class: 'ontologyTableRow',
-          title:
-            res.source.variable_name ??
-            `Tabular data: ${variableNameContains}`,
-          snippet: `${groups_summary.length} groups, ${totalObs} observations`,
-        })
-      : makeDatasetReference({
-          datasetId,
-          title: `Source dataset for ${variableNameContains}`,
-          snippet: `${groups_summary.length} groups, ${totalObs} observations`,
-        }),
+    makeOntologyTableReference({
+      datasetId,
+      variableName: res.source?.variable_name ?? variableNameContains,
+      rowCount: totalObs,
+      groupCount: groups_summary.length,
+      ...(groupBy ? { groupBy } : {}),
+    }),
   ];
 
   // Surface the backend's diagnostic envelope when nothing came back.

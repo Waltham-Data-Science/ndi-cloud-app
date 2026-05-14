@@ -52,6 +52,20 @@ export function datasetOverviewUrl(datasetId: string): string {
 }
 
 /**
+ * Build the ontology-tables view URL for a dataset.
+ *
+ * Used by tools that AGGREGATE across many ontologyTableRow documents
+ * (tabular_query / violin chart). Citing one arbitrary row's docId
+ * would mislead — the user would click and see a single row's JSON
+ * when the chart actually summarizes dozens or hundreds. This URL
+ * takes them to the table view where the COLUMN they're seeing
+ * compared is visible alongside its sibling columns.
+ */
+export function ontologyTableUrl(datasetId: string): string {
+  return `/datasets/${datasetId}/tables/ontology`;
+}
+
+/**
  * Convenience builder — fills in `url` from `datasetId` + `doc_id`
  * automatically. Use when constructing a reference inline in a tool
  * handler.
@@ -83,6 +97,47 @@ export function makeDatasetReference(params: {
     class: 'dataset',
     title: params.title,
     snippet: params.snippet,
+  };
+}
+
+/**
+ * Builder for ontology-table aggregate references. Use when a tool
+ * summarizes across many ontologyTableRow documents (e.g.
+ * tabular_query producing a violin chart). The chip links to the
+ * full table view in the data browser so the user can verify the
+ * comparison against the underlying rows.
+ *
+ * `rowCount` is encoded in the snippet so the hover preview is
+ * honest about scale ("Aggregated from 45 rows").
+ */
+export function makeOntologyTableReference(params: {
+  datasetId: string;
+  variableName?: string;
+  rowCount: number;
+  groupCount: number;
+  groupBy?: string;
+}): Reference {
+  const title = params.variableName
+    ? `Ontology table: ${params.variableName}`
+    : 'Ontology table';
+  const groupingClause = params.groupBy
+    ? `, grouped by ${params.groupBy}`
+    : '';
+  const snippet =
+    `Aggregated from ${params.rowCount} ` +
+    `row${params.rowCount === 1 ? '' : 's'} across ` +
+    `${params.groupCount} group${params.groupCount === 1 ? '' : 's'}` +
+    groupingClause +
+    '. Click to open the full table view.';
+  return {
+    // `doc_id` is opaque to the renderer; we use a stable synthetic
+    // id (datasetId-tables-ontology) so duplicate references on the
+    // same surface deduplicate cleanly in SourcesPanel.
+    doc_id: `${params.datasetId}-tables-ontology`,
+    url: ontologyTableUrl(params.datasetId),
+    class: 'ontologyTable',
+    title,
+    snippet,
   };
 }
 
