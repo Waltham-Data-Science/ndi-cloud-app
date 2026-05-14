@@ -164,6 +164,8 @@ function renderToolBody(call: RecordedToolCall): string {
       return renderTreatmentTimeline(args);
     case 'fetch_spike_summary':
       return renderFetchSpikeSummary(args);
+    case 'psth':
+      return renderPsth(args);
     case 'walk_provenance':
       return renderWalkProvenance(args);
     case 'lookup_ontology':
@@ -603,6 +605,77 @@ function renderFetchSpikeSummary(args: unknown): string {
   } else {
     lines.push(`plt.eventplot(trains); plt.xlabel("Time (s)")`);
   }
+  lines.push(`plt.show()`);
+  return lines.join('\n') + '\n';
+}
+
+// PSTH snippet — pulls vmspikesummary spike times + stimulus_presentation
+// event times, computes per-trial spike alignment, bins with
+// numpy.histogram, plots with matplotlib.bar + a dashed vertical line
+// at x=0 marking stimulus onset.
+function renderPsth(args: unknown): string {
+  const datasetId = pickString(args, 'datasetId') ?? '<dataset-id>';
+  const unitDocId = pickString(args, 'unitDocId') ?? '<unit-doc-id>';
+  const stimulusDocId =
+    pickString(args, 'stimulusDocId') ?? '<stimulus-doc-id>';
+  const t0 = pickNumber(args, 't0') ?? -0.5;
+  const t1 = pickNumber(args, 't1') ?? 1.5;
+  const binSizeMs = pickNumber(args, 'binSizeMs') ?? 20;
+  const title = pickString(args, 'title');
+  const lines = [
+    `# Peri-stimulus time histogram. Pull spike times from the vmspikesummary`,
+    `# doc and event times from the stimulus_presentation doc, then bin the`,
+    `# spikes inside a [t0, t1] window relative to each stimulus onset.`,
+    `import matplotlib.pyplot as plt`,
+    `import numpy as np`,
+    ``,
+    `unit_doc = ndi.cloud.api.documents.getDocument(`,
+    `    ${formatPythonValue(datasetId)}, ${formatPythonValue(unitDocId)}`,
+    `)`,
+    `stim_doc = ndi.cloud.api.documents.getDocument(`,
+    `    ${formatPythonValue(datasetId)}, ${formatPythonValue(stimulusDocId)}`,
+    `)`,
+    ``,
+    `# Spike-time field path matches the chat backend's extractor: try`,
+    `# spike_times, then sample_times.`,
+    `vm = (unit_doc.get("data", {}) or {}).get("vmspikesummary", {}) or {}`,
+    `spike_times = vm.get("spike_times") or vm.get("sample_times") or []`,
+    `spike_times = np.asarray(spike_times, dtype=float)`,
+    ``,
+    `# Event times: stimulus_presentation typically carries time_started`,
+    `# or stim_time; pick whichever the chat backend resolved to.`,
+    `stim = (stim_doc.get("data", {}) or {}).get("stimulus_presentation", {}) or {}`,
+    `event_times = (stim.get("time_started") or stim.get("stim_time") or [])`,
+    `event_times = np.asarray(event_times, dtype=float)`,
+    ``,
+    `# Bin edges in seconds. Bin size in ms → seconds via /1000.`,
+    `t0, t1 = ${t0}, ${t1}`,
+    `bin_size_s = ${binSizeMs} / 1000.0`,
+    `edges = np.arange(t0, t1 + bin_size_s, bin_size_s)`,
+    `centers = (edges[:-1] + edges[1:]) / 2`,
+    ``,
+    `# Per-trial alignment: shift spike times by each event onset and`,
+    `# collect those falling inside [t0, t1].`,
+    `aligned = []`,
+    `for onset in event_times:`,
+    `    rel = spike_times - onset`,
+    `    aligned.append(rel[(rel >= t0) & (rel <= t1)])`,
+    `flat = np.concatenate(aligned) if aligned else np.array([])`,
+    ``,
+    `counts, _ = np.histogram(flat, bins=edges)`,
+    `# Normalize counts → firing rate (Hz): divide by (n_trials × bin_size_s).`,
+    `n_trials = max(1, len(event_times))`,
+    `mean_rate_hz = counts / (n_trials * bin_size_s)`,
+    ``,
+    `fig, ax = plt.subplots(figsize=(8, 4))`,
+    `ax.bar(centers, mean_rate_hz, width=bin_size_s, color="#0284c7")`,
+    `# Dashed vertical line at x=0 marks stimulus onset — what visually`,
+    `# turns a bar chart into a PSTH.`,
+    `ax.axvline(0, color="#dc2626", linestyle="--", linewidth=1)`,
+    `ax.set_xlabel("Time relative to stimulus (s)")`,
+    `ax.set_ylabel("Firing rate (Hz)")`,
+  ];
+  if (title) lines.push(`ax.set_title(${formatPythonValue(title)})`);
   lines.push(`plt.show()`);
   return lines.join('\n') + '\n';
 }

@@ -121,6 +121,8 @@ function renderToolBody(call: RecordedToolCall): string {
       return renderTreatmentTimeline(args);
     case 'fetch_spike_summary':
       return renderFetchSpikeSummary(args);
+    case 'psth':
+      return renderPsth(args);
     case 'walk_provenance':
       return renderWalkProvenance(args);
     case 'lookup_ontology':
@@ -521,5 +523,73 @@ function renderFetchSpikeSummary(args: unknown): string {
     );
   }
   if (kind === 'isi_histogram') lines.push(`end`);
+  return lines.join('\n');
+}
+
+// PSTH snippet — fetch unit + stimulus docs, align spike times to
+// each stimulus onset, bin with histogram + bar, dashed line at x=0.
+// NOTE: NDI-matlab's stimulus alignment helpers are in flux (see
+// upstream-asks doc); this snippet hand-rolls the alignment to stay
+// stable regardless of which wrapper lands first.
+function renderPsth(args: unknown): string {
+  const datasetId = pickString(args, 'datasetId') ?? '<dataset-id>';
+  const unitDocId = pickString(args, 'unitDocId') ?? '<unit-doc-id>';
+  const stimulusDocId =
+    pickString(args, 'stimulusDocId') ?? '<stimulus-doc-id>';
+  const t0 = pickNumber(args, 't0') ?? -0.5;
+  const t1 = pickNumber(args, 't1') ?? 1.5;
+  const binSizeMs = pickNumber(args, 'binSizeMs') ?? 20;
+  const title = pickString(args, 'title');
+  const lines = [
+    `% Peri-stimulus time histogram. Pull spike times from the vmspikesummary`,
+    `% doc and event times from the stimulus doc, then bin the spikes inside`,
+    `% [t0, t1] relative to each stimulus onset.`,
+    `% NOTE: NDI-matlab's stimulus alignment helpers are still being wired;`,
+    `% this snippet hand-rolls the alignment so it works regardless of which`,
+    `% upstream wrapper lands first (see upstream-asks for context).`,
+    ``,
+    `unitDoc = ndi.cloud.api.documents.getDocument(${formatMatlabValue(datasetId)}, ${formatMatlabValue(unitDocId)});`,
+    `stimDoc = ndi.cloud.api.documents.getDocument(${formatMatlabValue(datasetId)}, ${formatMatlabValue(stimulusDocId)});`,
+    ``,
+    `% Spike times live at data.vmspikesummary.spike_times (seconds).`,
+    `if isfield(unitDoc.data.vmspikesummary, 'spike_times')`,
+    `    spikeTimes = double(unitDoc.data.vmspikesummary.spike_times);`,
+    `elseif isfield(unitDoc.data.vmspikesummary, 'sample_times')`,
+    `    spikeTimes = double(unitDoc.data.vmspikesummary.sample_times);`,
+    `else`,
+    `    spikeTimes = [];`,
+    `end`,
+    ``,
+    `% Event times: stimulus_presentation carries time_started or stim_time.`,
+    `stim = stimDoc.data.stimulus_presentation;`,
+    `if isfield(stim, 'time_started')`,
+    `    events = double(stim.time_started);`,
+    `elseif isfield(stim, 'stim_time')`,
+    `    events = double(stim.stim_time);`,
+    `else`,
+    `    events = [];`,
+    `end`,
+    ``,
+    `t0 = ${t0}; t1 = ${t1};`,
+    `binSizeS = ${binSizeMs} / 1000;`,
+    `edges = t0:binSizeS:t1;`,
+    `centers = edges(1:end-1) + binSizeS/2;`,
+    ``,
+    `% Align spikes to each event onset and collect those inside [t0, t1].`,
+    `aligned = [];`,
+    `for k = 1:numel(events)`,
+    `    rel = spikeTimes - events(k);`,
+    `    aligned = [aligned; rel(rel >= t0 & rel <= t1)]; %#ok<AGROW>`,
+    `end`,
+    `counts = histcounts(aligned, edges);`,
+    `nTrials = max(1, numel(events));`,
+    `meanRateHz = counts / (nTrials * binSizeS);`,
+    ``,
+    `figure; bar(centers, meanRateHz, 1, 'FaceColor', [0.01 0.52 0.78]);`,
+    `% Dashed vertical line at x=0 marks stimulus onset.`,
+    `hold on; xline(0, '--r', 'LineWidth', 1);`,
+    `xlabel('Time relative to stimulus (s)'); ylabel('Firing rate (Hz)');`,
+  ];
+  if (title) lines.push(`title(${formatMatlabValue(title)});`);
   return lines.join('\n');
 }
