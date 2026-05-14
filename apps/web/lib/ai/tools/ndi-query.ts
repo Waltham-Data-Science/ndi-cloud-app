@@ -261,6 +261,13 @@ export async function ndiQueryHandler(
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
+        // Server-to-server POST: Node's fetch doesn't auto-set Origin,
+        // but Railway's OriginEnforcementMiddleware requires it on every
+        // mutating method. Send the canonical apex origin (which is on
+        // the default CORS allowlist). Without this, every ndi_query
+        // call 403s on the experimental Railway env. Caught by chatbot
+        // accuracy E2E audit, 2026-05-14.
+        Origin: 'https://ndi-cloud.com',
       },
       signal: controller.signal,
       cache: 'no-store',

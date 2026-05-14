@@ -92,7 +92,30 @@ export async function POST(req: Request): Promise<Response> {
     messages: convertToModelMessages(messages),
     tools,
     // Cap output + tool loops to bound cost. See spec §Cost.
-    maxOutputTokens: 1024,
+    //
+    // maxOutputTokens trajectory:
+    //   1024 (until 2026-05-14) — too tight. Chatbot accuracy E2E
+    //                              audit caught violin-chart fences
+    //                              and signal-chart fences being
+    //                              truncated mid-stream BEFORE the
+    //                              model reaches the ```chart fence.
+    //                              The tool succeeds, the
+    //                              chart_payload is in the tool
+    //                              result, but the model runs out
+    //                              of output tokens while composing
+    //                              prose and never emits the fence.
+    //                              P5 (violin) and P10 (signal)
+    //                              from the audit failed this way —
+    //                              correct numeric answers, no
+    //                              chart rendered.
+    //   3072 (now) — gives the model enough budget to compose the
+    //                full per-group summary (Saline/CNO stats) AND
+    //                emit the chart fence AND list the Sources
+    //                section. Cost ceiling per output increases
+    //                3× to ~$0.045/msg output (was $0.015) but
+    //                input remains the binding cost (~$0.04/msg).
+    //                Worst-case overall: ~$0.40/msg vs prior $0.31.
+    maxOutputTokens: 3072,
     // stopWhen replaces v4's `maxSteps`. Cap at 12 model turns so
     // deep scientific exploration finishes within one user turn.
     // Trajectory of cap bumps:
@@ -111,8 +134,6 @@ export async function POST(req: Request): Promise<Response> {
     //                  (daqreader_mfdaq_epochdata_ingested) →
     //                  fetch_signal → compose answer with chart +
     //                  citations.
-    // maxOutputTokens=1024 still bounds the LLM's output regardless
-    // of step count, so the cost ceiling per turn is unchanged.
     stopWhen: stepCountIs(12),
     temperature: 0.3,
   });

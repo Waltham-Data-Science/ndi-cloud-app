@@ -434,6 +434,9 @@ async function runQuery(
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
+        // See ndi-query.ts — Railway's OriginEnforcementMiddleware
+        // rejects POST without an allowlisted Origin header.
+        Origin: 'https://ndi-cloud.com',
       },
       signal: controller.signal,
       cache: 'no-store',

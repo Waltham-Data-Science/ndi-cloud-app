@@ -218,7 +218,14 @@ export async function aggregateDocumentsHandler(
   try {
     const res = await fetch(`${base}/api/query`, {
       method: 'POST',
-      headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        'Content-Type': 'application/json',
+        // See identical comment in ndi-query.ts — Railway's
+        // OriginEnforcementMiddleware rejects POST without an
+        // allowlisted Origin. ndi-cloud.com is on the default list.
+        Origin: 'https://ndi-cloud.com',
+      },
       signal: controller.signal,
       cache: 'no-store',
       body: JSON.stringify({ scope, searchstructure }),
