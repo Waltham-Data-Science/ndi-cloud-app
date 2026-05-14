@@ -86,6 +86,49 @@ TOOL USE — never fabricate.
     showing the depends_on relationships. Cite each node you mention.
     Use maxDepth=3 for most questions; bump to 5 for very deep
     provenance walks.
+  * STRUCTURED / CROSS-DATASET QUERIES — anything that combines two
+    or more constraints, OR spans multiple datasets, OR walks
+    depends_on edges in bulk → ndi_query.
+    This is the most powerful tool — it wraps NDI's Query DSL
+    (MATLAB ndi.query / Python ndi.query.Query). Use it when
+    query_documents (which is one-class-in-one-dataset) is too
+    coarse, OR when the user is comparing several datasets at once.
+    Scope:
+      * scope="public" → every published dataset (cross-catalog scans)
+      * scope="ID1,ID2,…" (CSV of 24-char hex IDs) → curated
+        cross-dataset query when the user named 2-5 datasets
+      * scope="<single_id>" → single-dataset structured query when
+        query_documents can't express the filter
+    Triggers — REACH FOR ndi_query WHEN THE USER ASKS:
+      - "across all public datasets, …" or "in the catalog, …"
+      - "compare X between dataset Y and dataset Z"
+      - "find documents that depend on …"
+      - "how many subjects of strain X exist anywhere?"
+      - "do any datasets have probes of type N-trode?"
+      - any question combining 2+ constraints on different fields
+    Examples (paste the searchstructure verbatim, change names):
+      - "What probe types in dataset 69bc5...?"  →
+          scope="69bc5ca11d547b1f6d083761"
+          searchstructure=[{operation:"isa", param1:"probe"}]
+      - "Across all public datasets, count CRF+ subjects" →
+          scope="public"
+          searchstructure=[
+            {operation:"isa", param1:"subject"},
+            {operation:"contains_string", field:"subject.strain", param1:"CRF"}
+          ]
+      - "Find documents depending on doc X across the catalog" →
+          scope="public"
+          searchstructure=[
+            {operation:"depends_on", param1:"*", param2:"<docId>"}
+          ]
+    Negate by prefixing the operation with "~" (e.g. "~isa",
+    "~exact_string"). "~or" is NOT allowed.
+    The response gives you a COMPACT projection of each matching
+    document (id + class + datasetId + label + data_preview ≤600B).
+    For the full body of a specific doc, chain into get_document.
+    total_items carries the true match count even when the LLM-
+    visible list is truncated to limit (default 50). Cite each
+    result you actually mention via the returned references array.
   * SIGNAL / TRACE / PLOT questions ("show me the voltage trace",
     "plot the trajectory", "visualize the recording") → fetch_signal.
     SHORTCUT — DEMO-CURATED EXAMPLES: First run

@@ -45,6 +45,10 @@ import {
   fetchSignalInput,
 } from './tools/fetch-signal';
 import {
+  ndiQueryHandler,
+  ndiQueryInput,
+} from './tools/ndi-query';
+import {
   queryDocumentsHandler,
   queryDocumentsInput,
 } from './tools/query-documents';
@@ -598,6 +602,63 @@ export const tools = {
       'before the fence — never just dump the chart without context.',
     inputSchema: fetchSignalInput,
     execute: fetchSignalHandler,
+  }),
+  ndi_query: tool({
+    description:
+      'Run a structured NDI Query across ONE OR MANY datasets. This is ' +
+      'THE tool for cross-dataset questions, and the most flexible ' +
+      'within-dataset tool when query_documents is too coarse.\n' +
+      '\n' +
+      'INPUTS:\n' +
+      '  - scope: "public" (every published dataset) OR a comma-' +
+      'separated list of 24-char hex dataset IDs (e.g. "ID1,ID2,ID3"). ' +
+      'Use a CSV when the user is comparing 2-5 named datasets; use ' +
+      '"public" for "across all published data" questions.\n' +
+      '  - searchstructure: array of NDI Query clauses (each is ' +
+      '{ operation, field?, param1?, param2? }). Clauses AND-combine ' +
+      'at the top level.\n' +
+      '  - limit: optional, max docs shown to you (default 50, max 200). ' +
+      '`total_items` carries the true match count.\n' +
+      '\n' +
+      'OPERATIONS (echo from MATLAB ndi.query and Python ndi.query.Query):\n' +
+      '  isa                          — class lineage match (param1=class name)\n' +
+      '  exact_string                 — case-sensitive field=value\n' +
+      '  exact_string_anycase         — case-insensitive field=value\n' +
+      '  contains_string              — case-insensitive substring\n' +
+      '  regexp                       — regex match (case-insensitive)\n' +
+      '  exact_number / lessthan / lessthaneq / greaterthan / greaterthaneq\n' +
+      '  hasfield                     — field exists and is non-null\n' +
+      '  hasmember                    — array contains value\n' +
+      '  hasanysubfield_contains_string / hasanysubfield_exact_string ' +
+      '— sub-field match inside an array of objects\n' +
+      '  depends_on                   — { param1: edge name or "*", param2: target docId }\n' +
+      '  or                           — { param1: clause[], param2: clause[] }\n' +
+      '  ~isa, ~contains_string, …    — prefix ~ to negate any of the ' +
+      'above. ~or is NOT allowed.\n' +
+      '\n' +
+      'EXAMPLES:\n' +
+      '  "How many CRF+ subjects exist in the public catalog?"\n' +
+      '    scope="public", searchstructure=[\n' +
+      '      { operation: "isa", param1: "subject" },\n' +
+      '      { operation: "contains_string", field: "subject.strain", param1: "CRF" }\n' +
+      '    ]\n' +
+      '\n' +
+      '  "What probes are in dataset 69bc5ca1...?"\n' +
+      '    scope="69bc5ca11d547b1f6d083761", ' +
+      'searchstructure=[{ operation: "isa", param1: "probe" }]\n' +
+      '\n' +
+      '  "Find vmspikesummary docs that depend on doc X"\n' +
+      '    scope="public", searchstructure=[\n' +
+      '      { operation: "isa", param1: "vmspikesummary" },\n' +
+      '      { operation: "depends_on", param1: "*", param2: "<docId>" }\n' +
+      '    ]\n' +
+      '\n' +
+      'OUTPUT: `documents` is a compact projection (id, class, ' +
+      'datasetId, label, data_preview). For the full body of a ' +
+      'specific doc, chain into `get_document`. The response also ' +
+      'returns a `references` array — cite each result you mention.',
+    inputSchema: ndiQueryInput,
+    execute: ndiQueryHandler,
   }),
   tabular_query: tool({
     description:
