@@ -54,6 +54,32 @@ defended in-depth (1):
 | `1b32560` | cloud-app | **H1 placeholder hardening** — smoke test caught that some NDI doc classes return `name: "Document"` literally; my prior fallback only handled the falsy case. Extended detection to also catch the placeholder string (case-insensitive, trimmed). |
 | `b1bb29f` | ndb-v2 | **CSRF exemption** for /api/ontology/batch-lookup so anonymous popovers resolve |
 
+### Second batch — "finish the remainders" (4 cloud-app + 2 ndb-v2)
+
+| Commit | Repo | Description |
+|---|---|---|
+| `32ef554` | cloud-app | Session notes update with full commit chain + smoke-test 6/7 PASSes |
+| `0147a40` | cloud-app | **Sonnet 4.6 + NCBI Datasets browser** — bumped from legacy 4.5; switched NCBI Taxonomy URL to the new `/datasets/taxonomy/browser/?taxon=` surface |
+| `82d42fa` | cloud-app | **env consolidation** — all 5 `process.env.X` reads in `lib/ai/**` now go through zod-validated `env.X`. Added `VERCEL_GIT_COMMIT_REF` to the schema. env.ts is now a Proxy-backed lazy parser so `vi.stubEnv` works transparently in tests. |
+| `b65ca62` | cloud-app | **probe→element alias + typed binding codes (frontend)** — tool description tells the LLM probe maps to element on modern datasets; binding-failure error surfaces a stable `code` so the LLM can route fallback prose by failure mode |
+| `9ea049f` | cloud-app | **structured logging** — `logEvent` + `logToolInvocation` helpers in `lib/ai/tools/shared.ts`; wired through `/api/ask/route.ts` (6 events) + all 16 tool handlers (`chat.tool.<name>.invoked`). PII-safe (sizes/ids only). |
+| `8d15ff5` | cloud-app | **system prompt trim** — removed duplicate guidance that's also in tool descriptions; 354→273 lines (~23%). All 13 system-prompt regression tests preserved. |
+| `aa11de6` | ndb-v2 | **probe→element class alias + typed binding-failure codes (backend)** — `SummaryTableService` falls back to `element` (or `element_epoch` for `epoch`) when the literal class returns 0 docs; binding service emits stable `code`s (phase_a_unavailable / binding_unavailable / cache_dir_unwritable / cold_load_timeout / cold_load_failed) |
+| `6b1b9ef` | ndb-v2 | **WBStrain scrape fallback + Caenorhabditis facet dedup** — WBStrain page scrape with Cloudflare-aware fallthrough to NDI-python; facet accumulator now registers oid/abbrev/norm as aliases so duplicate-label-distinct-id chips merge to a single facet entry |
+
+**Final state after both batches:**
+- cloud-app: 1470 frontend tests pass (+40 vs handoff baseline) · typecheck + lint clean · bundle 168.2 KB gz (+0.22 KB vs baseline)
+- ndb-v2: 628 backend tests pass (+17 vs handoff baseline)
+
+**All originally-open items from the handoff are resolved or have a documented follow-up:**
+- ✅ WBStrain provider scrape (with Cloudflare caveat — Railway IPs likely won't reach the page; NDI-python fallthrough preserved so no regression)
+- ✅ `ndi_dataset_overview` "binding unavailable" — typed error `code`s emitted; the Sprint 1.5 deploy gap (NDI-python `ndi.cloud.orchestration` not installed in Railway image) is documented as a deploy follow-up
+- ✅ Probe className mismatch — backend `probe→element` alias + frontend tool-description nudge
+- ✅ Structured logging on `/api/ask` (6 events) + all 16 tool handlers
+- ✅ process.env audit + consolidation through `lib/env.ts`
+- ✅ System prompt verbosity reduction (~23% shorter)
+- ✅ Caenorhabditis elegans duplicate facet
+
 ---
 
 ## Files changed (24 total cloud-app + 2 ndb-v2)
