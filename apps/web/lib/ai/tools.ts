@@ -740,18 +740,43 @@ export const tools = {
       'plot. Use this for "compare X across treatment groups", "show ' +
       'EPM open-arm entries Saline vs CNO", "plot fear-startle by ' +
       'condition", or anything else that asks for a categorical ' +
-      'comparison of a numeric measurement. Inputs: datasetId + ' +
-      'variableNameContains (substring match against the table\'s ' +
-      'variable name — e.g. "ElevatedPlusMaze", "Fear_potentiated' +
-      'Startle", "Chemotaxis_McCutcheon"). Optional: groupBy (e.g. ' +
-      '"treatment_group", "strain"), groupOrder (left-to-right ' +
-      'ordering), title.\n' +
+      'comparison of a numeric measurement.\n' +
       '\n' +
-      'Returns per-group summary stats (mean, median, std, q1/q3, ' +
+      'INPUTS:\n' +
+      '  - datasetId\n' +
+      '  - variableNameContains: substring match against the table\'s ' +
+      'variable names. Use the natural-language hint from the user ' +
+      '(e.g. "ElevatedPlusMaze", "FearPotentiatedStartle", "Chemotaxis") ' +
+      'as a starting point. The backend SCORES candidate columns by ' +
+      'numeric-row count and picks the best match — so a broad ' +
+      'substring is usually right.\n' +
+      '  - groupBy (optional): substring match against the table\'s ' +
+      'GROUPING column key. CRITICAL: column keys are dataset-specific ' +
+      '(e.g. "Treatment_CNOOrSalineAdministration", ' +
+      '"StimulationGroup", "GenotypeCondition"). Use a SHORT broad ' +
+      'hint like "Treatment", "Stimulation", or "Genotype" — the ' +
+      'backend substring-matches case-insensitively. NEVER assume a ' +
+      'specific column name like "treatment_group" exists — that is ' +
+      'NOT a real NDI column convention.\n' +
+      '  - groupOrder (optional): explicit left-to-right ordering of ' +
+      'group labels (e.g. ["Saline", "CNO"]).\n' +
+      '  - title (optional): chart title.\n' +
+      '\n' +
+      'RETRY LOOP — CRITICAL:\n' +
+      'If the response has `groups_summary: []` and `empty_hint`, READ ' +
+      'THE empty_hint AND RETRY before falling back to other tools. ' +
+      '`empty_hint.available_columns` lists every column key in the ' +
+      'matched table — pick one that semantically matches what the ' +
+      'user wants and call tabular_query AGAIN with that as groupBy. ' +
+      '`empty_hint.retry_with` is a pre-built best-guess retry — you ' +
+      'can use it directly. DO NOT pivot to query_documents to ' +
+      'explore — the right column name is in your hand.\n' +
+      '\n' +
+      'OUTPUT: per-group summary stats (mean, median, std, q1/q3, ' +
       'min/max, count) + a `chart_payload` object — IMPORTANT: when ' +
-      'you call this tool, you MUST also echo the returned ' +
-      "`chart_payload` JSON back into your answer inside a fenced " +
-      'code block tagged "violin-chart":\n' +
+      'you call this tool with non-empty groups_summary, you MUST ' +
+      "echo the returned `chart_payload` JSON back into your answer " +
+      'inside a fenced code block tagged "violin-chart":\n' +
       '\n' +
       '    ```violin-chart\n' +
       '    {"datasetId":"...","variableNameContains":"...","groupBy":"...","title":"..."}\n' +

@@ -158,6 +158,34 @@ TOOL USE — never fabricate.
     response carries total_items + numeric_matches so you can claim
     "across 215 subjects (of which 198 had a recorded weight), the
     mean weight was …".
+  * TABULAR (behavioral / measurement) COMPARISONS — when the user
+    asks to compare a measurement BETWEEN treatment groups,
+    strains, conditions, sessions, etc. ("compare X between Saline
+    and CNO", "show EPM open-arm entries by treatment", "fear
+    potentiated startle Pre vs Post") → tabular_query.
+    Use a SHORT broad substring for both variableNameContains and
+    groupBy. Never assume a specific column name like
+    "treatment_group" or "condition" exists — column keys are
+    dataset-specific and verbose (e.g.
+    "Treatment_CNOOrSalineAdministration"). Use the smallest
+    semantically-relevant prefix: "Treatment", "Strain", "Stim",
+    "Genotype", "Phase".
+    RETRY LOOP: If the response is groups_summary=[] AND has an
+    empty_hint with available_columns, IMMEDIATELY retry tabular_query
+    with empty_hint.retry_with (or pick a column from
+    available_columns yourself). DO NOT pivot to query_documents
+    after the first miss — the correct column name was in the
+    empty_hint. Each retry costs ~1s and the right call is usually
+    one retry away.
+    Example flow:
+      1st call: tabular_query(variableNameContains="ElevatedPlusMaze
+        _OpenArmNorth_Entries", groupBy="treatment_group")
+      → groups_summary=[], empty_hint.available_columns includes
+        "Treatment_CNOOrSalineAdministration", retry_with.groupBy=
+        "Treatment_CNOOrSalineAdministration"
+      2nd call: tabular_query(... groupBy="Treatment_CNOOrSaline...")
+      → groups_summary=[{name:"Saline",mean:5.86,…},{name:"CNO",
+        mean:5.09,…}] → emit violin-chart fence
   * SIGNAL / TRACE / PLOT questions ("show me the voltage trace",
     "plot the trajectory", "visualize the recording") → fetch_signal.
     SHORTCUT — DEMO-CURATED EXAMPLES: First run

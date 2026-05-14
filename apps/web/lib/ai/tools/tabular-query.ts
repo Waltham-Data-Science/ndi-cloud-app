@@ -84,6 +84,41 @@ interface BackendTabularResponse {
     document_id?: string;
     variable_name?: string;
   };
+  /**
+   * The backend's diagnostic envelope when no groups came back. Carries
+   * a `reason` plus, depending on the failure mode, either:
+   *   - `columns`: available column keys when groupBy didn't resolve
+   *   - `variable_names`: available ontologyTableRow variableNames when
+   *     variableNameContains didn't resolve to any column
+   * Pre-compact this was silently dropped — the LLM saw `groups: []` and
+   * gave up. Now we surface it so the LLM can retry with the right hint.
+   */
+  _meta?: {
+    reason?: string;
+    columns?: string[];
+    variable_names?: string[];
+  };
+}
+
+/**
+ * Diagnostic hint surfaced to the LLM when the call returned empty.
+ * Tells the LLM WHY it was empty and offers concrete retry options.
+ */
+export interface TabularQueryEmptyHint {
+  reason: string;
+  /** Available column keys in the matched ontologyTableRow group, if
+   * the failure was a groupBy miss. The LLM should pick one of these
+   * (case-insensitive substring match works) and retry. */
+  available_columns?: string[];
+  /** Available variableNames groups, if the failure was a
+   * variableNameContains miss. The LLM should pick a different substring
+   * and retry. */
+  available_variable_names?: string[];
+  /** Suggested retry call shape so the LLM doesn't have to figure it out. */
+  retry_with?: {
+    variableNameContains: string;
+    groupBy?: string;
+  };
 }
 
 /** LLM-facing tool output — strips per-row value arrays. */
@@ -109,6 +144,12 @@ export interface TabularQueryToolResult {
     title?: string;
   };
   references: Reference[];
+  /**
+   * Present ONLY when groups_summary is empty. Tells the LLM what went
+   * wrong and what to try next. The LLM is taught to inspect this and
+   * retry rather than fall through to query_documents exploration.
+   */
+  empty_hint?: TabularQueryEmptyHint;
 }
 
 export async function tabularQueryHandler(
@@ -164,6 +205,37 @@ export async function tabularQueryHandler(
         }),
   ];
 
+  // Surface the backend's diagnostic envelope when nothing came back.
+  // The backend tells us WHY (e.g. "no column matched groupBy
+  // 'treatment_group' in the selected table") and lists the actual
+  // column keys for retry. Pre-this-fix the LLM never saw this hint
+  // and would pivot to query_documents exploration — wasting calls.
+  let empty_hint: TabularQueryEmptyHint | undefined;
+  if (groups_summary.length === 0 && res._meta) {
+    const meta = res._meta;
+    empty_hint = {
+      reason: meta.reason ?? 'no data returned',
+    };
+    if (meta.columns && meta.columns.length > 0) {
+      empty_hint.available_columns = meta.columns;
+      // Best-effort retry suggestion: when the user's groupBy didn't
+      // match, pick the most plausibly-related column from the list
+      // (case-insensitive substring overlap on word boundary).
+      if (groupBy) {
+        const suggested = suggestGroupColumn(groupBy, meta.columns);
+        if (suggested) {
+          empty_hint.retry_with = {
+            variableNameContains,
+            groupBy: suggested,
+          };
+        }
+      }
+    }
+    if (meta.variable_names && meta.variable_names.length > 0) {
+      empty_hint.available_variable_names = meta.variable_names;
+    }
+  }
+
   return {
     groups_summary,
     chart_payload: {
@@ -174,5 +246,32 @@ export async function tabularQueryHandler(
       ...(title ? { title } : {}),
     },
     references,
+    ...(empty_hint ? { empty_hint } : {}),
   };
+}
+
+/**
+ * Best-effort: pick the most plausibly-matching column from the
+ * backend's list given the LLM's failed groupBy guess. Used only to
+ * pre-fill `retry_with` — the LLM is free to override.
+ *
+ * Strategy: find any column whose lowercased key starts with the same
+ * prefix as the lowercased guess up to the first underscore. E.g.
+ * "treatment_group" → prefix "treatment" → matches
+ * "Treatment_CNOOrSalineAdministration".
+ */
+function suggestGroupColumn(guess: string, columns: string[]): string | null {
+  const guessLower = guess.toLowerCase();
+  const guessPrefix = guessLower.split(/[_\s]/)[0] ?? guessLower;
+  if (!guessPrefix) return null;
+  // Exact substring match first (covers "treatment" → ...Treatment...).
+  for (const c of columns) {
+    if (c.toLowerCase().includes(guessLower)) return c;
+  }
+  // Prefix-of-prefix fallback ("treatment_group" → match anything
+  // starting with "treatment").
+  for (const c of columns) {
+    if (c.toLowerCase().startsWith(guessPrefix)) return c;
+  }
+  return null;
 }
