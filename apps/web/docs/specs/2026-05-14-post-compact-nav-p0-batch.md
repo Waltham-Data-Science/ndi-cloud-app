@@ -8,10 +8,14 @@ session resolved most of them in three commits across two repos.
 
 ## TL;DR
 
-**3 commits shipped this session** addressing **4 navigation P0s, 1
-auth-form P0, and 4 P1 polish items**. 1468 frontend tests pass
-(+38 vs handoff baseline); 612 backend tests pass (+1). Typecheck +
-lint clean across both repos. Bundle ratchet unchanged.
+**7 commits shipped this session** (6 cloud-app + 1 ndb-v2)
+addressing **4 navigation P0s, 1 auth-form P0, 4 P1 polish items,
+plus 3 cost/perf items**. 1468 frontend tests pass (+38 vs handoff
+baseline); 612 backend tests pass (+1). Typecheck + lint clean
+across both repos. Bundle ratchet held at 168.2 KB gz (delta
++0.22 KB vs baseline).
+
+**Smoke test (Playwright on Vercel preview) confirms 6/7 verifications PASS** (P0-A, P0-B, P0-C, P0-D, P0-1, P0 #3). The 7th — Document detail H1 — was PARTIAL on first pass (some doc classes return `name: "Document"` as literal placeholder); follow-up commit `1b32560` hardens against this edge case.
 
 The 4 navigation P0s from the handoff are now either fixed (3) or
 defended in-depth (1):
@@ -44,6 +48,10 @@ defended in-depth (1):
 |---|---|---|
 | `1d1154c` | cloud-app | **4 nav P0s + reset-password gate** — Link→a in CitationChip/SourcesPanel; 65s watchdog + Stop button in ask-shell; ToolCallIndicator inProgress + ChatThread wiring; flushPersist drops trailing in-flight assistant messages; Header `<Link href="/ask">` defensive onClick guard; useSession auth-gate + escape-hatch link on /reset-password |
 | `c2bea43` | cloud-app | **P1 polish** — chart aria-labels (6 charts); JsonTree CURIE resolution; document-detail H1 fallback; code-export Python+MATLAB for fetch_image + treatment_timeline + fetch_spike_summary |
+| `841779c` | cloud-app | **Session notes doc** (this file's initial version) |
+| `2cd0a64` | cloud-app | **Anthropic prompt caching** — `cacheControl: { type: 'ephemeral' }` on system prompt cuts per-turn system input cost ~10× on cache hits (Sonnet 4.5 cache reads at 10% of input rate). Within a conversation, second turn onward hits the 5-minute cache window. |
+| `7eccf11` | cloud-app | **streamText `maxRetries: 1`** — default 2 retries with exponential backoff would burn the full 60s function budget on transient failures. Cap at one quick retry; real failures surface in ~5s. |
+| `1b32560` | cloud-app | **H1 placeholder hardening** — smoke test caught that some NDI doc classes return `name: "Document"` literally; my prior fallback only handled the falsy case. Extended detection to also catch the placeholder string (case-insensitive, trimmed). |
 | `b1bb29f` | ndb-v2 | **CSRF exemption** for /api/ontology/batch-lookup so anonymous popovers resolve |
 
 ---
