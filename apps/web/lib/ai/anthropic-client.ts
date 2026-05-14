@@ -15,13 +15,15 @@
  */
 import { createAnthropic } from '@ai-sdk/anthropic';
 
+import { env } from '@/lib/env';
+
 export const CLAUDE_MODEL_ID = 'claude-sonnet-4-6';
 
 let _client: ReturnType<typeof createAnthropic> | null = null;
 
 export function getAnthropicClient() {
   if (!_client) {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
+    const apiKey = env.ANTHROPIC_API_KEY;
     if (!apiKey) {
       throw new Error('ANTHROPIC_API_KEY not set');
     }

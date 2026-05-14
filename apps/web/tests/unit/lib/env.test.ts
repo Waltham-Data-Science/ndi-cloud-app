@@ -70,6 +70,24 @@ describe('lib/env schema', () => {
       expect(result.data.NODE_ENV).toBe('test');
     }
   });
+
+  it('parses VERCEL_GIT_COMMIT_REF as an optional free-form string', () => {
+    const result = schema.safeParse({
+      VERCEL_GIT_COMMIT_REF: 'feat/experimental-ask-chat',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.VERCEL_GIT_COMMIT_REF).toBe('feat/experimental-ask-chat');
+    }
+  });
+
+  it('leaves VERCEL_GIT_COMMIT_REF undefined when unset (non-Vercel build)', () => {
+    const result = schema.safeParse({});
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.VERCEL_GIT_COMMIT_REF).toBeUndefined();
+    }
+  });
 });
 
 describe('parseEnv', () => {

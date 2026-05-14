@@ -34,6 +34,8 @@
 import { tool } from 'ai';
 import { z } from 'zod';
 
+import { env } from '@/lib/env';
+
 import { hybridSearch, type RetrievedChunk } from './hybrid-retrieval';
 import {
   makeDatasetReference,
@@ -101,11 +103,10 @@ function baseUrl(): string | null {
   // experimental Ask chat branch, route SERVER-side tool calls to the
   // experimental Railway env so the chat sees the same backend as the
   // browser-side /api/* rewrites do.
-  const branch = process.env.VERCEL_GIT_COMMIT_REF;
-  if (branch === 'feat/experimental-ask-chat') {
+  if (env.VERCEL_GIT_COMMIT_REF === 'feat/experimental-ask-chat') {
     return 'https://ndb-v2-experimental.up.railway.app';
   }
-  const u = process.env.INTERNAL_API_URL;
+  const u = env.INTERNAL_API_URL;
   return typeof u === 'string' && u.length > 0 ? u : null;
 }
 
@@ -411,13 +412,13 @@ export async function semanticSearchDatasetsHandler(
   const parsed = semanticSearchDatasetsInput.safeParse(input);
   if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
 
-  if (!process.env.DATABASE_URL) {
+  if (!env.DATABASE_URL) {
     return {
       error:
         'Semantic search not available — DATABASE_URL not configured. The /ask RAG index lives in Postgres + pgvector.',
     };
   }
-  if (!process.env.VOYAGE_API_KEY) {
+  if (!env.VOYAGE_API_KEY) {
     return {
       error:
         'Semantic search not available — VOYAGE_API_KEY not configured on this environment.',

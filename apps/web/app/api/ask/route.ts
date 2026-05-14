@@ -50,7 +50,7 @@ function clientIp(req: Request): string {
 
 export async function POST(req: Request): Promise<Response> {
   // 1. Feature flag.
-  if (!askEnabled(process.env)) {
+  if (!askEnabled()) {
     return Response.json({ error: 'chat_disabled' }, { status: 503 });
   }
 

@@ -18,11 +18,13 @@
  */
 import { Pool } from 'pg';
 
+import { env } from '@/lib/env';
+
 let _pool: Pool | null = null;
 
 export function getPool(): Pool {
   if (_pool) return _pool;
-  const connStr = process.env.DATABASE_URL;
+  const connStr = env.DATABASE_URL;
   if (!connStr) {
     throw new Error('DATABASE_URL not configured');
   }

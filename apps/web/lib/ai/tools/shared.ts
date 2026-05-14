@@ -3,6 +3,7 @@
  * specific to a single tool but needs to live outside `lib/ai/tools.ts`
  * to keep that file legible.
  */
+import { env } from '@/lib/env';
 
 const TOOL_TIMEOUT_MS = 8_000;
 
@@ -19,11 +20,10 @@ export function baseUrl(): string | null {
   //
   // Production / main / other-branch previews keep using INTERNAL_API_URL
   // exactly as before.
-  const branch = process.env.VERCEL_GIT_COMMIT_REF;
-  if (branch === 'feat/experimental-ask-chat') {
+  if (env.VERCEL_GIT_COMMIT_REF === 'feat/experimental-ask-chat') {
     return 'https://ndb-v2-experimental.up.railway.app';
   }
-  const u = process.env.INTERNAL_API_URL;
+  const u = env.INTERNAL_API_URL;
   return typeof u === 'string' && u.length > 0 ? u : null;
 }
 

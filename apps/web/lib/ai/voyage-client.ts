@@ -23,6 +23,7 @@
  *
  * 8s timeout matches the other tool handlers in lib/ai/tools.ts.
  */
+import { env } from '@/lib/env';
 
 const VOYAGE_EMBED_API = 'https://api.voyageai.com/v1/embeddings';
 const VOYAGE_RERANK_API = 'https://api.voyageai.com/v1/rerank';
@@ -87,7 +88,7 @@ export async function rerank(
 }
 
 function requireApiKey(): string {
-  const k = process.env.VOYAGE_API_KEY;
+  const k = env.VOYAGE_API_KEY;
   if (!k) {
     throw new Error('VOYAGE_API_KEY not configured');
   }

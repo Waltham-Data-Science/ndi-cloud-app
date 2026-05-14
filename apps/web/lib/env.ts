@@ -16,12 +16,20 @@ export const schema = z.object({
   // Production rewrite target — Vercel proxies `/api/*` here (FastAPI on
   // Railway). Optional because preview/dev builds without a configured
   // upstream still build and run; `/api/*` simply 404s until set.
-  UPSTREAM_API_URL: z.string().url().optional(),
+  // Empty-string coercion matches the rest of the schema — Vercel preview
+  // build inputs and `vi.stubEnv('FOO', '')` both surface as empty strings.
+  UPSTREAM_API_URL: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().url().optional(),
+  ),
 
   // RSC server-side fetch target (bypasses the Vercel rewrite to avoid a
   // server→edge→server double-hop). Optional because RSC prefetch and
   // dataset-detail metadata generation degrade gracefully without it.
-  INTERNAL_API_URL: z.string().url().optional(),
+  INTERNAL_API_URL: z.preprocess(
+    (v) => (v === '' ? undefined : v),
+    z.string().url().optional(),
+  ),
 
   // Shared secret used to authenticate cron invocations of the
   // `/api/cron/warm-cache` route. When set, requests must carry
@@ -38,6 +46,15 @@ export const schema = z.object({
   // rather than a stable format we'd want to validate.
   VERCEL_ENV: z.enum(['production', 'preview', 'development']).optional(),
   VERCEL_URL: z.string().optional(),
+
+  // Vercel-injected git ref of the current deployment. Used by the
+  // /ask tool layer (`baseUrl()` in both `lib/ai/tools.ts` and
+  // `lib/ai/tools/shared.ts`) to detect the experimental Ask preview
+  // branch and route server-side tool calls to the experimental
+  // Railway env (`ndb-v2-experimental.up.railway.app`) instead of the
+  // production catalog. Absent locally + in non-preview Vercel builds,
+  // hence optional + free-form.
+  VERCEL_GIT_COMMIT_REF: z.string().optional(),
 
   // Anthropic API key for the experimental /ask chat. Optional —
   // when unset OR empty, the /api/ask route returns 503 and the
@@ -115,4 +132,56 @@ export function parseEnv(input: Record<string, string | undefined> = process.env
   throw new Error(`Invalid environment:\n${issues}`);
 }
 
-export const env: Env = parseEnv();
+/**
+ * Production code reads validated env via `env.X`. Backed by a Proxy
+ * so each property access re-parses `process.env`, which:
+ *
+ *   1. Eats `vi.stubEnv` mutations in tests transparently — every
+ *      existing test pattern that calls `vi.stubEnv('FOO', 'bar')`
+ *      before invoking a handler that reads `env.FOO` now picks up
+ *      the stubbed value without test-suite rewrites.
+ *
+ *   2. Picks up runtime env mutations (Vercel doesn't mutate
+ *      `process.env` per-request, but per-invocation env injection
+ *      via Edge Config or Vercel KV would now work without a
+ *      hot-reload).
+ *
+ *   3. Validates eagerly at IMPORT time via the bootstrap call below
+ *      so a malformed environment still fails BUILD, not the first
+ *      request.
+ *
+ * Overhead is one zod parse per property access (a few μs). Tool
+ * handlers read 1-2 env fields per invocation; the parse cost is
+ * lost in the network noise. If a hot path ever needs to read env
+ * fields hundreds of times per request, call `parseEnv()` once and
+ * destructure the result.
+ */
+parseEnv(); // boot-time validation — throws on malformed env
+
+export const env: Env = new Proxy({} as Env, {
+  get(_target, prop) {
+    // Re-parse on each access so `vi.stubEnv` mutations propagate.
+    // The schema is fast; this is fine for our access pattern.
+    const parsed = parseEnv();
+    return parsed[prop as keyof Env];
+  },
+  has(_target, prop) {
+    const parsed = parseEnv();
+    return prop in parsed;
+  },
+  ownKeys() {
+    return Object.keys(parseEnv());
+  },
+  getOwnPropertyDescriptor(_target, prop) {
+    const parsed = parseEnv();
+    if (prop in parsed) {
+      return {
+        configurable: true,
+        enumerable: true,
+        writable: false,
+        value: parsed[prop as keyof Env],
+      };
+    }
+    return undefined;
+  },
+});
