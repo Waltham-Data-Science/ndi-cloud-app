@@ -59,6 +59,16 @@ vi.mock('next/navigation', () => ({
 // which under jsdom returns zero items because the scroll container
 // has 0 height — so onRowClick never fires from a click test. Mock to
 // materialize every row.
+// OverviewContent now mounts the WorkspaceCTA, which reads
+// `useSession` to pick between "sign in to plot" and "open in
+// workspace" copy. Tests in this file mock apiFetch globally — the
+// CTA's session lookup would otherwise consume a mock turn meant for
+// the dataset query. Default to the signed-out shape; that's what
+// OverviewContent's render branches expect by default.
+vi.mock('@/lib/auth/use-session', () => ({
+  useSession: () => ({ user: null, isLoading: false, error: null }),
+}));
+
 vi.mock('@tanstack/react-virtual', () => ({
   useVirtualizer: ({ count, estimateSize }: { count: number; estimateSize: () => number }) => {
     const size = estimateSize();
