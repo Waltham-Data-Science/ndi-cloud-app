@@ -1,4 +1,18 @@
-# Compliance posture — `ndi-cloud-app` (2026-04-26)
+# Compliance posture — `ndi-cloud-app` (internal, 2026-04-26)
+
+> **2026-05-15 update — this document is now SUPPLEMENTARY.**
+> The authoritative externally-distributable compliance posture is
+> **`apps/web/docs/compliance/posture.md`** (Stream 2.6 deliverable).
+> The control-by-control mapping of how each §164.312 requirement is
+> realized in code lives in
+> **`apps/web/docs/operations/hipaa-technical-safeguards.md`**
+> (Stream 2.1 deliverable).
+>
+> This file is preserved for the data-residency / encryption / audit-trail
+> reference tables which the externalized doc summarizes but does not
+> reproduce in full. Internal contributors should use this file; external
+> reviewers (IRB, CISO, prospective enterprise partners) should be sent
+> the doc under `docs/compliance/`.
 
 This document records the data-handling, encryption, access-control,
 audit-trail, and regulatory-fit posture of the unified
