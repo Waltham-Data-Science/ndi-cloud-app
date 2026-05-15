@@ -101,7 +101,14 @@ describe('ElectrodePositionPanel', () => {
     expect(screen.queryByTestId('electrode-map-mock')).not.toBeInTheDocument();
   });
 
-  it('renders an inline error block when the documents query fails', () => {
+  it('renders the no-docs empty state when the documents query fails', () => {
+    // 2026-05-14: changed from a red-alert "couldn't load" message to
+    // the educational EmptyState. The query failing is almost always
+    // "this dataset has no probe_location class" (a 404 from the
+    // tables endpoint), not a network / auth fault — we reached this
+    // panel through the auth gate on a valid dataset id. The old
+    // "may not exist or you may not have access" copy was alarming
+    // + misleading.
     useDocumentsMock.mockReturnValue({
       data: undefined,
       isLoading: false,
@@ -114,9 +121,12 @@ describe('ElectrodePositionPanel', () => {
       </Wrapper>,
     );
 
-    expect(screen.getByRole('alert')).toBeInTheDocument();
-    expect(screen.getByText(/couldn.t load probe locations/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/this dataset has no probe location data/i),
+    ).toBeInTheDocument();
     expect(screen.queryByTestId('electrode-map-mock')).not.toBeInTheDocument();
+    // No red alert anymore — the empty state is a soft `role="status"`.
+    expect(screen.queryByRole('alert')).not.toBeInTheDocument();
   });
 
   it('renders the no-docs empty state when the dataset has zero probe_location documents', () => {

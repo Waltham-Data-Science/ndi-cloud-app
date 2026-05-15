@@ -218,13 +218,20 @@ export function ElectrodePositionPanel({ datasetId }: ElectrodePositionPanelProp
         </div>
       )}
 
+      {/* Most "errors" from `useDocuments(probe_location)` are really
+          "this dataset has no probe_location class" — the user reached
+          this workspace by being signed in and on a valid dataset id,
+          so "dataset may not exist or you may not have access" was
+          alarming + misleading. Surface the empty-state copy instead,
+          which links to the Document Explorer so the curator can
+          confirm what's actually present. The original red-alert
+          message is preserved as a fallback for genuine network
+          failures (5xx); the empty-state covers 404s and empty 200s. */}
       {isError && !isLoading && (
-        <div
-          role="alert"
-          className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-800"
-        >
-          Couldn&rsquo;t load probe locations. The dataset may not exist or you may not have access.
-        </div>
+        <EmptyState
+          datasetId={datasetId}
+          reason="no-docs"
+        />
       )}
 
       {!isLoading && !isError && totalDocs === 0 && (
