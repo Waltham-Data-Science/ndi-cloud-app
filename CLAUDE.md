@@ -2,6 +2,75 @@
 
 Agent context for the unified NDI Cloud monorepo at `ndi-cloud.com`.
 
+---
+
+## 🚨 ORIENTATION — READ THIS FIRST (every session)
+
+You are working across **two sibling repos** under `~/Documents/ndi-projects/`:
+
+| Repo | Path | Role | Hosted on |
+|---|---|---|---|
+| `ndi-cloud-app` | `~/Documents/ndi-projects/ndi-cloud-app` | Next.js 16 frontend + API routes | Vercel |
+| `ndi-data-browser-v2` | `~/Documents/ndi-projects/ndi-data-browser-v2` | FastAPI backend + NDI-python integration | Railway |
+
+**Active branches:**
+
+| Repo | `main` | Draft branch (where we work) |
+|---|---|---|
+| `ndi-cloud-app` | production — **DO NOT push** | `feat/experimental-ask-chat` |
+| `ndi-data-browser-v2` | production — **DO NOT push** | `feat/ndi-python-phase-a` |
+
+### THE LIVE DEPLOYMENT IS SACRED — DO NOT TOUCH
+
+| | Production (untouched) | Experimental / Preview (where we work) |
+|---|---|---|
+| **Frontend URL** | `https://ndi-cloud.com` | `https://ndi-cloud-app-web-git-feat-experiment-c5da7d-ndi-cloud-a83eb4e7.vercel.app` |
+| **Backend URL** | `https://ndb-v2-production.up.railway.app` | `https://ndb-v2-experimental.up.railway.app` |
+| **Railway env id** | `e0c00fb7-ac98-431f-acdb-f4988032160f` | `90101f6e-042b-44d6-8c8d-ec18d43b341b` |
+| **Vercel env scope** | `Production` | `Preview` |
+| **Branch wired to** | `main` of each repo | the draft branches above |
+
+### Sacred rules (non-negotiable)
+
+1. **NEVER push to `main`** on either repo.
+2. **NEVER touch Vercel `Production`-scope env vars.** Touch only `Preview`.
+3. **NEVER touch Railway `production` env.** Touch only `experimental` (env id `90101f6e-...` for ndb-v2). The Railway agent lets you specify env id — always use the experimental one.
+4. **NEVER force-push to `main`.** Force-push on the draft branch is OK if explicitly authorized.
+5. **NEVER skip pre-commit / pre-push hooks** (`--no-verify`, `--no-gpg-sign` are prohibited).
+6. **Author rule (non-negotiable):** every commit must be `audriB <audri@walthamdatascience.com>`. Use `--author="audriB <audri@walthamdatascience.com>"` on every git commit.
+7. **Co-Authored-By trailer required** on every Claude-driven commit: `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`.
+
+### Test credentials (Playwright form-fill ONLY; never persist or echo)
+
+For workspace + chat smoke testing:
+- email: `audri+test@walthamdatascience.com`
+- password: `remhuz-ruwfy4-jiGcen`
+
+Deliberately-scoped test account. Public datasets only — no private datasets attached. Use Playwright `browser_fill_form`; never write to disk; never echo in chat output.
+
+### Verifying before any action
+
+```bash
+# Confirm you're on the right branch
+git branch --show-current
+# cloud-app should print: feat/experimental-ask-chat
+# ndb-v2   should print: feat/ndi-python-phase-a
+
+# Confirm Railway env id you're targeting (in railway-agent calls)
+# experimental ndb-v2: 90101f6e-042b-44d6-8c8d-ec18d43b341b
+# DO NOT use production: e0c00fb7-ac98-431f-acdb-f4988032160f
+```
+
+If you ever find yourself about to operate on `main` or on production Vercel/Railway, **STOP** and ask the user for explicit confirmation.
+
+### Where to read next (pick up cold)
+
+1. **`apps/web/docs/specs/2026-05-16-pre-compact-handoff.md`** — the single source-of-truth status doc. Master-plan completion table, all commits, every finding + disposition, user-side action items. **Read this first after orientation.**
+2. `apps/web/docs/specs/2026-05-15-master-execution-plan.md` — the canonical plan; sub-stream IDs referenced everywhere.
+3. `apps/web/docs/specs/2026-05-15-remaining-backend-work.md` — S4.9/S5.3/S5.8 deferred specs.
+
+---
+
 ## What this repo is
 
 Next.js 16 App Router monorepo. Replaces:
