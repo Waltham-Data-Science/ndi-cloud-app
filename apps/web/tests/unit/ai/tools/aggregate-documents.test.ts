@@ -1,15 +1,22 @@
 /**
- * aggregate_documents — runs ndi_query under the hood, aggregates a
- * numeric field across all matches, returns just the stats.
+ * aggregate_documents — Stream 4.9 (2026-05-16) thin-client tests.
  *
- * Tests cover:
- *   - happy path (single group, scope=single-id)
- *   - groupBy splits by categorical field
- *   - numeric extraction (string-numbers parsed, null/NaN skipped)
- *   - validation (auth scope, missing valueField, bad searchstructure)
- *   - cap behavior (truncated=true when more docs than maxDocs)
- *   - reference building (one per distinct dataset)
- *   - backend-error pass-through
+ * The handler is now a POST-and-translate against
+ * `/api/aggregate-documents` (the Python service shipped in ndb-v2).
+ * The aggregation math itself is unit-tested on the backend (see
+ * `backend/tests/unit/test_aggregate_documents_service.py`). These
+ * tests cover the TS client's contract:
+ *
+ *   - input validation (scope, searchstructure, valueField, groupBy)
+ *   - request body forwards the canonical NDI query DSL
+ *   - response envelope is translated into the LLM-facing
+ *     {groups, references, references_summary, …} shape
+ *   - per-group sample-doc Refs are built when groupBy splits into
+ *     multiple groups; per-dataset Refs are built from
+ *     `datasets_contributing`
+ *   - n=1 fallback surfaces a doc-level Ref
+ *   - empty-result single-id-scope fallback surfaces a dataset Ref
+ *   - upstream errors pass through
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -19,7 +26,7 @@ const TEST_BASE = 'https://api.example.com';
 const DSID_A = 'a'.repeat(24);
 const DSID_B = 'b'.repeat(24);
 
-function mockFetchOnce(body: unknown, status = 200) {
+function mockBackendOnce(body: unknown, status = 200) {
   return vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
     new Response(JSON.stringify(body), {
       status,
@@ -28,7 +35,7 @@ function mockFetchOnce(body: unknown, status = 200) {
   );
 }
 
-describe('aggregate_documents', () => {
+describe('aggregate_documents (thin-client over /api/aggregate-documents)', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
     vi.stubEnv('INTERNAL_API_URL', TEST_BASE);
@@ -39,73 +46,134 @@ describe('aggregate_documents', () => {
     vi.unstubAllEnvs();
   });
 
-  it('aggregates a numeric field into a single group when groupBy is unset', async () => {
-    mockFetchOnce({
-      documents: [
-        { id: 'd1', datasetId: DSID_A, document_class: { class_name: 'subject' }, data: { subject: { weight: 10 } } },
-        { id: 'd2', datasetId: DSID_A, document_class: { class_name: 'subject' }, data: { subject: { weight: 20 } } },
-        { id: 'd3', datasetId: DSID_A, document_class: { class_name: 'subject' }, data: { subject: { weight: 30 } } },
-      ],
-      totalItems: 3,
-      page: 1,
-      pageSize: 1000,
+  it('POSTs to /api/aggregate-documents with the canonical body', async () => {
+    const fetchSpy = mockBackendOnce({
+      total_items: 0,
+      numeric_matches: 0,
+      truncated: false,
+      valueField: 'data.subject.weight',
+      scanned_docs: 0,
+      groups: [],
+      datasets_contributing: [],
     });
+
+    await aggregateDocumentsHandler({
+      scope: 'public',
+      searchstructure: [{ operation: 'isa', param1: 'subject' }],
+      valueField: 'data.subject.weight',
+      groupBy: 'data.subject.strain',
+      maxDocs: 2000,
+    });
+
+    expect(fetchSpy).toHaveBeenCalledOnce();
+    const call = fetchSpy.mock.calls[0]!;
+    expect(call[0]).toBe(`${TEST_BASE}/api/aggregate-documents`);
+    const init = call[1] as RequestInit;
+    expect(init.method).toBe('POST');
+    const body = JSON.parse(init.body as string);
+    expect(body).toEqual({
+      scope: 'public',
+      searchstructure: [{ operation: 'isa', param1: 'subject' }],
+      valueField: 'data.subject.weight',
+      groupBy: 'data.subject.strain',
+      maxDocs: 2000,
+    });
+  });
+
+  it('translates a single-group backend response into the LLM-facing shape', async () => {
+    mockBackendOnce({
+      total_items: 3,
+      numeric_matches: 3,
+      truncated: false,
+      valueField: 'data.subject.weight',
+      scanned_docs: 3,
+      groups: [
+        {
+          group: 'all',
+          count: 3,
+          mean: 20,
+          median: 20,
+          std: 10,
+          min: 10,
+          max: 30,
+          sample_doc: { id: 'd1', dataset_id: DSID_A, class: 'subject' },
+        },
+      ],
+      datasets_contributing: [DSID_A],
+    });
+
     const res = await aggregateDocumentsHandler({
       scope: DSID_A,
       searchstructure: [{ operation: 'isa', param1: 'subject' }],
       valueField: 'data.subject.weight',
     });
+
     if ('error' in res) throw new Error(res.error);
-    expect(res.groups).toHaveLength(1);
-    expect(res.groups[0]).toMatchObject({
-      group: 'all',
-      count: 3,
-      mean: 20,
-      median: 20,
-      min: 10,
-      max: 30,
-    });
-    // sample std for [10,20,30] is sqrt(((10-20)^2+(20-20)^2+(30-20)^2)/2) = sqrt(100) = 10
-    expect(res.groups[0]?.std).toBe(10);
+    expect(res.groups).toEqual([
+      {
+        group: 'all',
+        count: 3,
+        mean: 20,
+        median: 20,
+        std: 10,
+        min: 10,
+        max: 30,
+      },
+    ]);
     expect(res.total_items).toBe(3);
     expect(res.numeric_matches).toBe(3);
     expect(res.truncated).toBe(false);
+    // No groupBy → no per-group sample refs; single dataset gets one chip.
+    expect(res.references).toHaveLength(1);
+    expect(res.references[0]?.doc_id).toBe(DSID_A);
   });
 
-  it('splits stats by groupBy when provided', async () => {
-    mockFetchOnce({
-      documents: [
-        { id: 'd1', datasetId: DSID_A, document_class: { class_name: 'subject' }, data: { subject: { weight: 10, strain: 'A' } } },
-        { id: 'd2', datasetId: DSID_A, document_class: { class_name: 'subject' }, data: { subject: { weight: 20, strain: 'A' } } },
-        { id: 'd3', datasetId: DSID_A, document_class: { class_name: 'subject' }, data: { subject: { weight: 100, strain: 'B' } } },
-        { id: 'd4', datasetId: DSID_A, document_class: { class_name: 'subject' }, data: { subject: { weight: 200, strain: 'B' } } },
+  it('builds per-group sample-doc references when groupBy splits into multiple groups', async () => {
+    mockBackendOnce({
+      total_items: 4,
+      numeric_matches: 4,
+      truncated: false,
+      valueField: 'data.subject.weight',
+      scanned_docs: 4,
+      groups: [
+        {
+          group: 'A',
+          count: 2,
+          mean: 15,
+          median: 15,
+          std: 7.07,
+          min: 10,
+          max: 20,
+          sample_doc: { id: 'd1', dataset_id: DSID_A, class: 'subject' },
+        },
+        {
+          group: 'B',
+          count: 2,
+          mean: 150,
+          median: 150,
+          std: 70.7,
+          min: 100,
+          max: 200,
+          sample_doc: { id: 'd3', dataset_id: DSID_A, class: 'subject' },
+        },
       ],
-      totalItems: 4,
-      page: 1,
-      pageSize: 1000,
+      datasets_contributing: [DSID_A],
     });
+
     const res = await aggregateDocumentsHandler({
       scope: DSID_A,
       searchstructure: [{ operation: 'isa', param1: 'subject' }],
       valueField: 'data.subject.weight',
       groupBy: 'data.subject.strain',
     });
+
     if ('error' in res) throw new Error(res.error);
-    expect(res.groups).toHaveLength(2);
-    const a = res.groups.find((g) => g.group === 'A');
-    const b = res.groups.find((g) => g.group === 'B');
-    expect(a).toMatchObject({ count: 2, mean: 15, min: 10, max: 20 });
-    expect(b).toMatchObject({ count: 2, mean: 150, min: 100, max: 200 });
-    // Per-group sample-doc references: the first contributing doc
-    // for each group should be cited so users can drill into one
-    // concrete A subject vs one concrete B subject.
     const sampleA = res.references.find((r) => r.title?.includes('Sample A'));
     const sampleB = res.references.find((r) => r.title?.includes('Sample B'));
     expect(sampleA?.doc_id).toBe('d1');
     expect(sampleA?.url).toBe(`/datasets/${DSID_A}/documents/d1`);
     expect(sampleB?.doc_id).toBe('d3');
     expect(sampleB?.url).toBe(`/datasets/${DSID_A}/documents/d3`);
-    // Citation transparency.
     expect(res.references_summary).toMatchObject({
       groups_cited: 2,
       truncated: false,
@@ -113,32 +181,111 @@ describe('aggregate_documents', () => {
     });
   });
 
-  it('skips docs with no finite numeric value at valueField', async () => {
-    mockFetchOnce({
-      documents: [
-        { id: 'd1', datasetId: DSID_A, document_class: { class_name: 'x' }, data: { x: { v: 1 } } },
-        { id: 'd2', datasetId: DSID_A, document_class: { class_name: 'x' }, data: { x: { v: null } } },
-        { id: 'd3', datasetId: DSID_A, document_class: { class_name: 'x' }, data: { x: {} } },
-        { id: 'd4', datasetId: DSID_A, document_class: { class_name: 'x' }, data: { x: { v: '42' } } }, // string-numeric coerces
-        { id: 'd5', datasetId: DSID_A, document_class: { class_name: 'x' }, data: { x: { v: 'not-a-number' } } },
-        { id: 'd6', datasetId: DSID_A, document_class: { class_name: 'x' }, data: { x: { v: 9 } } },
+  it('builds one dataset-level reference per distinct contributing dataset', async () => {
+    mockBackendOnce({
+      total_items: 3,
+      numeric_matches: 3,
+      truncated: false,
+      valueField: 'data.subject.weight',
+      scanned_docs: 3,
+      groups: [
+        {
+          group: 'all',
+          count: 3,
+          mean: 20,
+          median: 20,
+          std: 10,
+          min: 10,
+          max: 30,
+          sample_doc: { id: 'd1', dataset_id: DSID_A, class: 'subject' },
+        },
       ],
-      totalItems: 6,
-      page: 1,
-      pageSize: 1000,
+      datasets_contributing: [DSID_A, DSID_B],
     });
+
     const res = await aggregateDocumentsHandler({
-      scope: DSID_A,
-      searchstructure: [{ operation: 'isa', param1: 'x' }],
-      valueField: 'data.x.v',
+      scope: 'public',
+      searchstructure: [{ operation: 'isa', param1: 'subject' }],
+      valueField: 'data.subject.weight',
     });
+
     if ('error' in res) throw new Error(res.error);
-    expect(res.total_items).toBe(6);
-    expect(res.numeric_matches).toBe(3); // d1=1, d4=42, d6=9
-    expect(res.groups[0]).toMatchObject({ count: 3, min: 1, max: 42 });
+    expect(res.references).toHaveLength(2);
+    const dsIds = res.references.map((r) => r.doc_id).sort();
+    expect(dsIds).toEqual([DSID_A, DSID_B].sort());
   });
 
-  it('rejects scope="private" and scope="all" without an upstream call', async () => {
+  it('marks truncated=true when the backend reports a cap hit', async () => {
+    mockBackendOnce({
+      total_items: 5000,
+      numeric_matches: 50,
+      truncated: true,
+      valueField: 'data.subject.weight',
+      scanned_docs: 50,
+      groups: [
+        {
+          group: 'all',
+          count: 50,
+          mean: 25,
+          median: 25,
+          std: 14.4,
+          min: 1,
+          max: 50,
+          sample_doc: { id: 'd0', dataset_id: DSID_A, class: 'subject' },
+        },
+      ],
+      datasets_contributing: [DSID_A],
+    });
+
+    const res = await aggregateDocumentsHandler({
+      scope: DSID_A,
+      searchstructure: [{ operation: 'isa', param1: 'subject' }],
+      valueField: 'data.subject.weight',
+      maxDocs: 50,
+    });
+
+    if ('error' in res) throw new Error(res.error);
+    expect(res.truncated).toBe(true);
+    expect(res.references_summary.truncated).toBe(true);
+    expect(res.references_summary.total_available).toBe(5000);
+  });
+
+  it('surfaces an n=1 fallback reference at doc-level', async () => {
+    mockBackendOnce({
+      total_items: 1,
+      numeric_matches: 1,
+      truncated: false,
+      valueField: 'data.subject.weight',
+      scanned_docs: 1,
+      groups: [
+        {
+          group: 'all',
+          count: 1,
+          mean: 42,
+          median: 42,
+          std: 0,
+          min: 42,
+          max: 42,
+          sample_doc: { id: 'only', dataset_id: DSID_A, class: 'subject' },
+        },
+      ],
+      datasets_contributing: [DSID_A],
+    });
+
+    const res = await aggregateDocumentsHandler({
+      scope: DSID_A,
+      searchstructure: [{ operation: 'isa', param1: 'subject' }],
+      valueField: 'data.subject.weight',
+    });
+
+    if ('error' in res) throw new Error(res.error);
+    // Should include both a dataset-level chip AND the n=1 doc-level chip.
+    const docRef = res.references.find((r) => r.doc_id === 'only');
+    expect(docRef).toBeTruthy();
+    expect(docRef?.url).toBe(`/datasets/${DSID_A}/documents/only`);
+  });
+
+  it('rejects scope="private" and scope="all" without contacting the backend', async () => {
     const fetchSpy = vi.spyOn(globalThis, 'fetch');
     const res = await aggregateDocumentsHandler({
       scope: 'all',
@@ -149,7 +296,7 @@ describe('aggregate_documents', () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it('rejects malformed inputs (missing valueField, unknown op, bad scope)', async () => {
+  it('rejects malformed inputs (missing valueField, unknown op)', async () => {
     let res = await aggregateDocumentsHandler({
       scope: 'public',
       searchstructure: [{ operation: 'isa', param1: 'subject' }],
@@ -166,60 +313,13 @@ describe('aggregate_documents', () => {
     expect(res).toEqual({ error: expect.stringMatching(/operation must be/i) });
   });
 
-  it('marks truncated=true when total_items exceeds the scan cap', async () => {
-    const docs = Array.from({ length: 100 }, (_, i) => ({
-      id: `d${i}`,
-      datasetId: DSID_A,
-      document_class: { class_name: 'subject' },
-      data: { subject: { weight: i + 1 } },
-    }));
-    mockFetchOnce({
-      documents: docs,
-      totalItems: 5000, // backend reports many more than were returned
-      page: 1,
-      pageSize: 1000,
-    });
-    const res = await aggregateDocumentsHandler({
-      scope: DSID_A,
-      searchstructure: [{ operation: 'isa', param1: 'subject' }],
-      valueField: 'data.subject.weight',
-      maxDocs: 50,
-    });
-    if ('error' in res) throw new Error(res.error);
-    expect(res.total_items).toBe(5000);
-    expect(res.numeric_matches).toBe(50);
-    expect(res.truncated).toBe(true);
-  });
-
-  it('builds one reference per distinct dataset across the matched docs', async () => {
-    mockFetchOnce({
-      documents: [
-        { id: 'd1', datasetId: DSID_A, document_class: { class_name: 'subject' }, data: { subject: { weight: 10 } } },
-        { id: 'd2', datasetId: DSID_A, document_class: { class_name: 'subject' }, data: { subject: { weight: 20 } } },
-        { id: 'd3', datasetId: DSID_B, document_class: { class_name: 'subject' }, data: { subject: { weight: 30 } } },
-      ],
-      totalItems: 3,
-      page: 1,
-      pageSize: 1000,
-    });
-    const res = await aggregateDocumentsHandler({
-      scope: 'public',
-      searchstructure: [{ operation: 'isa', param1: 'subject' }],
-      valueField: 'data.subject.weight',
-    });
-    if ('error' in res) throw new Error(res.error);
-    expect(res.references).toHaveLength(2);
-    const dsIds = res.references.map((r) => r.doc_id).sort();
-    expect(dsIds).toEqual([DSID_A, DSID_B].sort());
-  });
-
   it('passes backend errors through with status code', async () => {
-    mockFetchOnce({ detail: 'Query took too long' }, 504);
+    mockBackendOnce({ detail: 'Query took too long' }, 504);
     const res = await aggregateDocumentsHandler({
       scope: 'public',
       searchstructure: [{ operation: 'isa', param1: 'subject' }],
       valueField: 'data.subject.weight',
     });
-    expect(res).toEqual({ error: expect.stringMatching(/Query failed \(504/) });
+    expect(res).toEqual({ error: expect.stringMatching(/Upstream returned 504/) });
   });
 });

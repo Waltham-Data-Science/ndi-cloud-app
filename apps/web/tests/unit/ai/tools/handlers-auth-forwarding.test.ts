@@ -191,11 +191,17 @@ describe('Stream 3.5 handler auth-forwarding contract', () => {
     });
 
     it('aggregate_documents forwards Cookie + requestId (POST path)', async () => {
+      // Stream 4.9 (2026-05-16): handler now POSTs to
+      // /api/aggregate-documents (the new Python service) and expects
+      // the {total_items, numeric_matches, groups, …} envelope.
       const fetchSpy = mockFetchOnce({
-        documents: [],
-        totalItems: 0,
-        page: 1,
-        pageSize: 50,
+        total_items: 0,
+        numeric_matches: 0,
+        truncated: false,
+        valueField: 'data.subject.weight_grams',
+        scanned_docs: 0,
+        groups: [],
+        datasets_contributing: [],
       });
       await aggregateDocumentsHandler(
         {
