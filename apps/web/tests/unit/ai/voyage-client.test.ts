@@ -11,7 +11,7 @@ import { embedQuery, rerank } from '@/lib/ai/voyage-client';
 describe('lib/ai/voyage-client', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
-    vi.stubEnv('VOYAGE_API_KEY', 'pa-test-key-1234567890');
+    vi.stubEnv('VOYAGE_API_KEY', 'pa-test-key-1234567890'); // gitleaks:allow — test stub, not a real key
   });
 
   afterEach(() => {

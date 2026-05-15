@@ -37,7 +37,7 @@ function fakeChunk(id: string, content: string, score = 0.5) {
 describe('semanticSearchDatasetsHandler', () => {
   beforeEach(() => {
     vi.unstubAllEnvs();
-    vi.stubEnv('VOYAGE_API_KEY', 'pa-test-1234567890');
+    vi.stubEnv('VOYAGE_API_KEY', 'pa-test-1234567890'); // gitleaks:allow — test stub, not a real key
     vi.stubEnv('DATABASE_URL', 'postgres://localhost/test');
     mockedEmbed.mockReset();
     mockedRerank.mockReset();
@@ -101,7 +101,7 @@ describe('semanticSearchDatasetsHandler', () => {
 
   it('returns { error } when DATABASE_URL is unset', async () => {
     vi.unstubAllEnvs();
-    vi.stubEnv('VOYAGE_API_KEY', 'pa-test-1234567890');
+    vi.stubEnv('VOYAGE_API_KEY', 'pa-test-1234567890'); // gitleaks:allow — test stub, not a real key
     const result = await semanticSearchDatasetsHandler({ query: 'anything' });
     expect(result).toEqual({ error: expect.stringMatching(/DATABASE_URL/) });
   });
