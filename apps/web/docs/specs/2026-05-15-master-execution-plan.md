@@ -1,5 +1,114 @@
 # Master execution plan — post-2026-05-15
 
+---
+
+## 🚨 ORIENTATION FOR THE POST-COMPACT BOT — READ FIRST
+
+**Stop. Before doing anything, internalize this section.**
+
+### The two repos (linked but separate)
+
+You are working across **two sibling repos** that live under `~/Documents/ndi-projects/`:
+
+| Repo | Path | Role | Hosted on |
+|---|---|---|---|
+| **`ndi-cloud-app`** | `~/Documents/ndi-projects/ndi-cloud-app` | Next.js 16 monorepo — frontend + Next.js API routes + marketing pages | Vercel |
+| **`ndi-data-browser-v2`** | `~/Documents/ndi-projects/ndi-data-browser-v2` | FastAPI backend — NDI-python integration, Postgres + Redis | Railway |
+
+Your shell's working directory is `ndi-cloud-app`. When you need to touch the backend, `cd /Users/audribhowmick/Documents/ndi-projects/ndi-data-browser-v2/...` (absolute paths are safer than `cd` because Bash tool resets cwd between calls).
+
+### The branches we work on
+
+| Repo | Branch | State |
+|---|---|---|
+| `ndi-cloud-app` | **`feat/experimental-ask-chat`** | DRAFT — PR #160 — DO NOT MERGE without explicit user approval |
+| `ndi-data-browser-v2` | **`feat/ndi-python-phase-a`** | DRAFT — DO NOT MERGE |
+
+`main` on both repos = **production**. **DO NOT push to `main` on either repo.** All work goes on the draft branches.
+
+### THE LIVE DEPLOYMENT IS SACRED — DO NOT TOUCH IT
+
+| | Production (untouched) | Experimental / Preview (where we work) |
+|---|---|---|
+| **Frontend URL** | `https://ndi-cloud.com` | `https://ndi-cloud-app-web-git-feat-experiment-c5da7d-ndi-cloud-a83eb4e7.vercel.app` |
+| **Backend URL** | `https://ndb-v2-production.up.railway.app` | `https://ndb-v2-experimental.up.railway.app` |
+| **Railway env** | `production` (env id `e0c00fb7-...`) | `experimental` (env id `90101f6e-...`) |
+| **Vercel env scope** | `Production` | `Preview` |
+| **Branch wired to** | `main` of each repo | the draft branches above |
+
+**Rules of engagement:**
+
+1. **NEVER push to `main`** on either repo.
+2. **NEVER touch Vercel `Production`-scope env vars.** Touch only the `Preview` scope when needed.
+3. **NEVER touch Railway `production` env.** Touch only the `experimental` env. The Railway agent lets you specify env id — always use the experimental one (`90101f6e-042b-44d6-8c8d-ec18d43b341b` for ndb-v2).
+4. **NEVER force-push to `main`.** Force-pushing to the draft branch is OK if explicitly authorized (we did one today for the BFG scrub).
+5. **NEVER skip pre-commit / pre-push hooks** (`--no-verify`, `--no-gpg-sign` are prohibited per CLAUDE.md).
+6. **Author rule (non-negotiable):** every commit must be `audriB <audri@walthamdatascience.com>`. Use `--author="audriB <audri@walthamdatascience.com>"` on every git commit.
+7. **Co-Authored-By trailer required** on every Claude-driven commit: `Co-Authored-By: Claude Opus 4.7 (1M context) <noreply@anthropic.com>`
+
+### How the cross-repo flow works
+
+- Frontend (`ndi-cloud-app`) commit → push to `feat/experimental-ask-chat` → Vercel auto-deploys to the **preview URL** above
+- Backend (`ndi-data-browser-v2`) commit → push to `feat/ndi-python-phase-a` → Railway auto-deploys to the **experimental env**
+- `apps/web/next.config.ts` has a **branch-aware rewrite**: when `VERCEL_GIT_COMMIT_REF === 'feat/experimental-ask-chat'`, `/api/*` rewrites to `https://ndb-v2-experimental.up.railway.app`. This is what makes the preview frontend talk to the experimental backend automatically.
+- **Production** still uses the normal rewrite (`UPSTREAM_API_URL` env var pointing at production Railway). **Untouched.**
+
+### Test credentials (use ONLY via Playwright form-fill; never store/echo)
+
+For workspace + chat smoke testing:
+- email: `audri+test@walthamdatascience.com`
+- password: `remhuz-ruwfy4-jiGcen`
+
+This is a deliberately-scoped test account. It can access the 8 public datasets only — no private datasets attached. Use Playwright `browser_fill_form` to type these into the live preview's login form; never write them to disk, never echo them in chat output.
+
+### What's currently DEPLOYED to production vs to preview
+
+| Feature | In production (main → ndi-cloud.com) | In preview (this branch) |
+|---|---|---|
+| Marketing pages, catalog, dataset detail | ✅ live | ✅ live (same code) |
+| Document Explorer, Tabular Query, summary tables | ✅ live | ✅ live |
+| Workspace at `/my/workspace/[id]` | ❌ not in main | ✅ this branch only |
+| `/ask` chat | ❌ not in main | ✅ this branch only — but stays anonymous-public until Stream 3 |
+| Auth-gated `/my/ask` | ❌ doesn't exist | will be added in Stream 3 |
+| All today's bug fixes (CSRF cookie, EPOCHS chip, electrode copy, etc.) | ❌ not in main | ✅ this branch only |
+
+The plan below WILL touch:
+- The experimental backend's Postgres (e.g. new `chat_usage_events` table) — that's the experimental env, fine
+- Vercel `Preview`-scope env vars (e.g. new Vercel KV connection) — that's preview, fine
+- The branch's source code — that's where we work
+
+The plan will NOT touch:
+- Production cookies, sessions, Cognito users
+- Production Postgres
+- Production Vercel env vars
+- The `main` branch on either repo
+
+### Verifying before any action
+
+When in doubt, run these diagnostics:
+
+```bash
+# Confirm you're on the right branch
+git branch --show-current
+# Should be 'feat/experimental-ask-chat' (cloud-app)
+# or 'feat/ndi-python-phase-a' (ndb-v2)
+
+# Confirm Railway env you're targeting
+# (in railway-agent tool calls, environmentId should be:)
+# experimental ndb-v2: 90101f6e-042b-44d6-8c8d-ec18d43b341b
+# DON'T use production: e0c00fb7-ac98-431f-acdb-f4988032160f
+
+# Confirm the preview URL you're testing
+echo $PLAYWRIGHT_PREVIEW_URL
+# https://ndi-cloud-app-web-git-feat-experiment-c5da7d-ndi-cloud-a83eb4e7.vercel.app
+```
+
+If you ever find yourself about to operate on `main` or on production Vercel/Railway, **STOP** and ask the user for explicit confirmation.
+
+---
+
+## What this plan covers
+
 This is the consolidated plan covering EVERYTHING agreed-on across both audits, the strategic-gap work, and the major architectural shifts confirmed in chat:
 
 1. All tactical fixes from the bug audit (yesterday's micro lens)
