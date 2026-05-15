@@ -208,6 +208,33 @@ export const INVARIANTS: readonly Invariant[] = [
 ];
 
 /**
+ * Subset of `INVARIANTS` that's safe to run from a compact summary
+ * (catalog-card surface): doesn't depend on raw `classCounts` or on
+ * `elements` / `sessions` / `epochs` (which aren't in
+ * `CompactDatasetSummary`).
+ *
+ * Driven by `compactSafe: true` markers below. The catalog uses these
+ * via `checkCompactDatasetHealth`; the cron + admin UI use the full
+ * `checkDatasetHealth` against `DatasetSummaryFacts` from
+ * `/api/datasets/:id/summary` + `/class-counts`.
+ *
+ * Why split: the catalog ships the compact summary inline with every
+ * row of `/api/datasets/published` to keep the catalog page response
+ * < 100 KB. The full summary is 100 KB-class per dataset. We want the
+ * badge to show up on the catalog WITHOUT a per-card fetch, so we
+ * limit catalog-side checks to invariants whose inputs are already
+ * inlined.
+ */
+const COMPACT_SAFE_KEYS = new Set<string>([
+  'totalDocuments_implies_subjects',
+  'species_not_empty_when_subjects_present',
+]);
+
+export function isCompactSafeInvariant(key: string): boolean {
+  return COMPACT_SAFE_KEYS.has(key);
+}
+
+/**
  * Run every invariant against a single dataset's facts. Returns the
  * subset of invariants that failed.
  */
@@ -244,4 +271,33 @@ export function worstSeverity(
   if (violations.some((v) => v.severity === 'critical')) return 'critical';
   if (violations.some((v) => v.severity === 'warning')) return 'warning';
   return 'info';
+}
+
+/**
+ * Run ONLY the compact-safe invariants. Used by the catalog card
+ * surface, where the full `classCounts` + `elements` / `sessions` /
+ * `epochs` aren't inlined in the API response. Always-safe inputs
+ * (totalDocuments, subjects, species) drive these checks.
+ *
+ * Returns an empty array when the facts don't carry enough signal
+ * to evaluate any invariant — never throws, never blocks rendering.
+ */
+export function checkCompactDatasetHealth(
+  facts: DatasetSummaryFacts,
+): Violation[] {
+  const violations: Violation[] = [];
+  for (const inv of INVARIANTS) {
+    if (!COMPACT_SAFE_KEYS.has(inv.key)) continue;
+    const result = inv.check(facts);
+    if (result !== null) {
+      violations.push({
+        key: inv.key,
+        label: inv.label,
+        severity: inv.severity,
+        message: result.message,
+        observation: result.observation,
+      });
+    }
+  }
+  return violations;
 }

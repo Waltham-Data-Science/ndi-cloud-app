@@ -55,18 +55,26 @@ CREATE TABLE IF NOT EXISTS chunks_staging (
     LIKE chunks INCLUDING ALL
 );
 
--- Vector index. IVFFlat with cosine ops + lists=100 matches vh-lab.
--- Reindex required after bulk inserts — the ingest script runs
--- REINDEX inside the same transaction as the version promote.
+-- Vector index. HNSW with cosine ops (Stream 4.10, 2026-05-15 — was
+-- IVFFlat lists=100 prior). HNSW gives sub-millisecond query latency
+-- at our corpus size (~500 chunks today, headroom to ~50K before
+-- tuning matters) versus ~30-80ms with IVFFlat.
+--
+-- Runtime `ef_search` defaults to 40 (HNSW's "how hard to search"
+-- knob). Bumping per-session is fine — see the migration script at
+-- `migrations/2026-05-15-hnsw.sql` for the runtime tuning notes.
+--
+-- Build params (m=16, ef_construction=64) are pgvector's defaults
+-- and well-suited to our embedding count + dimension.
 DROP INDEX IF EXISTS idx_chunks_embedding;
 CREATE INDEX idx_chunks_embedding
-    ON chunks USING ivfflat (embedding vector_cosine_ops)
-    WITH (lists = 100);
+    ON chunks USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
 
 DROP INDEX IF EXISTS idx_chunks_staging_embedding;
 CREATE INDEX idx_chunks_staging_embedding
-    ON chunks_staging USING ivfflat (embedding vector_cosine_ops)
-    WITH (lists = 100);
+    ON chunks_staging USING hnsw (embedding vector_cosine_ops)
+    WITH (m = 16, ef_construction = 64);
 
 -- BM25 / fulltext index over the generated tsvector column.
 CREATE INDEX IF NOT EXISTS idx_chunks_search_vector

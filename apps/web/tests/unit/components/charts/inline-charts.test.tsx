@@ -89,7 +89,37 @@ describe('Inline charts', () => {
 
   describe('Histogram', () => {
     function makeGroup(values: number[], name = 'Saline'): ViolinGroup {
-      return { name, values };
+      // ViolinGroup is a fully-aggregated stats payload; the Histogram
+      // chart only reads `values`, so the stats fields are synthesized
+      // to keep the type checker happy without changing behavior.
+      const n = values.length;
+      const sorted = [...values].sort((a, b) => a - b);
+      const sum = values.reduce((s, v) => s + v, 0);
+      const mean = n > 0 ? sum / n : 0;
+      const median =
+        n > 0
+          ? n % 2 === 1
+            ? sorted[Math.floor(n / 2)]!
+            : (sorted[n / 2 - 1]! + sorted[n / 2]!) / 2
+          : 0;
+      const std =
+        n > 1
+          ? Math.sqrt(
+              values.reduce((s, v) => s + (v - mean) ** 2, 0) / (n - 1),
+            )
+          : 0;
+      return {
+        name,
+        values,
+        count: n,
+        mean,
+        median,
+        std,
+        min: sorted[0] ?? 0,
+        max: sorted[n - 1] ?? 0,
+        q1: sorted[Math.floor(n * 0.25)] ?? 0,
+        q3: sorted[Math.floor(n * 0.75)] ?? 0,
+      };
     }
 
     it('renders an SVG for a single ungrouped distribution', () => {

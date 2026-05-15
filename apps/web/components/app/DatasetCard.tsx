@@ -43,6 +43,7 @@ import type { CSSProperties } from 'react';
 import type { DatasetRecord } from '@/lib/api/datasets';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardBody, CardTitle } from '@/components/ui/Card';
+import { DatasetHealthBadge } from '@/components/datasets/DatasetHealthBadge';
 import { cn } from '@/lib/cn';
 import { isDefaultBranch } from '@/lib/dataset-filters';
 import {
@@ -209,6 +210,12 @@ function DatasetCardInner({
             dataset.publishStatus !== 'published' && (
               <Badge variant="secondary">{dataset.publishStatus}</Badge>
             )}
+          {/* Stream 6.10 (2026-05-15): catalog-side Dataset Health
+              badge. Renders ONLY when the inlined compact summary
+              reveals a violation (e.g. totalDocuments > 0 but
+              subjects = 0, or subjects present with empty species).
+              Renders nothing on healthy datasets. */}
+          <DatasetHealthBadge dataset={dataset} />
         </div>
 
         <CardTitle
