@@ -1,16 +1,33 @@
 # Remaining backend work — design specs
 
 **Date:** 2026-05-15
-**Status:** Design specs for three pieces deferred to a future
-session that needs live data access + meaningful backend
-refactoring.
+**Status update (2026-05-16 afternoon):** S4.9 ✅ shipped + S5.8 ✅
+shipped. Only S5.3 (cross-table joins) remains deferred-with-spec.
+See `apps/web/docs/specs/2026-05-16-pre-compact-handoff.md` for the
+current state.
 
-Items here have crisp scope + acceptance criteria so the next
-session can pick them up cold.
+Original framing kept below for the historical record. Items here
+have crisp scope + acceptance criteria so the next session can pick
+them up cold.
 
 ---
 
-## S4.9 — Move `aggregate-documents.ts` to Railway (Heart-on-Railway compliance)
+## ✅ S4.9 — Move `aggregate-documents.ts` to Railway (Heart-on-Railway compliance) — SHIPPED 2026-05-16
+
+**Status:** Done. Service at `backend/services/aggregate_documents_service.py`,
+router at `backend/routers/aggregate_documents.py`, TS thin client
+rewritten in `apps/web/lib/ndi/tools/aggregate-documents.ts`. 29 new
+pytest unit tests + 9 rewritten vitest tests. Commits:
+- ndb-v2 `bc68b13` — service + router + tests + DI + app.py wiring
+- cloud-app `d9c8c3f` — thin client rewrite + test rewrite
+
+Replay-harness validation is still the user-side acceptance gate.
+
+Original spec below for historical reference.
+
+---
+
+### S4.9 (original spec)
 
 **Why:** ADR-001 codifies that heavy orchestration belongs on
 Railway (Python) rather than Vercel (Node). The
@@ -88,7 +105,29 @@ comparisons sometimes need:
 
 ---
 
-## S5.8 — `/tables/{class}` server-side pagination
+## ✅ S5.8 — `/tables/{class}` server-side pagination — SHIPPED 2026-05-16
+
+**Status:** Done. `summary_table_service.single_class` accepts optional
+`page` + `page_size`; cache stays keyed by `(dataset_id, class_name,
+user_scope)`. FastAPI router exposes `?page=` + `?pageSize=` (max 1000).
+Frontend gains `usePagedDatasetTable` via `useInfiniteQuery`. The chat
+tool `query_documents` reads `totalRows` from the new envelope.
+Backward-compatible: unpaged callers still get the legacy
+`{columns, rows, distinct_summary}` envelope.
+
+12 unit + 3 integration tests + 3 frontend hook tests added. Commits:
+- ndb-v2 `6ec72e9` — service + router + tests
+- cloud-app `a872d4b` — `usePagedDatasetTable` hook + query_documents envelope read
+
+Egress measurement against the live experimental Railway env is the
+user-side acceptance gate (Bhar's ontologyTableRow projection: ~6 MB
+→ ~250 KB at default pageSize=200).
+
+Original spec below for historical reference.
+
+---
+
+### S5.8 (original spec)
 
 **Why:** Today's `/api/datasets/:id/tables/:className` returns
 ALL rows in a single JSON blob. Bhar's

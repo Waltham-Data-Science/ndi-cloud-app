@@ -107,24 +107,34 @@ If you ever find yourself about to operate on `main` or on production Vercel/Rai
 
 ---
 
-## ⏱ Status as of 2026-05-16
+## ⏱ Status as of 2026-05-16 (afternoon update — post-compact remainders)
 
-**51 of 54 sub-streams landed (94%).** Streams 1, 2, 3, 6 are complete.
-Stream 4 has 4.9 deferred with a spec; Stream 5 has 5.3 + 5.8 deferred
-with specs.
+**53 of 54 sub-streams landed (98%).** Streams 1, 2, 3, 4, 6 are
+complete. Stream 5 has 5.3 left (deferred with spec — needs test
+fixture) and 5.6 partial (diagnostic only).
 
 | Stream | Status |
 |---|---|
 | 1 — Tier 1 quick wins | ✅ 9/11 (T1.9 + T1.10 are user actions) |
 | 2 — HIPAA + strategic docs | ✅ 6/6 |
-| 3 — `/ask` → auth-gated | ✅ 6/6 |
-| 4 — Architecture rectifications | ✅ 10/11 (S4.9 deferred with spec) |
-| 5 — Data correctness | ✅ 5/8 (S5.3, S5.6 partial — diagnostic only — and S5.8 deferred with specs) |
+| 3 — `/ask` → auth-gated | ✅ 6/6 (incl. 3.5 ToolContext retrofit done 2026-05-16) |
+| 4 — Architecture rectifications | ✅ 11/11 (S4.9 shipped 2026-05-16 — aggregate-documents now on Railway) |
+| 5 — Data correctness | ✅ 6/8 (S5.8 shipped 2026-05-16; S5.3 still deferred with spec; S5.6 partial) |
 | 6 — Tests + Dataset Health + AI SDK v6 | ✅ 14/14 |
+
+**Post-compact deliveries (2026-05-16 afternoon):**
+- **Stream 3.5 followup** — ToolContext retrofit for 8 chat handlers (`aggregate-documents`, `fetch-image`, `fetch-signal`, `get-document`, `ndi-dataset-overview`, `ndi-query`, `query-documents`, `walk-provenance`) + `makeTools(ctx)` factory in chat-tools.ts + ctx wiring in `/api/ask` route. Anonymous chat unchanged; ctx-aware tool execution unlocked for `/my/ask`.
+- **Stream 3.2 extension** — Voyage cost accumulator. `embedQuery` + `rerank` accept an optional `VoyageUsageAccumulator`; `semantic_search_datasets` threads `ctx.voyageUsage` so `chat_usage_events.voyage_embed_tokens` + `voyage_rerank_units` populate accurately. Pre-fix both columns were 0.
+- **Stream 5.8** — Server-side pagination on `/tables/{class}`. Backend accepts `?page` + `?pageSize` (default 200, max 1000); cache stays keyed by `(dataset_id, class_name, user_scope)` and is sliced in-memory on every response. New `usePagedDatasetTable` infinite-query hook on the frontend. `query_documents` chat tool now reads `totalRows` from the paged envelope. ~95% egress savings on Bhar's `ontologyTableRow`.
+- **Stream 4.9** — Port `aggregate-documents.ts` to Railway (ADR-001 Heart-on-Railway compliance). New Python service + FastAPI router; TS handler is now a thin client (~330 lines incl. Reference-building, down from 496). 29 new pytest tests + 9 rewritten vitest tests verify parity.
+
+Commits:
+- ndb-v2: `6ec72e9` (S5.8 backend), `bc68b13` (S4.9 service + router).
+- cloud-app: `a872d4b` (Stream 3.5 + 3.2 + 5.8 client), `d9c8c3f` (S4.9 thin client).
 
 **Read this for the full picture:** `apps/web/docs/specs/2026-05-16-pre-compact-handoff.md` — covers every sub-stream's status, all commit refs, every finding surfaced + its disposition, user-side action items, and pre-compact orientation.
 
-**Deferred-with-spec items:** `apps/web/docs/specs/2026-05-15-remaining-backend-work.md`.
+**Deferred-with-spec items (now only S5.3):** `apps/web/docs/specs/2026-05-15-remaining-backend-work.md`.
 
 ---
 

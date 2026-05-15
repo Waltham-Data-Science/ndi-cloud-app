@@ -128,3 +128,4 @@ turn.
 | Date | Change |
 |---|---|
 | 2026-05-15 | Initial audit (Stream 3.5 deliverable). Retrofit deferred to Stream 3.1 follow-up. |
+| 2026-05-16 | **Retrofit shipped.** All 8 ctx-needing handlers updated. `makeTools(ctx?)` factory in `chat-tools.ts` builds a ctx-aware registry; `/api/ask` route constructs `ToolContext` from each request (auth headers + requestId + voyage accumulator) and passes `makeTools(ctx)` to streamText. 10 regression tests at `handlers-auth-forwarding.test.ts` lock the contract. Commit cloud-app `a872d4b`. |

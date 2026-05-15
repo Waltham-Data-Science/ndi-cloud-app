@@ -363,3 +363,135 @@ All three need either Railway shell access or live Postgres data inspection to v
 | Date | Change |
 |---|---|
 | 2026-05-16 | Initial handoff — covers all work since the pre-compact baseline at cloud-app `729907d` / ndb-v2 `f3c5b75`. |
+| 2026-05-16 (afternoon) | Post-compact remainders shipped — see addendum below. **53 of 54 sub-streams now landed (98%)**; only S5.3 remains deferred-with-spec. |
+
+---
+
+## 2026-05-16 afternoon addendum — post-compact deliveries
+
+After the morning compaction, four tracked-not-acted-upon items were
+worked through and committed. Summary:
+
+### Stream 3.5 followup — ToolContext retrofit for 8 chat tools
+
+Mechanical retrofit so the 8 handlers that previously dropped auth
+headers now accept `ctx?: ToolContext` and forward `authHeaders`
+(Cookie + X-XSRF-TOKEN) + `requestId` (X-Request-Id) into every
+outbound FastAPI call:
+
+- `aggregate-documents`, `fetch-image`, `fetch-signal`, `get-document`,
+  `ndi-dataset-overview`, `ndi-query`, `query-documents`,
+  `walk-provenance`.
+
+Plus new `makeTools(ctx?)` factory in `chat-tools.ts` and ctx wiring in
+the `/api/ask` route. Anonymous chat is unchanged; auth-aware tool
+execution is now unlocked for `/my/ask` and the workspace surfaces.
+
+10 new regression tests at `handlers-auth-forwarding.test.ts` lock the
+contract. Audit at `apps/web/docs/operations/tenant-aware-tools-audit.md`
+can be marked closed.
+
+### Stream 3.2 extension — Voyage cost accumulator
+
+`embedQuery` and `rerank` in `lib/ai/voyage-client.ts` accept an
+optional `VoyageUsageAccumulator`. `semantic_search_datasets` threads
+`ctx.voyageUsage` to both. The `/api/ask` route pre-allocates the
+accumulator on ctx and reads it in `onFinish` + `onError`. Result:
+`chat_usage_events.voyage_embed_tokens` and `voyage_rerank_units`
+populate accurately (pre-fix both were 0).
+
+5 new tests cover token attribution + rerank-unit counting + the
+short-circuit empty-docs path that correctly skips the bump.
+
+### Stream 5.8 — `/tables/{class}` server-side pagination
+
+Backend (ndb-v2):
+
+- `summary_table_service.single_class` accepts optional `page` +
+  `page_size` kwargs. Both `None` → legacy unpaged envelope (BC for
+  Document Explorer + cron warm-cache). Either supplied → paged
+  envelope `{columns, rows, page, pageSize, totalRows, hasMore,
+  distinct_summary}`.
+- Cache stays keyed by `(dataset_id, class_name, user_scope)` — the
+  FULL row set is cached once, slicing happens in-memory after the
+  cache get/compute.
+- New FastAPI Query params (`?page=`, `?pageSize=`, max 1000) on the
+  `/api/datasets/:id/tables/:class` route.
+- 12 unit tests on the `_paginate` helper + service flow + 3
+  integration tests on the router envelope shape + cache-shared
+  invariant + 400 rejection of out-of-range inputs.
+
+Frontend (cloud-app):
+
+- New `usePagedDatasetTable` hook using TanStack `useInfiniteQuery`
+  with `getNextPageParam: hasMore ? page+1 : undefined`.
+- `query_documents` chat tool now reads `totalRows` from the paged
+  envelope (legacy `total` retained as fallback during the rollout
+  window).
+- Legacy `useSummaryTable` preserved for the Document Explorer's
+  full-set fetch.
+- 3 new tests verify URL construction + walk semantics + skip-when-no-args.
+
+Expected impact: Bhar's `ontologyTableRow` drops from ~6 MB unpaged to
+~250 KB at default pageSize=200. ~95% egress reduction confirmed via
+inspection; the live measurement still needs the experimental
+Railway env to actually deploy + a hand-comparison against the
+production warm-cache numbers (user-side action, not a code task).
+
+### Stream 4.9 — Port aggregate-documents to Railway (ADR-001)
+
+The TS aggregate-documents handler used to walk up to 50K cloud docs
+inside a Vercel function. Now that loop runs on Railway (Python) where
+it belongs.
+
+- `backend/services/aggregate_documents_service.py` — stateless
+  `AggregateDocumentsService.aggregate(req, access_token=...)`.
+  Numeric extraction at dotted `valueField`, optional grouping at
+  `groupBy`, per-group `{count, mean, median, std (N-1), min, max}`,
+  per-group `sample_doc` projection for the client's Reference-chip
+  builder, `datasets_contributing` capped at REFERENCE_CAP=30.
+- `backend/routers/aggregate_documents.py` — POST
+  `/api/aggregate-documents` under the `limit_queries` rate bucket.
+  Auth-optional (anonymous → public scope; authenticated → user's org
+  reach via session).
+- `apps/web/lib/ndi/tools/aggregate-documents.ts` rewritten as a thin
+  client: input validation (zod) + POST + envelope translation +
+  Reference-chip building. ~330 lines incl. comments + reference
+  logic, down from 496.
+
+29 new pytest tests + 9 rewritten vitest tests verify parity. The
+LLM-facing return shape is unchanged — no system-prompt or chat-tool
+description edits required.
+
+### What's still left
+
+- **S5.3** — BehavioralCompare cross-table joins. Deferred-with-spec.
+  Most ambiguous of the original three; needs a concrete fixture
+  (two `ontologyTableRow` groups + a `treatment` doc) before drilling
+  into the DSL shape.
+- **Replay harness** — `tests/replay/` is opt-in via `REPLAY_TARGET_URL`
+  + Anthropic API spend (~$0.50-$1.50/run). User-side gate.
+- **HNSW latency verification** — manual measurement of pgvector
+  IVFFlat → HNSW; procedure in `lib/ai/db/migrations/README.md`.
+- **HIPAA MFA enforcement gap** — Cognito Pool MFA flag + app-side
+  verification. Documented in
+  `apps/web/docs/operations/hipaa-technical-safeguards.md`.
+- **`MeResponse.canUseAsk` schema promotion** — currently
+  `.optional().default(true)` for forward-compat with older FastAPI
+  builds; tighten to plain `z.boolean()` once all envs upgraded.
+
+### Verification snapshot (afternoon)
+
+- **cloud-app**: lint ✓, typecheck ✓, vitest **1,631/1,631** ✓.
+- **ndb-v2**: ruff ✓ (on owned files), pytest **939/939** ✓ + 6 skipped.
+
+### Commit refs (afternoon)
+
+- ndb-v2 `feat/ndi-python-phase-a`:
+  - `6ec72e9` — S5.8 backend pagination
+  - `bc68b13` — S4.9 aggregate-documents service + router
+- cloud-app `feat/experimental-ask-chat`:
+  - `a872d4b` — Stream 3.5 retrofit + 3.2 Voyage accumulator + 5.8 client
+  - `d9c8c3f` — S4.9 thin client
+
+Both branches pushed to origin.
