@@ -25,7 +25,7 @@ import {
   fetchSpikeSummaryHandler,
   fetchSpikeSummaryInput,
 } from '@/lib/ndi/tools/fetch-spike-summary';
-import { authHeadersFromRequest } from '@/lib/ndi/tools/shared';
+import { toolContextFromRequest } from '@/lib/ndi/tools/shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -64,14 +64,15 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     );
   }
 
-  // Forward the caller's auth headers (Cookie + X-XSRF-TOKEN) so
-  // private-dataset reads work — the workspace is auth-gated, so the
-  // panel that hits this endpoint is always logged in. Anonymous chat
-  // path doesn't go through this wrapper, so the only callers we see
-  // are workspace-shaped + already authenticated.
-  const result = await fetchSpikeSummaryHandler(parsed.data, {
-    authHeaders: authHeadersFromRequest(req),
-  });
+  // toolContextFromRequest threads both auth headers (Cookie +
+  // X-XSRF-TOKEN — workspace panels are auth-gated) AND the
+  // inbound `x-request-id` / `x-vercel-id` so cross-boundary tracing
+  // can stitch the user's panel load with the FastAPI log lines.
+  // See ADR-005 + `apps/web/docs/operations/three-surfaces.md`.
+  const result = await fetchSpikeSummaryHandler(
+    parsed.data,
+    toolContextFromRequest(req),
+  );
   // The handler returns either a `ToolError` (`{ error: string }`) or
   // a `FetchSpikeSummaryToolResult` envelope. Both shapes are returned
   // verbatim — the panel discriminates on the presence of `error`.

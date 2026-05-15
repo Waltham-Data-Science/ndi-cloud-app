@@ -24,7 +24,7 @@ import {
   treatmentTimelineHandler,
   treatmentTimelineInput,
 } from '@/lib/ndi/tools/treatment-timeline';
-import { authHeadersFromRequest } from '@/lib/ndi/tools/shared';
+import { toolContextFromRequest } from '@/lib/ndi/tools/shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -61,9 +61,13 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     );
   }
 
-  const result = await treatmentTimelineHandler(parsed.data, {
-    authHeaders: authHeadersFromRequest(req),
-  });
+  // toolContextFromRequest threads auth headers + the inbound
+  // request id so cross-boundary tracing can correlate this call
+  // with the FastAPI log lines for the same panel load.
+  const result = await treatmentTimelineHandler(
+    parsed.data,
+    toolContextFromRequest(req),
+  );
   // The handler returns either a `ToolError` (`{ error: string }`) or
   // a `TreatmentTimelineResult` envelope. Both shapes are returned
   // verbatim — the panel discriminates on the presence of `error`.

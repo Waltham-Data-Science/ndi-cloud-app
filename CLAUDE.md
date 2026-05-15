@@ -4,7 +4,7 @@ Agent context for the unified NDI Cloud monorepo at `ndi-cloud.com`.
 
 ## What this repo is
 
-Next.js 15 App Router monorepo. Replaces:
+Next.js 16 App Router monorepo. Replaces:
 - `Waltham-Data-Science/ndi-web-app-wds` (Pages Router marketing site)
 - `Waltham-Data-Science/ndi-data-browser-v2` frontend (Vite SPA + React Router)
 
@@ -34,7 +34,41 @@ Phases that have landed (chronological, by lead PR):
 - PRs #147–155 — round-4 + round-5 team review polish (Steve's feedback): ontology Name-cell linkification, marketing copy without Crossref branding, dataset-DOI restructure with PMID/PMC pills, QuickPlot column-first redesign, SEO upgrades (Dataset JSON-LD, per-dataset sitemap), Griswold timeout bump, Cite modal copy + Download buttons, test-suite audit (+106 tests)
 - PR #156 — Phase 7 cleanup: restore strict apex-only Origin allowlist (drop pre-cutover hardcode + env-var escape hatch), shipped immediately post-swap
 
+### Current draft branch in flight — `feat/experimental-ask-chat` (PR #160)
+
+**This branch is NOT on production.** It carries the experimental `/ask` chat + the workspace at `/my/workspace/[id]` + several Phase 8 polish items. It is paired with a separate Railway env (`ndb-v2-experimental`) running NDI-python integration Phase A. The branch-aware rewrite in `apps/web/next.config.ts` routes preview deploys of this branch to the experimental Railway env automatically.
+
+**Key in-flight work (post-2026-05-15):**
+- `/ask` chat with 17 tools (psth, fetch_signal, fetch_image, fetch_spike_summary, treatment_timeline, tabular_query, query_documents, walk_provenance, ndi_query, ndi_dataset_overview, get_document, aggregate_documents, lookup_ontology, list_published_datasets, get_dataset, get_dataset_summary, get_dataset_class_counts, get_facets, semantic_search_datasets). Architecture: ADR-001 keeps the heart on Railway; ADR-002 puts every handler in `lib/ndi/tools/`; ADR-003 forwards auth via the optional `ToolContext`.
+- Workspace at `/my/workspace/[id]/...` with 7 panels (DatasetStructure, BehavioralCompare, TreatmentTimeline, SignalViewer, PSTH, SpikeActivity, ElectrodePosition). Each panel ports a chat tool's chart_payload contract into a per-dataset UI.
+- HIPAA-aware compliance posture documented at `apps/web/docs/operations/hipaa-technical-safeguards.md` (control-by-control mapping) + `apps/web/docs/compliance/posture.md` (externalized for IRB / CISO). The legacy `apps/web/COMPLIANCE.md` carries a header pointing to both new docs.
+- Architecture Decision Records at `apps/web/docs/architecture/decisions/001-007` covering heart-on-Railway, shared lib/ndi/, ToolContext, HttpOnly+CSRF, branch-aware preview, pgvector RAG, Vercel KV (Proposed pending Stream 3).
+- Master execution plan at `apps/web/docs/specs/2026-05-15-master-execution-plan.md` — the canonical reference for what's in flight.
+- Security incident closed: 2026-05-13/14 leaked Voyage + Railway-Postgres credentials in a pre-compact doc, rotated + BFG-rewritten + force-pushed. Full timeline at `apps/web/docs/security/2026-05-14-leaked-credentials-resolved.md`. Rollback tag `gitleaks-pre-scrub-2026-05-15-rollback` retained until 2026-05-22 then deleted.
+
+**Rules of engagement for any agent working on this branch (also documented in `apps/web/docs/specs/2026-05-15-master-execution-plan.md` §"Orientation"):**
+
+| Repo | `main` | Draft branch |
+|---|---|---|
+| `ndi-cloud-app` | production (DO NOT push) | `feat/experimental-ask-chat` (this) |
+| `ndi-data-browser-v2` | production (DO NOT push) | `feat/ndi-python-phase-a` |
+
+- Production frontend URL: `https://ndi-cloud.com` (untouched)
+- Preview frontend URL: `https://ndi-cloud-app-web-git-feat-experiment-c5da7d-ndi-cloud-a83eb4e7.vercel.app`
+- Production backend: `https://ndb-v2-production.up.railway.app` (env id `e0c00fb7-ac98-431f-acdb-f4988032160f`)
+- Experimental backend: `https://ndb-v2-experimental.up.railway.app` (env id `90101f6e-042b-44d6-8c8d-ec18d43b341b`)
+- Test creds for Playwright smokes (workspace + chat): `audri+test@walthamdatascience.com / remhuz-ruwfy4-jiGcen` — Playwright form-fill ONLY, never write to disk, never echo in chat output.
+
 Reference plans:
+- **Master execution plan (post-2026-05-15):** `apps/web/docs/specs/2026-05-15-master-execution-plan.md` — the ONE doc to read first when picking up the experimental branch.
+- Architecture audit (2026-05-15): `apps/web/docs/architecture/2026-05-15-architecture-audit.md`
+- Comprehensive bug audit (2026-05-15): `apps/web/docs/specs/2026-05-15-comprehensive-audit.md`
+- Tutorial ground-truth (parity reference): `apps/web/docs/specs/2026-05-14-tutorial-ground-truth.md`
+- HIPAA Technical Safeguards mapping: `apps/web/docs/operations/hipaa-technical-safeguards.md`
+- Compliance posture (externalized): `apps/web/docs/compliance/posture.md`
+- Architecture decision records: `apps/web/docs/architecture/decisions/`
+- Vendor dependencies inventory: `apps/web/docs/operations/vendor-dependencies.md`
+- Disaster recovery runbook: `apps/web/docs/operations/disaster-recovery.md`
 - High-level: see Audri's plan file at `/Users/audribhowmick/.claude/plans/sharded-puzzling-dragonfly.md`
 - Pre-cutover audit (this session): `/Users/audribhowmick/.claude/plans/atomic-sniffing-island.md`
 - Architectural rationale: `ndi-data-browser-v2/docs/plans/cross-repo-unification-2026-04-24.md`
@@ -116,3 +150,5 @@ Phase 7 shipped 2026-05-11. The remaining post-cutover work is non-traffic-movin
 ## Rollback (read this before any production-affecting change)
 
 The full rollback procedure lives outside this repo at `~/Documents/ndi-projects/cutover-keys.md` (owner-only `chmod 600`). It contains the pre-rotation `SESSION_ENCRYPTION_KEY` for restoring decryptable sessions if a Vercel domain detach is ever needed. Move both keys to a vault after the 30-day burn-in.
+
+Operational disaster-recovery runbooks (per failure mode, with RTO + RPO targets) live at `apps/web/docs/operations/disaster-recovery.md`. Five secret-rotation procedures (`SESSION_ENCRYPTION_KEY`, `CSRF_SIGNING_KEY`, `VOYAGE_API_KEY`, `ANTHROPIC_API_KEY`, `DATABASE_URL`) are documented there.

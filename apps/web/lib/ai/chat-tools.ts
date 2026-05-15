@@ -1,10 +1,10 @@
 /**
  * Tool handlers for the experimental /ask chat.
  *
- * Each handler:
+ * Every handler:
  *   - Validates input via zod
- *   - Constructs the FastAPI URL from `INTERNAL_API_URL`
- *   - Times out after TOOL_TIMEOUT_MS
+ *   - Constructs the FastAPI URL from the shared `baseUrl()`
+ *   - Times out after the shared TOOL_TIMEOUT_MS (8s)
  *   - Returns the parsed JSON body OR `{ error: string }` on failure
  *
  * Returning `{ error }` rather than throwing keeps the AI SDK happy —
@@ -13,20 +13,37 @@
  * natural language. The user sees a polite "I couldn't fetch X" rather
  * than a 500.
  *
- * Anonymous-public endpoints only — no cookies, no CSRF, no auth.
+ * # Architecture (2026-05-15)
  *
- * # Citation contract (Day 1 of the scientific-depth plan)
+ * Per ADR-002, every tool handler lives in `apps/web/lib/ndi/tools/` and
+ * accepts an optional `ToolContext` (ADR-003). This file is the
+ * THIN REGISTRATION layer for the AI SDK — each tool entry is a 3-5
+ * line `tool({...})` block whose `execute` calls the imported handler.
+ * Chat callers pass no context (anonymous); workspace wrapper routes
+ * call the same handlers with `ctx.authHeaders` forwarded from the
+ * incoming request.
  *
- * Every tool now returns `references: Reference[]` alongside its data
+ * The Stream 4.3 migration moved the last 5 catalog handlers
+ * (`list_published_datasets`, `get_dataset`, `get_dataset_summary`,
+ * `get_dataset_class_counts`, `get_facets`) from inline definitions
+ * here into per-file `lib/ndi/tools/` modules. Result: zero handlers
+ * remain inline; this file is now purely registration. The only
+ * exception is `semantic_search_datasets`, which is chat-specific
+ * (talks to pgvector + voyage directly, no FastAPI proxy) and stays
+ * here for now.
+ *
+ * # Citation contract
+ *
+ * Every tool returns `references: Reference[]` alongside its data
  * payload. The LLM is instructed (via system-prompt) to render these
  * as `[^N]` footnotes inline with its answer, and the chat UI renders
  * each `[^N]` as a clickable chip that opens the underlying NDI
  * document in a new tab. The contract:
  *
  *   - Catalog tools cite the dataset record (`/datasets/[id]/overview`)
- *   - Document-level tools (Day 2) cite each individual document
+ *   - Document-level tools cite each individual document
  *     (`/datasets/[id]/documents/[docId]`)
- *   - Signal tools (Day 4) cite the binary doc + element + epoch
+ *   - Signal tools cite the binary doc + element + epoch
  *
  * Never invent a reference. If upstream data is missing the field
  * needed to build a reference, omit the reference for that item.
@@ -51,9 +68,25 @@ import {
   fetchImageInput,
 } from '@/lib/ndi/tools/fetch-image';
 import {
+  getDatasetHandler,
+  getDatasetInput,
+} from '@/lib/ndi/tools/get-dataset';
+import {
+  getDatasetClassCountsHandler,
+  getDatasetClassCountsInput,
+} from '@/lib/ndi/tools/get-dataset-class-counts';
+import {
+  getDatasetSummaryHandler,
+  getDatasetSummaryInput,
+} from '@/lib/ndi/tools/get-dataset-summary';
+import {
   getDocumentHandler,
   getDocumentInput,
 } from '@/lib/ndi/tools/get-document';
+import {
+  getFacetsHandler,
+  getFacetsInput,
+} from '@/lib/ndi/tools/get-facets';
 import {
   fetchSignalHandler,
   fetchSignalInput,
@@ -62,6 +95,10 @@ import {
   fetchSpikeSummaryHandler,
   fetchSpikeSummaryInput,
 } from '@/lib/ndi/tools/fetch-spike-summary';
+import {
+  listPublishedDatasetsHandler,
+  listPublishedDatasetsInput,
+} from '@/lib/ndi/tools/list-published-datasets';
 import {
   lookupOntologyHandler,
   lookupOntologyInput,
@@ -94,292 +131,21 @@ import {
 } from '@/lib/ndi/tools/walk-provenance';
 import { embedQuery, rerank } from './voyage-client';
 
-const TOOL_TIMEOUT_MS = 8_000;
-
-type ToolError = { error: string };
-type ToolResult<T> = T | ToolError;
-
-function baseUrl(): string | null {
-  // Branch-aware override (parallels next.config.ts rewrites() AND the
-  // sibling baseUrl in tools/shared.ts): when the Vercel preview is the
-  // experimental Ask chat branch, route SERVER-side tool calls to the
-  // experimental Railway env so the chat sees the same backend as the
-  // browser-side /api/* rewrites do.
-  if (env.VERCEL_GIT_COMMIT_REF === 'feat/experimental-ask-chat') {
-    return 'https://ndb-v2-experimental.up.railway.app';
-  }
-  const u = env.INTERNAL_API_URL;
-  return typeof u === 'string' && u.length > 0 ? u : null;
-}
-
-async function fetchJson<T>(url: string): Promise<ToolResult<T>> {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), TOOL_TIMEOUT_MS);
-  try {
-    const res = await fetch(url, {
-      method: 'GET',
-      headers: { Accept: 'application/json' },
-      signal: controller.signal,
-      // Anonymous-only — no cookies forwarded.
-      cache: 'no-store',
-    });
-    if (!res.ok) {
-      return { error: `Upstream returned ${res.status}` };
-    }
-    return (await res.json()) as T;
-  } catch (e) {
-    if (e instanceof Error && e.name === 'AbortError') {
-      return { error: 'Network timeout (8s exceeded)' };
-    }
-    return { error: 'Network error contacting catalog service' };
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
-/**
- * Type guard — narrow a tool result that may be `{ error }`.
- *
- * Strict shape match: exactly one key called `error` whose value is a
- * string. Avoids false positives when a successful upstream response
- * happens to include its own `error` field as part of its shape (e.g.
- * the signal endpoint's `error: string | null`). See `tools/shared.ts`
- * for the same logic — kept in sync.
- */
-function isErrorResult<T>(r: ToolResult<T>): r is ToolError {
-  if (typeof r !== 'object' || r === null) return false;
-  const keys = Object.keys(r);
-  return (
-    keys.length === 1 &&
-    keys[0] === 'error' &&
-    typeof (r as Record<string, unknown>).error === 'string'
-  );
-}
-
-/**
- * Attach `references` to a successful tool result. Skips silently if
- * the input is an error result (errors don't need citations).
- */
-function withRefs<T extends object>(
-  result: ToolResult<T>,
-  references: Reference[],
-): ToolResult<T & { references: Reference[] }> {
-  if (isErrorResult(result)) return result;
-  return { ...result, references };
-}
-
-// ─── list_published_datasets ────────────────────────────────────────
-
-export const listPublishedDatasetsInput = z.object({
-  page: z.number().int().positive().optional(),
-  pageSize: z.number().int().positive().optional(),
-  query: z.string().min(1).optional(),
-});
-
-interface DatasetListResponse {
-  totalNumber: number;
-  datasets: Array<{ id?: string; _id?: string; name?: string; description?: string }>;
-}
-
-export async function listPublishedDatasetsHandler(
-  input: z.infer<typeof listPublishedDatasetsInput>,
-): Promise<ToolResult<DatasetListResponse & { references: Reference[] }>> {
-  logToolInvocation('list_published_datasets', {
-    page: input?.page,
-    pageSize: input?.pageSize,
-    hasQuery: typeof input?.query === 'string' && input.query.length > 0,
-  });
-  const parsed = listPublishedDatasetsInput.safeParse(input);
-  if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
-
-  const base = baseUrl();
-  if (!base) return { error: 'Catalog service not configured' };
-
-  const page = parsed.data.page ?? 1;
-  const pageSize = Math.min(parsed.data.pageSize ?? 20, 100);
-  let url = `${base}/api/datasets/published?page=${page}&pageSize=${pageSize}`;
-  if (parsed.data.query) {
-    url += `&q=${encodeURIComponent(parsed.data.query)}`;
-  }
-  const result = await fetchJson<DatasetListResponse>(url);
-  if (isErrorResult(result)) return result;
-
-  // One reference per dataset in the response — citation chip links to
-  // the dataset's overview page in the Document Explorer.
-  const references: Reference[] = (result.datasets ?? [])
-    .map((d) => {
-      const id = d.id ?? d._id;
-      if (typeof id !== 'string' || !id) return null;
-      return makeDatasetReference({
-        datasetId: id,
-        title: d.name ?? '(unnamed dataset)',
-        snippet:
-          (d.description ?? '').slice(0, 120) ||
-          'NDI Commons published dataset',
-      });
-    })
-    .filter((r): r is Reference => r !== null);
-
-  return withRefs(result, references);
-}
-
-// ─── get_dataset ────────────────────────────────────────────────────
-
-export const getDatasetInput = z.object({
-  id: z.string().min(1, 'id is required'),
-});
-
-interface DatasetRecord {
-  id?: string;
-  _id?: string;
-  name?: string;
-  description?: string;
-}
-
-export async function getDatasetHandler(
-  input: z.infer<typeof getDatasetInput>,
-): Promise<ToolResult<DatasetRecord & { references: Reference[] }>> {
-  logToolInvocation('get_dataset', { id: input?.id });
-  const parsed = getDatasetInput.safeParse(input);
-  if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
-
-  const base = baseUrl();
-  if (!base) return { error: 'Catalog service not configured' };
-
-  const result = await fetchJson<DatasetRecord>(
-    `${base}/api/datasets/${encodeURIComponent(parsed.data.id)}`,
-  );
-  if (isErrorResult(result)) return result;
-
-  const id = result.id ?? result._id ?? parsed.data.id;
-  const references: Reference[] = [
-    makeDatasetReference({
-      datasetId: id,
-      title: result.name ?? '(unnamed dataset)',
-      snippet: (result.description ?? '').slice(0, 120) || 'Full dataset record',
-    }),
-  ];
-
-  return withRefs(result, references);
-}
-
-// ─── get_dataset_summary ────────────────────────────────────────────
-
-export const getDatasetSummaryInput = getDatasetInput;
-
-interface DatasetSummary {
-  id?: string;
-  _id?: string;
-  name?: string;
-  totalDocuments?: number;
-}
-
-export async function getDatasetSummaryHandler(
-  input: z.infer<typeof getDatasetSummaryInput>,
-): Promise<ToolResult<DatasetSummary & { references: Reference[] }>> {
-  logToolInvocation('get_dataset_summary', { id: input?.id });
-  const parsed = getDatasetSummaryInput.safeParse(input);
-  if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
-
-  const base = baseUrl();
-  if (!base) return { error: 'Catalog service not configured' };
-
-  const datasetId = parsed.data.id;
-  const result = await fetchJson<DatasetSummary>(
-    `${base}/api/datasets/${encodeURIComponent(datasetId)}/summary`,
-  );
-  if (isErrorResult(result)) return result;
-
-  const references: Reference[] = [
-    makeDatasetReference({
-      datasetId,
-      title: result.name ?? '(unnamed dataset)',
-      snippet:
-        typeof result.totalDocuments === 'number'
-          ? `Compact summary — ${result.totalDocuments} documents`
-          : 'Compact dataset summary',
-    }),
-  ];
-
-  return withRefs(result, references);
-}
-
-// ─── get_dataset_class_counts ───────────────────────────────────────
-
-export const getDatasetClassCountsInput = getDatasetInput;
-
-interface ClassCountsResponse {
-  datasetId?: string;
-  totalDocuments?: number;
-  counts?: Record<string, number>;
-}
-
-export async function getDatasetClassCountsHandler(
-  input: z.infer<typeof getDatasetClassCountsInput>,
-): Promise<ToolResult<ClassCountsResponse & { references: Reference[] }>> {
-  logToolInvocation('get_dataset_class_counts', { id: input?.id });
-  const parsed = getDatasetClassCountsInput.safeParse(input);
-  if (!parsed.success) return { error: `Invalid input: ${parsed.error.message}` };
-
-  const base = baseUrl();
-  if (!base) return { error: 'Catalog service not configured' };
-
-  const datasetId = parsed.data.id;
-  const result = await fetchJson<ClassCountsResponse>(
-    `${base}/api/datasets/${encodeURIComponent(datasetId)}/class-counts`,
-  );
-  if (isErrorResult(result)) return result;
-
-  const classNames = Object.keys(result.counts ?? {});
-  const references: Reference[] = [
-    makeDatasetReference({
-      datasetId,
-      title: 'Class counts',
-      snippet:
-        classNames.length > 0
-          ? `Counts across ${classNames.length} document classes`
-          : 'Class-count summary',
-    }),
-  ];
-
-  return withRefs(result, references);
-}
-
-// ─── get_facets ─────────────────────────────────────────────────────
-
-export const getFacetsInput = z.object({});
-
-interface FacetsResponse {
-  species?: unknown[];
-  brainRegions?: unknown[];
-  strains?: unknown[];
-}
-
-export async function getFacetsHandler(
-  _input: z.infer<typeof getFacetsInput>,
-): Promise<ToolResult<FacetsResponse & { references: Reference[] }>> {
-  logToolInvocation('get_facets');
-  const base = baseUrl();
-  if (!base) return { error: 'Catalog service not configured' };
-
-  const result = await fetchJson<FacetsResponse>(`${base}/api/facets`);
-  if (isErrorResult(result)) return result;
-
-  // Facets aren't a single document — they're a cross-catalog
-  // aggregate. The reference points to the data-commons search page,
-  // which is the closest "source" the user can click through to.
-  const references: Reference[] = [
-    {
-      doc_id: 'facets',
-      url: '/datasets',
-      class: 'facets',
-      title: 'Catalog facets (species, brain regions, strains, etc.)',
-      snippet: 'Cross-catalog aggregation surface',
-    },
-  ];
-
-  return withRefs(result, references);
-}
+// Re-export so per-tool files importing from `@/lib/ai/chat-tools` keep
+// working without reaching directly into `@/lib/ndi/references`.
+export {
+  listPublishedDatasetsInput,
+  getDatasetInput,
+  getDatasetSummaryInput,
+  getDatasetClassCountsInput,
+  getFacetsInput,
+  listPublishedDatasetsHandler,
+  getDatasetHandler,
+  getDatasetSummaryHandler,
+  getDatasetClassCountsHandler,
+  getFacetsHandler,
+  makeReference,
+};
 
 // ─── semantic_search_datasets ───────────────────────────────────────
 //
@@ -395,6 +161,11 @@ export async function getFacetsHandler(
 // Returns top-K (default 5, max 10) reranked chunks with their full
 // content + curated metadata, plus one reference per chunk pointing
 // to the dataset's overview page.
+//
+// This handler intentionally stays in chat-tools.ts (not lib/ndi/tools/)
+// because (a) it doesn't talk to the FastAPI proxy — it queries
+// pgvector + voyage directly, and (b) it's chat-specific; the
+// workspace doesn't currently surface semantic search.
 
 export const semanticSearchDatasetsInput = z.object({
   query: z.string().min(1, 'query is required'),
@@ -410,6 +181,9 @@ export interface SemanticSearchResultEntry {
 }
 
 const CANDIDATES_PER_LANE = 20;
+
+type ToolError = { error: string };
+type ToolResult<T> = T | ToolError;
 
 export async function semanticSearchDatasetsHandler(
   input: z.infer<typeof semanticSearchDatasetsInput>,
@@ -529,12 +303,20 @@ function errMsg(e: unknown): string {
   return e instanceof Error ? e.message : String(e);
 }
 
-// Re-export makeReference so per-tool files (Day 2) can import from
-// this module without reaching into ./references directly. Keeps the
-// tool surface ergonomic — one import covers everything.
-export { makeReference };
-
 // ─── Tool definitions for the AI SDK ────────────────────────────────
+//
+// Every entry follows the same shape:
+//
+//   tool({
+//     description: '...',
+//     inputSchema: xInput,
+//     execute: (input) => xHandler(input),
+//   })
+//
+// The `(input) => handler(input)` wrap is REQUIRED for handlers that
+// accept the optional `ToolContext` (ADR-003) because the AI SDK's
+// `execute` callback type is the stricter `(input) => Promise<R>`.
+// Without the wrap, TypeScript rejects the registration.
 
 export const tools = {
   list_published_datasets: tool({
@@ -544,7 +326,7 @@ export const tools = {
       '"what datasets cover X" (set query). Returns a `references` array — ' +
       'cite each dataset you mention via a [^N] footnote.',
     inputSchema: listPublishedDatasetsInput,
-    execute: listPublishedDatasetsHandler,
+    execute: (input) => listPublishedDatasetsHandler(input),
   }),
   get_dataset: tool({
     description:
@@ -552,7 +334,7 @@ export const tools = {
       'contributors, DOI, license, and other metadata. Returns a ' +
       '`references` array citing the dataset record.',
     inputSchema: getDatasetInput,
-    execute: getDatasetHandler,
+    execute: (input) => getDatasetHandler(input),
   }),
   get_dataset_summary: tool({
     description:
@@ -560,7 +342,7 @@ export const tools = {
       'Prefer this over get_dataset when full record is overkill. ' +
       'Returns a `references` array citing the summary.',
     inputSchema: getDatasetSummaryInput,
-    execute: getDatasetSummaryHandler,
+    execute: (input) => getDatasetSummaryHandler(input),
   }),
   get_dataset_class_counts: tool({
     description:
@@ -568,7 +350,7 @@ export const tools = {
       'epochs, probes, subjects). Returns a `references` array citing ' +
       'the dataset.',
     inputSchema: getDatasetClassCountsInput,
-    execute: getDatasetClassCountsHandler,
+    execute: (input) => getDatasetClassCountsHandler(input),
   }),
   get_facets: tool({
     description:
@@ -576,7 +358,7 @@ export const tools = {
       'brain regions, strains, etc. Use for "what species/regions are ' +
       'represented?". Returns a `references` array.',
     inputSchema: getFacetsInput,
-    execute: getFacetsHandler,
+    execute: (input) => getFacetsHandler(input),
   }),
   semantic_search_datasets: tool({
     description:

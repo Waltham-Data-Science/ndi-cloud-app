@@ -9,7 +9,7 @@
 import { type NextRequest } from 'next/server';
 
 import { psthHandler, psthInput } from '@/lib/ndi/tools/psth';
-import { authHeadersFromRequest } from '@/lib/ndi/tools/shared';
+import { toolContextFromRequest } from '@/lib/ndi/tools/shared';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -47,9 +47,12 @@ export async function POST(req: NextRequest, { params }: RouteContext) {
     );
   }
 
-  const result = await psthHandler(parsed.data, {
-    authHeaders: authHeadersFromRequest(req),
-  });
+  // toolContextFromRequest threads both auth headers AND the
+  // inbound `x-request-id` (or Vercel's `x-vercel-id`) through to
+  // the handler so the FastAPI proxy can correlate this call with
+  // the rest of the user's panel-load trace. See ADR-005 +
+  // `apps/web/docs/operations/three-surfaces.md`.
+  const result = await psthHandler(parsed.data, toolContextFromRequest(req));
   // Handler returns either a `ToolError` (`{ error: string }`) or a
   // `PsthToolResult` envelope. Both shapes pass through verbatim —
   // the panel discriminates on the presence of `error`.
