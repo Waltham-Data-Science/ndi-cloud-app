@@ -29,10 +29,29 @@ import {
 
 import { chatModel } from '@/lib/ai/anthropic-client';
 import { askEnabled } from '@/lib/ai/feature-flag';
-import { checkRateLimit } from '@/lib/ai/rate-limit';
+import { checkRateLimitKv } from '@/lib/ai/rate-limit-kv';
 import { SYSTEM_PROMPT } from '@/lib/ai/system-prompt';
 import { tools } from '@/lib/ai/chat-tools';
+import { env } from '@/lib/env';
 import { logEvent } from '@/lib/ndi/tools/shared';
+import { logUsage } from '@/lib/usage/log';
+import type { ProviderUsage } from '@/lib/usage/rate-card';
+
+// Stream 3.2 — single source of truth for the model id we report on
+// each usage event. Update in lockstep with `chatModel()` in
+// `lib/ai/anthropic-client.ts`.
+const ASK_MODEL_ID = 'claude-sonnet-4.x';
+
+function zeroProviderUsage(): ProviderUsage {
+  return {
+    anthropicInputTokens: 0,
+    anthropicOutputTokens: 0,
+    anthropicCacheReadTokens: 0,
+    anthropicCacheCreateTokens: 0,
+    voyageEmbedTokens: 0,
+    voyageRerankUnits: 0,
+  };
+}
 
 export const runtime = 'nodejs';
 // Allow up to 180s. Trajectory of bumps:
@@ -47,6 +66,96 @@ export const runtime = 'nodejs';
 //          long traces. Vercel Pro tier allows up to 300s; 180s
 //          leaves margin to grow.
 export const maxDuration = 180;
+
+/**
+ * Stream 3.4 (2026-05-15) — per-org access verdict for `/api/ask`.
+ *
+ * Returns one of:
+ *   - `{ verdict: 'anonymous' }`            — no session cookie.
+ *   - `{ verdict: 'allowed',   userId, orgId? }` — session ok + canUseAsk=true.
+ *   - `{ verdict: 'forbidden', userId, orgId? }` — session ok + canUseAsk=false.
+ *
+ * Stream 3.2 piggybacks on the same /me call to capture the user-id
+ * we attribute the chat_usage_events row to. The cookie path runs
+ * once per request; both gates read from the same parsed body.
+ *
+ * On any error fetching /me we conservatively allow — preserves the
+ * existing behavior under degraded upstream, fails open during the
+ * experimental phase. Once auth becomes a hard requirement (post
+ * Stream 3.1), this fallback should fail closed.
+ */
+interface AskVerdict {
+  verdict: 'anonymous' | 'allowed' | 'forbidden';
+  userId: string;
+  organizationId: string | null;
+}
+
+async function canUseAskFor(req: Request): Promise<AskVerdict> {
+  const cookie = req.headers.get('cookie');
+  if (!cookie) {
+    return { verdict: 'anonymous', userId: 'anonymous', organizationId: null };
+  }
+  // Resolve the FastAPI base the same way the chat tools do — branch-
+  // aware so the experimental preview hits the experimental Railway env.
+  const upstream =
+    env.VERCEL_GIT_COMMIT_REF === 'feat/experimental-ask-chat'
+      ? 'https://ndb-v2-experimental.up.railway.app'
+      : env.INTERNAL_API_URL;
+  if (!upstream) {
+    return { verdict: 'anonymous', userId: 'anonymous', organizationId: null };
+  }
+  try {
+    const res = await fetch(`${upstream}/api/auth/me`, {
+      headers: { Cookie: cookie, Accept: 'application/json' },
+      cache: 'no-store',
+    });
+    if (res.status === 401) {
+      return { verdict: 'anonymous', userId: 'anonymous', organizationId: null };
+    }
+    if (!res.ok) {
+      // Fail-open during the experimental phase — we don't have a
+      // userId to attribute usage to, so use 'anonymous'.
+      return { verdict: 'allowed', userId: 'anonymous', organizationId: null };
+    }
+    const body = (await res.json()) as {
+      userId?: string;
+      canUseAsk?: boolean;
+      organizationIds?: string[];
+    };
+    const userId =
+      typeof body.userId === 'string' && body.userId
+        ? body.userId
+        : 'anonymous';
+    const organizationId =
+      Array.isArray(body.organizationIds) && body.organizationIds.length > 0
+        ? body.organizationIds[0]!
+        : null;
+    return {
+      verdict: body.canUseAsk === false ? 'forbidden' : 'allowed',
+      userId,
+      organizationId,
+    };
+  } catch {
+    return { verdict: 'allowed', userId: 'anonymous', organizationId: null };
+  }
+}
+
+/**
+ * Stream 3.2 — generate a stable request id for cross-boundary
+ * tracing. Same shape as the FastAPI middleware's regex
+ * (`[A-Za-z0-9_.-]{8,128}`); 16 hex chars is enough entropy at our
+ * request volume.
+ */
+function freshRequestId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID().replace(/-/g, '').slice(0, 16);
+  }
+  let id = '';
+  for (let i = 0; i < 16; i++) {
+    id += Math.floor(Math.random() * 16).toString(16);
+  }
+  return id;
+}
 
 function clientIp(req: Request): string {
   // Vercel sets x-forwarded-for; first hop is the real client.
@@ -64,17 +173,42 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: 'chat_disabled' }, { status: 503 });
   }
 
+  // 1b. Stream 3.4 (2026-05-15) — per-org access gate. The route is
+  // STILL ANONYMOUS-CAPABLE during the experimental phase: requests
+  // without a session cookie skip the gate (the chat is open to
+  // anyone today). Once Stream 3.1 moves /ask under /my/ask the
+  // route becomes auth-required; this gate then enforces the
+  // FastAPI-side ENABLE_ASK_ORG_IDS allowlist (admins always pass;
+  // empty allowlist means "every authenticated user").
+  const askVerdict = await canUseAskFor(req);
+  if (askVerdict.verdict === 'forbidden') {
+    logEvent('ask.feature_not_enabled_for_org', { userId: askVerdict.userId });
+    return Response.json(
+      { error: 'feature_not_enabled' },
+      { status: 403 },
+    );
+  }
+  // Stream 3.2 — userId/organizationId reused by the usage event
+  // emitted from streamText's onFinish/onError below. requestId
+  // correlates with the X-Request-Id propagated through
+  // toolContextFromRequest into FastAPI logs.
+  const userId = askVerdict.userId;
+  const organizationId = askVerdict.organizationId;
+  const requestId = freshRequestId();
+  const askStartedAtMs = Date.now();
+
   // 2. Rate limit (before any expensive parsing).
-  // Two layered limits: 10/10min short-window and 100/day daily cap.
-  // The daily cap bounds worst-case per-IP spend at ~$5/day at 5¢/req,
-  // even when the short-window throughput stays under threshold. See
-  // `lib/ai/rate-limit.ts` for the rationale and Bucket-rejection
-  // logging.
+  // Stream 3.3 (2026-05-15): swapped the per-IP in-memory limiter
+  // for a per-USER KV-backed limiter (with in-memory fallback when
+  // KV isn't configured — local dev / preview). Authenticated chat
+  // keys on userId so multi-instance Vercel deploys honor the cap
+  // across the whole fleet. Anonymous chat still keys on IP.
   const ip = clientIp(req);
-  const rl = checkRateLimit(ip);
+  const subject = userId !== 'anonymous' ? `user:${userId}` : `ip:${ip}`;
+  const rl = await checkRateLimitKv(subject);
   if (!rl.ok) {
     logEvent('ask.rate_limited', {
-      ip,
+      subject,
       bucket: rl.bucket,
       retryAfterSeconds: rl.retryAfterSeconds,
     });
@@ -145,9 +279,14 @@ export async function POST(req: Request): Promise<Response> {
       anthropic: { cacheControl: { type: 'ephemeral' } },
     },
   };
+  // v6 (2026-05-15, Stream 6.12): convertToModelMessages is now
+  // async — destructure the awaited array into the prompt. The
+  // single-line edit the upgrade-inventory doc flagged
+  // (apps/web/docs/specs/2026-05-15-ai-sdk-v6-upgrade-inventory.md).
+  const modelMessages = await convertToModelMessages(messages);
   const result = streamText({
     model: chatModel(),
-    messages: [systemMessage, ...convertToModelMessages(messages)],
+    messages: [systemMessage, ...modelMessages],
     tools,
     // Cap output + tool loops to bound cost. See spec §Cost.
     //
@@ -208,6 +347,61 @@ export async function POST(req: Request): Promise<Response> {
       logEvent('ask.stream.error', {
         errorType: e.name,
         message: e.message.slice(0, 200),
+      });
+      // Stream 3.2 — record the failure as a usage event so the
+      // admin cost-dashboard can attribute failed turns. Anthropic
+      // tokens are zero on a hard error (request didn't bill); we
+      // still want the row for outcome attribution.
+      void logUsage({
+        userId,
+        organizationId: organizationId ?? null,
+        conversationId: null,
+        requestId,
+        startedAt: new Date(askStartedAtMs),
+        durationMs: Date.now() - askStartedAtMs,
+        provider: zeroProviderUsage(),
+        toolCallsCount: 0,
+        toolNames: [],
+        outcome: 'upstream_error',
+        errorKind: e.name,
+        modelId: ASK_MODEL_ID,
+        streamed: true,
+      });
+    },
+    onFinish: ({ usage, finishReason }) => {
+      // Stream 3.2 — happy-path usage event. The AI SDK's
+      // `usage` callback on streamText returns the aggregated
+      // token counts across every tool-loop turn for this
+      // request, mapped here onto the rate-card shape.
+      void logUsage({
+        userId,
+        organizationId: organizationId ?? null,
+        conversationId: null,
+        requestId,
+        startedAt: new Date(askStartedAtMs),
+        durationMs: Date.now() - askStartedAtMs,
+        provider: {
+          anthropicInputTokens: usage?.inputTokens ?? 0,
+          anthropicOutputTokens: usage?.outputTokens ?? 0,
+          anthropicCacheReadTokens: usage?.cachedInputTokens ?? 0,
+          anthropicCacheCreateTokens: 0,
+          // Voyage counts aren't surfaced through streamText.usage
+          // because Voyage is called inside our tool handlers, not
+          // through the AI SDK. Per-tool Voyage accounting is a
+          // future Stream 3.2 extension; for now we leave Voyage
+          // costs at 0 in the row. Total cost still rolls up
+          // Anthropic accurately (the binding cost line item).
+          voyageEmbedTokens: 0,
+          voyageRerankUnits: 0,
+        },
+        toolCallsCount: 0, // populated by a tool-counter follow-up
+        toolNames: [],
+        outcome:
+          finishReason === 'stop' || finishReason === 'tool-calls'
+            ? 'success'
+            : 'aborted',
+        modelId: ASK_MODEL_ID,
+        streamed: true,
       });
     },
   });
