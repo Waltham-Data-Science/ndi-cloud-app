@@ -132,6 +132,10 @@ const EXEMPT_FROM_SUBSTRING_RULE = new Set<string>([
   'ndi_dataset_overview',
   // Takes a datasetId + docId; chains from ndi_query / query_documents.
   'get_document',
+  // Takes datasetId + two typed 24-hex docIds (unit + stimulus). No
+  // fuzzy column / class hint passes through; users are told to
+  // discover the docIds via ndi_query / query_documents first.
+  'psth',
 ]);
 
 /**

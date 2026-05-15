@@ -75,7 +75,7 @@ import { FloatingPanel } from '@/components/ui/FloatingPanel';
 import { Input } from '@/components/ui/Input';
 import { VirtualizedTable } from '@/components/ui/VirtualizedTable';
 import { OntologyPopover } from '@/components/ontology/OntologyPopover';
-import { isOntologyTerm } from '@/components/ontology/ontology-utils';
+import { isOntologyTerm } from '@/lib/ontology/utils';
 import { ontologyUrl } from '@/lib/ontology/url-builder';
 import { safeHref } from '@/lib/safe-href';
 import { ExternalLink } from 'lucide-react';

@@ -66,6 +66,7 @@ import {
   lookupOntologyHandler,
   lookupOntologyInput,
 } from '@/lib/ndi/tools/lookup-ontology';
+import { psthHandler, psthInput } from '@/lib/ndi/tools/psth';
 import {
   ndiDatasetOverviewHandler,
   ndiDatasetOverviewInput,
@@ -949,6 +950,53 @@ export const tools = {
     // workspace's wrapper route at /api/datasets/[id]/spike-summary
     // is what forwards auth headers when present.
     execute: (input) => fetchSpikeSummaryHandler(input),
+  }),
+  psth: tool({
+    description:
+      'Compute a peri-stimulus time histogram (PSTH) for a single ' +
+      'unit aligned to a stimulus train. Use when the user asks ' +
+      "'plot the PSTH', 'spike rate around stimulus', 'firing in " +
+      "response to events', or any other question that needs spike " +
+      'counts binned around event onsets.\n' +
+      '\n' +
+      'INPUTS:\n' +
+      '  - datasetId (required).\n' +
+      '  - unitDocId (required): 24-char hex id of a vmspikesummary ' +
+      'doc carrying the spike train. Find via ndi_query / ' +
+      'query_documents on class vmspikesummary first.\n' +
+      '  - stimulusDocId (required): 24-char hex id of a ' +
+      'stimulus_presentation or stimulus_response doc holding event ' +
+      "timestamps. The backend joins the two by walking depends_on " +
+      'edges.\n' +
+      '  - t0/t1 (optional): window in SECONDS relative to each ' +
+      'stimulus onset. Default backend window is [-0.5, 1.5]. ' +
+      'Negative t0 captures baseline.\n' +
+      '  - binSizeMs (optional, default 20 ms): bin width. 10 ms ' +
+      'for fast sensory responses; 50 ms when smoothing single units.\n' +
+      '  - includeRaster (optional): when true, response includes ' +
+      'per-trial spike times so a raster underlay can render.\n' +
+      '  - title (optional): chart title surfaced in the chart fence.\n' +
+      '\n' +
+      'OUTPUT: chart_payload (kind=psth) with bin centers, counts, ' +
+      'mean firing rate (Hz). When non-empty, you MUST echo the ' +
+      'payload back as a fenced code block tagged "psth-chart":\n' +
+      '\n' +
+      '    ```psth-chart\n' +
+      '    {"datasetId":"...","unitDocId":"...","stimulusDocId":"...","binSizeMs":20,"title":"..."}\n' +
+      '    ```\n' +
+      '\n' +
+      'The chat UI intercepts that fence and renders the PSTH inline. ' +
+      'If empty_hint is present (no_events / decode_failed / etc.), ' +
+      'surface the reason plainly and DO NOT emit the fence with an ' +
+      'empty histogram. Cite both the unit doc and the stimulus doc ' +
+      'via the returned `references` array — every PSTH is a JOIN of ' +
+      'two sources.',
+    inputSchema: psthInput,
+    // Chat runs anonymous-only; drop the optional ToolContext so the
+    // AI SDK's stricter `(input) => Promise<R>` callback shape is
+    // satisfied. The workspace wrapper route at
+    // /api/datasets/[id]/psth forwards auth headers when present.
+    execute: (input) => psthHandler(input),
   }),
   tabular_query: tool({
     description:

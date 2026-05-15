@@ -8,7 +8,7 @@ import {
   isOntologyTerm,
   normalizeOntologyTerm,
   providerFromTerm,
-} from '@/components/ontology/ontology-utils';
+} from '@/lib/ontology/utils';
 
 describe('isOntologyTerm', () => {
   it('matches prefixed ontology IDs', () => {

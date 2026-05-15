@@ -8,7 +8,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useEffect, useMemo, useRef } from 'react';
 
 import { apiFetch } from './client';
-import { normalizeOntologyTerm } from '@/components/ontology/ontology-utils';
+import { normalizeOntologyTerm } from '@/lib/ontology/utils';
 
 /** Backend response shape — matches `OntologyTerm.to_dict()` in
  *  `backend/services/ontology_cache.py`. */

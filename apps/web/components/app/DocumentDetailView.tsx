@@ -38,7 +38,7 @@ import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { Separator } from '@/components/ui/Separator';
 import { formatDateTime } from '@/lib/format';
 import { OntologyPopover } from '@/components/ontology/OntologyPopover';
-import { isOntologyTerm } from '@/components/ontology/ontology-utils';
+import { isOntologyTerm } from '@/lib/ontology/utils';
 
 interface DocumentDetailViewProps {
   document: DocumentSummary;
