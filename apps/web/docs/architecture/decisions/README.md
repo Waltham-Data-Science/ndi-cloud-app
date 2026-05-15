@@ -20,6 +20,7 @@ are sequential within this registry and never reused.
 | 005 | Branch-aware preview routing | Accepted |
 | 006 | pgvector on Railway Postgres for RAG | Accepted |
 | 007 | Vercel KV for rate limiting + per-user cost ceilings | Proposed (Stream 3) |
+| 008 | Incremental SYSTEM_PROMPT decomposition (curated data → JSON) | Accepted |
 
 ## When to write a new ADR
 

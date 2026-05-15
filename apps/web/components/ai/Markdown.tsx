@@ -10,6 +10,7 @@ import { parseFootnotes, type Reference } from '@/lib/ndi/references';
 import { GanttChart, type GanttChartProps } from '@/components/ndi/charts/GanttChart';
 import { ImageChart, type ImageChartProps } from '@/components/ndi/charts/ImageChart';
 import { IsiHistogram, type IsiHistogramProps } from '@/components/ndi/charts/IsiHistogram';
+import { PsthChart, type PsthChartProps } from '@/components/ndi/charts/PsthChart';
 import { SpikeRaster, type SpikeRasterProps } from '@/components/ndi/charts/SpikeRaster';
 import { ViolinChart, type ViolinChartProps } from '@/components/ndi/charts/ViolinChart';
 
@@ -194,6 +195,14 @@ export function Markdown({ content, toolReferences }: Props) {
               const props = parseIsiHistogramPayload(children);
               if (props) return <IsiHistogram {...props} />;
             }
+            // psth-chart fence emitted after the `psth` tool runs.
+            // Added 2026-05-15 (Stream 5 follow-up — Markdown didn't
+            // know about this fence until psth was registered in
+            // chat-tools.ts as part of Stream 1 T1.1).
+            if (className === 'language-psth-chart' && typeof children === 'string') {
+              const props = parsePsthChartPayload(children);
+              if (props) return <PsthChart {...props} />;
+            }
             return (
               <code className="px-1 py-0.5 rounded bg-gray-100 text-[0.92em] font-mono">
                 {children}
@@ -217,7 +226,8 @@ export function Markdown({ content, toolReferences }: Props) {
               childIsGanttChart(children) ??
               childIsImageChart(children) ??
               childIsSpikeRaster(children) ??
-              childIsIsiHistogram(children);
+              childIsIsiHistogram(children) ??
+              childIsPsthChart(children);
             if (onlyChild) return onlyChild;
             return (
               <pre className="my-2 p-3 rounded-md bg-gray-50 border border-gray-200 overflow-x-auto text-[0.92em]">
@@ -418,6 +428,39 @@ function parseIsiHistogramPayload(raw: string): IsiHistogramProps | null {
 
 function childIsIsiHistogram(children: React.ReactNode): React.ReactNode | null {
   return childIsChartComponent(children, 'IsiHistogram');
+}
+
+/**
+ * Parse a ```psth-chart JSON payload into PsthChart props. Requires
+ * the bin-center array + at least one count or rate sample so the
+ * chart has something to plot.
+ */
+function parsePsthChartPayload(raw: string): PsthChartProps | null {
+  try {
+    const obj = JSON.parse(raw.trim()) as Partial<PsthChartProps>;
+    if (
+      typeof obj.datasetId !== 'string' ||
+      obj.datasetId.length === 0 ||
+      !Array.isArray(obj.binCenters) ||
+      obj.binCenters.length === 0 ||
+      typeof obj.binSizeMs !== 'number' ||
+      !Number.isFinite(obj.binSizeMs) ||
+      typeof obj.t0 !== 'number' ||
+      typeof obj.t1 !== 'number'
+    ) {
+      return null;
+    }
+    const hasCounts = Array.isArray(obj.counts) && obj.counts.length > 0;
+    const hasRates = Array.isArray(obj.meanRateHz) && obj.meanRateHz.length > 0;
+    if (!hasCounts && !hasRates) return null;
+    return obj as PsthChartProps;
+  } catch {
+    return null;
+  }
+}
+
+function childIsPsthChart(children: React.ReactNode): React.ReactNode | null {
+  return childIsChartComponent(children, 'PsthChart');
 }
 
 /**

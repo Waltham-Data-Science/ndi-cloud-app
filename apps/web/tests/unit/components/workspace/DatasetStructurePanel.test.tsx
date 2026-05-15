@@ -174,6 +174,10 @@ describe('DatasetStructurePanel', () => {
       isError: false,
     });
 
+    // Stream 5.7 (2026-05-15): zero-document datasets show the
+    // "still being processed" empty state instead of an all-em-dash
+    // chip grid. Test now asserts (a) no crash, (b) the empty state
+    // renders, (c) the link back to the catalog is present.
     expect(() =>
       render(
         <Wrapper>
@@ -181,7 +185,15 @@ describe('DatasetStructurePanel', () => {
         </Wrapper>,
       ),
     ).not.toThrow();
-    expect(screen.getByText('Empty dataset')).toBeInTheDocument();
+    expect(
+      screen.getByTestId('dataset-structure-empty'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/still being processed/i),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole('link', { name: /View the dataset overview/i }),
+    ).toHaveAttribute('href', '/datasets/ds1');
   });
 
   it('wires the Show Code button with toolName=get_dataset_summary', () => {

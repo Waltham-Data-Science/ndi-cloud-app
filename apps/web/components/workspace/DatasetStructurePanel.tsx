@@ -138,7 +138,41 @@ export function DatasetStructurePanel({ datasetId }: DatasetStructurePanelProps)
         </div>
       )}
 
-      {!isLoading && !isError && dataset.data && (
+      {/*
+       * Empty-dataset state (Stream 5.7, 2026-05-15). Some datasets land
+       * in the catalog before ingest finishes (e.g. Chudoba CRF
+       * `6896c654...` was 0-documents on 2026-05-15). Previously every
+       * count chip rendered an em-dash and the page looked broken. Now
+       * we short-circuit with a "still processing" notice so the
+       * workspace surface explains what happened and links back to the
+       * catalog. Matches the catalog-card "Synthesizer enrichment in
+       * progress" badge.
+       */}
+      {!isLoading && !isError && dataset.data && totalDocs === 0 && (
+        <div
+          role="status"
+          className="rounded-md border border-amber-200 bg-amber-50 p-4 text-[13px] text-amber-900"
+          data-testid="dataset-structure-empty"
+        >
+          <p className="font-semibold">This dataset is still being processed.</p>
+          <p className="mt-1 leading-relaxed">
+            Synthesizer enrichment hasn&rsquo;t completed yet — the
+            workspace will populate once the ingest pipeline finishes
+            building per-document summaries. The catalog already has the
+            high-level metadata.
+          </p>
+          <p className="mt-2">
+            <Link
+              href={`/datasets/${datasetId}`}
+              className="font-medium text-amber-900 underline hover:no-underline"
+            >
+              View the dataset overview →
+            </Link>
+          </p>
+        </div>
+      )}
+
+      {!isLoading && !isError && dataset.data && totalDocs !== 0 && (
         <>
           {/* ── Header strip: name + DOI + license + contributors ─────── */}
           <div>

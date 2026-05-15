@@ -834,6 +834,10 @@ export const tools = {
       'source via the returned `references` array. Always describe ' +
       'in plain English what the comparison shows before the fence.',
     inputSchema: tabularQueryInput,
-    execute: tabularQueryHandler,
+    // Chat is anonymous; wrap to drop the optional ToolContext (same
+    // shape as the other auth-aware handlers). The workspace wrapper
+    // at /api/datasets/[id]/tabular-query forwards auth headers + the
+    // x-request-id via toolContextFromRequest when present.
+    execute: (input) => tabularQueryHandler(input),
   }),
 } as const;

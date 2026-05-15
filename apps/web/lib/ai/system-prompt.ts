@@ -13,7 +13,104 @@
  *
  * Tests in `tests/unit/ai/system-prompt.test.ts` assert that the
  * critical clauses don't accidentally get edited out.
+ *
+ * # Stream 4.11 — incremental decomposition (2026-05-15)
+ *
+ * The 273-line hand-tuned prose used to live entirely in a single
+ * template literal. We are starting an incremental decomposition: the
+ * dataset-disambiguation section now lives as structured data in
+ * `dataset-aliases.json` and is rendered at module-load time. See
+ * `apps/web/docs/architecture/decisions/008-system-prompt-decomposition.md`
+ * for the pattern + why the rest of the prompt is staying inline for now.
  */
+import datasetAliases from './dataset-aliases.json';
+
+interface AliasSibling {
+  dataset_id?: string;
+  first_author?: string;
+  short_description?: string;
+  status?: string;
+  route_terms?: string[];
+}
+
+interface AliasLab {
+  lab_label?: string;
+  siblings_only?: boolean;
+  default?: {
+    dataset_id?: string;
+    first_author?: string;
+    short_description?: string;
+    tutorial_truth?: string;
+  };
+  siblings?: AliasSibling[];
+}
+
+interface AliasesData {
+  labs?: Record<string, AliasLab>;
+}
+
+/**
+ * Render the DISAMBIGUATION section from the structured aliases data.
+ *
+ * Emits one paragraph per lab. Labs with a `default` block produce
+ * "default to dataset X (description) — sibling Y is …"; labs marked
+ * `siblings_only` (e.g. Fitzpatrick — two siblings, no canonical
+ * default) produce a "route based on emphasis" prompt with the
+ * siblings inline.
+ *
+ * The output prose is intentionally similar to the hand-tuned text
+ * that was inline pre-decomposition so the existing
+ * system-prompt.test.ts assertions continue to pass without
+ * modification.
+ */
+function renderDisambiguation(aliases: AliasesData): string {
+  const labs = aliases.labs ?? {};
+  const paragraphs: string[] = [];
+  for (const [, lab] of Object.entries(labs)) {
+    if (lab.default && lab.default.dataset_id) {
+      const def = lab.default;
+      const intro =
+        `When the user names ${lab.lab_label ?? 'this lab'} unspecified, ` +
+        `default to dataset ${def.dataset_id}` +
+        (def.first_author ? ` — the ${def.first_author} ` : ' — the ') +
+        `work (${def.short_description ?? def.tutorial_truth ?? 'see catalog'}).`;
+      const siblings = (lab.siblings ?? []).map((s) => {
+        const ds = s.dataset_id ? ` (${s.dataset_id})` : '';
+        const author = s.first_author ? `${s.first_author} ` : '';
+        const status = s.status ? `, ${s.status}` : '';
+        const triggers =
+          (s.route_terms ?? []).length > 0
+            ? ` — only route there if the user explicitly mentions ${(s.route_terms ?? [])
+                .map((t) => `"${t}"`)
+                .join(', ')}`
+            : '';
+        return (
+          `The sibling${ds} is the ${author}${s.short_description ?? ''}${status}${triggers}.`
+        );
+      });
+      paragraphs.push([intro, ...siblings].join(' '));
+    } else if (lab.siblings_only) {
+      const sibsText = (lab.siblings ?? []).map((s) => {
+        const desc = s.short_description ?? '';
+        const terms =
+          (s.route_terms ?? []).length > 0
+            ? ` (${(s.route_terms ?? []).join(' / ')})`
+            : '';
+        return desc + terms;
+      });
+      const intro = `${lab.lab_label ?? 'This lab'} has ${sibsText.length} sibling datasets`;
+      paragraphs.push(
+        `${intro}: ${sibsText.join('; ')}. Route based on the question's emphasis.`,
+      );
+    }
+  }
+  if (paragraphs.length === 0) return '';
+  return `    DISAMBIGUATION: Some labs have MULTIPLE datasets in the catalog.\n` +
+    paragraphs.map((p) => `    ${p}`).join('\n');
+}
+
+const DISAMBIGUATION_PROSE = renderDisambiguation(datasetAliases as AliasesData);
+
 export const SYSTEM_PROMPT = `You are NDI Cloud's data assistant for an experimental "Ask" preview.
 
 SCOPE — you ONLY help users explore PUBLISHED datasets in the NDI Commons.
@@ -58,20 +155,7 @@ TOOL USE — never fabricate.
     name. The semantic index has the displayName + piContext
     sidecar fields that surface PI-name queries to the right
     dataset.
-    DISAMBIGUATION: Some labs have MULTIPLE datasets in the catalog.
-    When the user names Joanna Dabrowska's lab unspecified ("Dabrowska
-    BNST", "the BNST work", "the Dabrowska EPM data"), default to
-    dataset 67f723d574f5f79c6062389d — the Francesconi-et-al BNST
-    work (215 subjects; 606 probes spanning stimulator / patch-Vm /
-    patch-I; 4887 epochs; EPM behavioral tables + Saline/CNO
-    treatment assignments). The sibling dataset
-    6896c654583596300a5b1b17 is the Chudoba-et-al CRF / sex
-    differences / reproductive cycle work — currently in ingest and
-    has zero published documents — only route there if the user
-    explicitly mentions "Chudoba", "CRF neurons", "sex differences",
-    or "reproductive cycle". The Fitzpatrick lab similarly has two
-    sibling tree-shrew datasets (LGN→V1 transformation + premature
-    vision V1 development); route based on the question's emphasis.
+${DISAMBIGUATION_PROSE}
   * DOCUMENT-LEVEL questions about what's INSIDE a specific dataset
     (probes, subjects, elements, epochs, stimuli, treatments,
     spike summaries, tuning curves, etc.) → query_documents with

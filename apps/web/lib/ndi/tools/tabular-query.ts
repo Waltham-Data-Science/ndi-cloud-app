@@ -36,6 +36,7 @@ import {
   fetchJson,
   isErrorResult,
   logToolInvocation,
+  type ToolContext,
   type ToolResult,
 } from './shared';
 
@@ -169,6 +170,7 @@ export interface TabularQueryToolResult {
 
 export async function tabularQueryHandler(
   input: TabularQueryInput,
+  ctx?: ToolContext,
 ): Promise<ToolResult<TabularQueryToolResult>> {
   logToolInvocation('tabular_query', {
     datasetId: input?.datasetId,
@@ -199,7 +201,7 @@ export async function tabularQueryHandler(
   }
 
   const url = `${base}/api/datasets/${encodeURIComponent(datasetId)}/tabular_query?${params}`;
-  const res = await fetchJson<BackendTabularResponse>(url);
+  const res = await fetchJson<BackendTabularResponse>(url, ctx);
   if (isErrorResult(res)) return res;
 
   // Defensive: backend response shape change during a deploy could

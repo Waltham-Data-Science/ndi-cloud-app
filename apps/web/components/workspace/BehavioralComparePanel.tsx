@@ -38,6 +38,13 @@ interface GroupSummary {
   mean: number;
   median: number;
   std: number;
+  // Wider chat-tool fields the wrapper returns. Not currently shown
+  // in the table but kept on the type so future column-addition work
+  // doesn't have to re-thread the shape.
+  min?: number;
+  max?: number;
+  q1?: number;
+  q3?: number;
 }
 
 interface EmptyHint {
@@ -46,6 +53,13 @@ interface EmptyHint {
   available_variable_names?: string[];
 }
 
+/**
+ * Response shape of the workspace wrapper at
+ * `POST /api/datasets/[id]/tabular-query`. Mirrors
+ * `TabularQueryToolResult` from `@/lib/ndi/tools/tabular-query` (kept
+ * structural so this panel doesn't depend on the chat tool's
+ * citation / references typing).
+ */
 interface RunResult {
   groups_summary: GroupSummary[];
   chart_payload: {
@@ -58,59 +72,58 @@ interface RunResult {
   empty_hint?: EmptyHint;
 }
 
-interface BackendResponse {
-  groups: Array<GroupSummary & Record<string, unknown>>;
-  _meta?: {
-    reason?: string;
-    columns?: string[];
-    variable_names?: string[];
-  };
+/**
+ * `{ error: string }` envelope the wrapper returns on
+ * handler-level failures (timeout, upstream 5xx, invalid input).
+ * The wrapper still emits HTTP 200 + this body so the panel
+ * discriminates on the presence of `error` rather than catching.
+ */
+function isErrorEnvelope(r: unknown): r is { error: string } {
+  return (
+    typeof r === 'object' &&
+    r !== null &&
+    'error' in r &&
+    typeof (r as { error: unknown }).error === 'string' &&
+    !('groups_summary' in r)
+  );
 }
 
 async function runTabularQuery(
   datasetId: string,
   args: RunArgs,
 ): Promise<RunResult> {
-  const params = new URLSearchParams({
+  // Migrated 2026-05-15 (Stream 4.1): was a GET to the Vercel
+  // rewrite at /api/datasets/:id/tabular_query (underscore-spelled
+  // FastAPI path). Now POSTs to the dedicated workspace wrapper at
+  // /api/datasets/:id/tabular-query, which forwards auth headers and
+  // the inbound x-request-id via toolContextFromRequest. The wrapper
+  // calls the chat-side tabularQueryHandler so chat + workspace
+  // render identical stats / chart payloads off one code path.
+  const url = `/api/datasets/${encodeURIComponent(datasetId)}/tabular-query`;
+  const body: Record<string, unknown> = {
     variableNameContains: args.variableNameContains,
-  });
-  if (args.groupBy) params.set('groupBy', args.groupBy);
-  if (args.groupOrder && args.groupOrder.length > 0) {
-    params.set('groupOrder', args.groupOrder.join(','));
-  }
-  const url = `/api/datasets/${encodeURIComponent(datasetId)}/tabular_query?${params.toString()}`;
-  const res = await apiFetch<BackendResponse>(url);
-  const groupsRaw = Array.isArray(res.groups) ? res.groups : [];
-  const groups_summary: GroupSummary[] = groupsRaw.map((g) => ({
-    name: g.name,
-    count: g.count,
-    mean: g.mean,
-    median: g.median,
-    std: g.std,
-  }));
-
-  let empty_hint: EmptyHint | undefined;
-  if (groups_summary.length === 0 && res._meta) {
-    empty_hint = {
-      reason: res._meta.reason ?? 'no data returned',
-      ...(res._meta.columns ? { available_columns: res._meta.columns } : {}),
-      ...(res._meta.variable_names
-        ? { available_variable_names: res._meta.variable_names }
-        : {}),
-    };
-  }
-
-  return {
-    groups_summary,
-    chart_payload: {
-      datasetId,
-      variableNameContains: args.variableNameContains,
-      ...(args.groupBy ? { groupBy: args.groupBy } : {}),
-      ...(args.groupOrder ? { groupOrder: args.groupOrder } : {}),
-      ...(args.title ? { title: args.title } : {}),
-    },
-    ...(empty_hint ? { empty_hint } : {}),
   };
+  if (args.groupBy) body.groupBy = args.groupBy;
+  if (args.groupOrder && args.groupOrder.length > 0) {
+    body.groupOrder = args.groupOrder;
+  }
+  if (args.title) body.title = args.title;
+
+  const res = await apiFetch<RunResult | { error: string }>(url, {
+    method: 'POST',
+    body,
+  });
+  if (isErrorEnvelope(res)) {
+    // Map the wrapper's `{ error: "<msg>" }` envelope into a thrown
+    // ApiError so the panel's existing isError branch lights up. The
+    // wrapper has already logged a structured event server-side; this
+    // throw just routes the message into the existing ErrorBox.
+    throw new ApiError(500, {
+      code: 'tabular_query_failed',
+      message: res.error,
+    });
+  }
+  return res;
 }
 
 export function BehavioralComparePanel({

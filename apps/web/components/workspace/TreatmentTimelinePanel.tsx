@@ -1,39 +1,34 @@
 'use client';
 
 /**
- * TreatmentTimelinePanel — the /my workspace's Gantt-style treatment-timeline
- * widget. Mirrors the panel shape established by SignalViewerPanel
- * (parent-built canonical template): header + parameter form + Run button +
- * result area + Show-Code affordance.
+ * TreatmentTimelinePanel — Gantt-style treatment-timeline widget in the
+ * /my workspace. Same backend contract as the chat's
+ * `treatment_timeline` tool (POST /api/datasets/:id/treatment-timeline),
+ * driven by a parameter form here instead of the LLM tool loop.
  *
- * Backend contract — same endpoint the chat-side `treatment_timeline` tool
- * targets, via the FastAPI proxy:
- *
- *   POST /api/datasets/:id/treatment-timeline
- *   body: { title?: string, maxSubjects?: number }
- *   →    TreatmentTimelineResult (see lib/ai/tools/treatment-timeline.ts)
- *
- * On success the response carries:
- *   - `chart_payload` — forwarded straight into <GanttChart/>
- *   - `temporal_source` — drives the "order, not time" warning callout
- *   - `total_subjects` / `total_treatments` — small caption beneath the chart
- *   - `empty_hint` — surfaced plainly when no rows had a usable
- *     subject+treatment pair (the chart never paints in that branch)
- *
- * Loading + error + empty are first-class states; Run is disabled while the
- * mutation is in flight so a double-click doesn't fire two requests. The
- * `Show Code` button only appears once the panel has a successful result —
- * before that, there's no toolCall to export.
+ * Migrated 2026-05-15 (Stream 4.2 + 4.4) to the canonical workspace
+ * panel pattern — PanelCard chrome, `<Button>` for Run, and
+ * `<ShowCodeButton>` for the code-export affordance. Previously this
+ * file used a bespoke `<section>` with raw Tailwind color literals
+ * (`text-gray-900`, `border-gray-200`, `bg-brand-navy`) and `<h2>`,
+ * breaking heading-level outline and visual consistency with the
+ * other 6 panels.
  */
 
 import { useId, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
+import { CalendarRange } from 'lucide-react';
 
 import { apiFetch } from '@/lib/api/client';
-import { GanttChart, type GanttChartItem } from '@/components/ndi/charts/GanttChart';
-import { CodeExportButton } from '@/components/ai/CodeExportButton';
+import {
+  GanttChart,
+  type GanttChartItem,
+} from '@/components/ndi/charts/GanttChart';
+import { PanelCard } from '@/components/workspace/PanelCard';
+import { ShowCodeButton } from '@/components/workspace/ShowCodeButton';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
-import type { RecordedToolCall } from '@/lib/ndi/code-export/types';
 
 export interface TreatmentTimelinePanelProps {
   datasetId: string;
@@ -46,9 +41,9 @@ interface TreatmentTimelineRequestBody {
 
 /**
  * Mirrors `TreatmentTimelineResult` from
- * `lib/ai/tools/treatment-timeline.ts`. Kept structural (only the fields the
- * panel renders) so it stays decoupled from the tool's reference / citation
- * schema — those land in chat, not this workspace surface.
+ * `lib/ndi/tools/treatment-timeline.ts`. Kept structural (only the fields
+ * the panel renders) so it stays decoupled from the tool's reference /
+ * citation schema — those land in chat, not this workspace surface.
  */
 interface TreatmentTimelineResponse {
   chart_payload: {
@@ -69,21 +64,28 @@ interface TreatmentTimelineResponse {
 const DEFAULT_MAX_SUBJECTS = 30;
 const MAX_SUBJECTS_CAP = 100;
 
-export function TreatmentTimelinePanel({ datasetId }: TreatmentTimelinePanelProps) {
+export function TreatmentTimelinePanel({
+  datasetId,
+}: TreatmentTimelinePanelProps) {
+  const headingId = useId();
   const titleId = useId();
   const maxSubjectsId = useId();
   const [title, setTitle] = useState('');
   const [maxSubjects, setMaxSubjects] = useState('');
-  // Hold the last-run params in state (not a ref) so render-time consumers
-  // — specifically the Show-Code button's toolCall arg — read a stable
-  // value that is set together with the mutation result. Storing this in
-  // useState rather than a ref keeps React happy under the
-  // react-hooks/refs rule (refs aren't read during render).
+  // Hold last-run args in state (not a ref) so render-time consumers
+  // — specifically ShowCodeButton — read a stable value that is set
+  // together with the mutation result. useState rather than a ref
+  // keeps React happy under the react-hooks/refs rule (refs aren't
+  // read during render).
   const [lastRunArgs, setLastRunArgs] = useState<
     TreatmentTimelineRequestBody & { datasetId: string }
   >({ datasetId });
 
-  const mutation = useMutation<TreatmentTimelineResponse, Error, TreatmentTimelineRequestBody>({
+  const mutation = useMutation<
+    TreatmentTimelineResponse,
+    Error,
+    TreatmentTimelineRequestBody
+  >({
     mutationFn: (body) =>
       apiFetch<TreatmentTimelineResponse>(
         `/api/datasets/${encodeURIComponent(datasetId)}/treatment-timeline`,
@@ -103,71 +105,93 @@ export function TreatmentTimelinePanel({ datasetId }: TreatmentTimelinePanelProp
   // NB: stale-state reset on dataset change happens at the parent
   // (`workspace-client.tsx` keys the panel stack by `datasetId`).
 
-  return (
-    <section
-      className="rounded-lg border border-gray-200 bg-white p-4"
-      aria-label="Treatment timeline panel"
-      data-testid="treatment-timeline-panel"
-    >
-      <header className="mb-3">
-        <h2 className="text-base font-semibold text-gray-900">Treatment timeline</h2>
-        <p className="text-[13px] text-gray-600">
-          Gantt-style view of which subjects received which treatments and when.
-        </p>
-      </header>
+  const hasSuccess = mutation.isSuccess && mutation.data !== undefined;
 
+  return (
+    <PanelCard
+      icon={CalendarRange}
+      title="Treatment timeline"
+      subtitle="Gantt-style view of which subjects received which treatments and when."
+      headingId={headingId}
+      footer={
+        <>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={onRun}
+            disabled={mutation.isPending}
+            data-testid="treatment-timeline-run"
+          >
+            {mutation.isPending ? 'Running…' : 'Run'}
+          </Button>
+          {hasSuccess && (
+            <ShowCodeButton
+              toolName="treatment_timeline"
+              args={cleanArgs(lastRunArgs)}
+              result={mutation.data}
+            />
+          )}
+        </>
+      }
+    >
       <form
         className="grid gap-3 sm:grid-cols-2"
         onSubmit={(e) => {
           e.preventDefault();
           if (!mutation.isPending) onRun();
         }}
+        data-testid="treatment-timeline-form"
       >
-        <div className="flex flex-col gap-1">
-          <label htmlFor={titleId} className="text-[12px] font-medium text-gray-700">
-            Title <span className="text-gray-400">(optional)</span>
-          </label>
-          <input
-            id={titleId}
-            type="text"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="Chart title"
-            maxLength={160}
-            className="rounded-md border border-gray-300 px-2.5 py-1.5 text-[13px] focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
-          />
-        </div>
-
-        <div className="flex flex-col gap-1">
-          <label htmlFor={maxSubjectsId} className="text-[12px] font-medium text-gray-700">
-            Max subjects <span className="text-gray-400">(default {DEFAULT_MAX_SUBJECTS})</span>
-          </label>
-          <input
-            id={maxSubjectsId}
-            type="number"
-            inputMode="numeric"
-            min={1}
-            max={MAX_SUBJECTS_CAP}
-            step={1}
-            value={maxSubjects}
-            onChange={(e) => setMaxSubjects(e.target.value)}
-            placeholder={String(DEFAULT_MAX_SUBJECTS)}
-            className="rounded-md border border-gray-300 px-2.5 py-1.5 text-[13px] focus:border-brand-blue focus:outline-none focus:ring-1 focus:ring-brand-blue"
-          />
-        </div>
-      </form>
-
-      <div className="mt-3">
-        <button
-          type="button"
-          onClick={onRun}
-          disabled={mutation.isPending}
-          className="rounded-md bg-brand-navy px-3.5 py-1.5 text-[13px] font-medium text-white hover:bg-brand-navy/90 disabled:cursor-not-allowed disabled:opacity-50"
-          data-testid="treatment-timeline-run"
+        <label
+          htmlFor={titleId}
+          className="block text-[13px] font-medium text-fg-primary"
         >
-          {mutation.isPending ? 'Running…' : 'Run'}
-        </button>
-      </div>
+          <span className="flex items-baseline gap-1">
+            <span>Title</span>
+            <span className="text-fg-secondary text-[11.5px] font-normal">
+              (optional)
+            </span>
+          </span>
+          <div className="mt-1">
+            <Input
+              id={titleId}
+              type="text"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Chart title"
+              maxLength={160}
+            />
+          </div>
+        </label>
+
+        <label
+          htmlFor={maxSubjectsId}
+          className="block text-[13px] font-medium text-fg-primary"
+        >
+          <span className="flex items-baseline gap-1">
+            <span>Max subjects</span>
+            <span className="text-fg-secondary text-[11.5px] font-normal">
+              (default {DEFAULT_MAX_SUBJECTS})
+            </span>
+          </span>
+          <div className="mt-1">
+            <Input
+              id={maxSubjectsId}
+              type="number"
+              inputMode="numeric"
+              min={1}
+              max={MAX_SUBJECTS_CAP}
+              step={1}
+              value={maxSubjects}
+              onChange={(e) => setMaxSubjects(e.target.value)}
+              placeholder={String(DEFAULT_MAX_SUBJECTS)}
+            />
+          </div>
+        </label>
+
+        {/* Hidden submit so Enter triggers Run; visible button lives in footer. */}
+        <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
+      </form>
 
       <ResultArea
         isPending={mutation.isPending}
@@ -176,16 +200,7 @@ export function TreatmentTimelinePanel({ datasetId }: TreatmentTimelinePanelProp
         data={mutation.data}
         datasetId={datasetId}
       />
-
-      {mutation.isSuccess && mutation.data && (
-        <div className="mt-3 flex justify-end" data-testid="treatment-timeline-show-code-row">
-          <CodeExportButton
-            toolCalls={buildToolCall(lastRunArgs)}
-            question="Treatment timeline (workspace panel)"
-          />
-        </div>
-      )}
-    </section>
+    </PanelCard>
   );
 }
 
@@ -208,10 +223,20 @@ interface ResultAreaProps {
  * Before any Run has fired (data === undefined, !isPending, !isError) we
  * render nothing — the form alone is enough surface to communicate intent.
  */
-function ResultArea({ isPending, isError, error, data, datasetId }: ResultAreaProps) {
+function ResultArea({
+  isPending,
+  isError,
+  error,
+  data,
+  datasetId,
+}: ResultAreaProps) {
   if (isPending) {
     return (
-      <div className="mt-4 space-y-2" aria-label="Loading treatment timeline" data-testid="treatment-timeline-loading">
+      <div
+        className="space-y-2"
+        aria-label="Loading treatment timeline"
+        data-testid="treatment-timeline-loading"
+      >
         <Skeleton className="h-5 w-1/3" />
         <Skeleton className="h-[240px] w-full" />
       </div>
@@ -222,7 +247,7 @@ function ResultArea({ isPending, isError, error, data, datasetId }: ResultAreaPr
     return (
       <div
         role="alert"
-        className="mt-4 rounded-md border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-900"
+        className="rounded-md border border-amber-200 bg-amber-50 p-3 text-[13px] text-amber-900"
         data-testid="treatment-timeline-error"
       >
         Couldn&apos;t run treatment timeline: {msg}
@@ -231,7 +256,8 @@ function ResultArea({ isPending, isError, error, data, datasetId }: ResultAreaPr
   }
   if (!data) return null;
 
-  const isEmpty = !data.chart_payload?.items || data.chart_payload.items.length === 0;
+  const isEmpty =
+    !data.chart_payload?.items || data.chart_payload.items.length === 0;
   if (isEmpty) {
     // Backend may return `items: []` WITHOUT an `empty_hint` (the hint
     // field is optional on the response schema). Use the hint reason
@@ -241,18 +267,22 @@ function ResultArea({ isPending, isError, error, data, datasetId }: ResultAreaPr
     return (
       <div
         role="status"
-        className="mt-4 rounded-md border border-gray-200 bg-gray-50 p-3 text-[13px] text-gray-700"
+        className="rounded-md border border-border-subtle bg-bg-surface-subtle p-3 text-[13px] text-fg-secondary"
         data-testid="treatment-timeline-empty"
       >
-        <p className="font-medium text-gray-900">No treatment timeline data to display.</p>
-        <p className="mt-1">
-          {data.empty_hint?.reason ?? 'No treatment rows were returned for this dataset.'}
+        <p className="font-medium text-fg-primary">
+          No treatment timeline data to display.
         </p>
-        {data.empty_hint?.available_columns && data.empty_hint.available_columns.length > 0 && (
-          <p className="mt-1 text-[12px] text-gray-500">
-            Available columns: {data.empty_hint.available_columns.join(', ')}
-          </p>
-        )}
+        <p className="mt-1">
+          {data.empty_hint?.reason ??
+            'No treatment rows were returned for this dataset.'}
+        </p>
+        {data.empty_hint?.available_columns &&
+          data.empty_hint.available_columns.length > 0 && (
+            <p className="mt-1 text-[12px] text-fg-muted">
+              Available columns: {data.empty_hint.available_columns.join(', ')}
+            </p>
+          )}
       </div>
     );
   }
@@ -261,7 +291,7 @@ function ResultArea({ isPending, isError, error, data, datasetId }: ResultAreaPr
     data.temporal_source === 'ordinal' || data.temporal_source === 'mixed';
 
   return (
-    <div className="mt-4" data-testid="treatment-timeline-result">
+    <div data-testid="treatment-timeline-result">
       {needsTemporalWarning && (
         <div
           role="status"
@@ -270,8 +300,8 @@ function ResultArea({ isPending, isError, error, data, datasetId }: ResultAreaPr
         >
           <WarnIcon />
           <span>
-            Bars show administration ORDER, not real time — this dataset doesn&apos;t
-            record per-treatment timestamps.
+            Bars show administration ORDER, not real time — this dataset
+            doesn&apos;t record per-treatment timestamps.
           </span>
         </div>
       )}
@@ -283,9 +313,13 @@ function ResultArea({ isPending, isError, error, data, datasetId }: ResultAreaPr
         items={data.chart_payload.items}
       />
 
-      <p className="mt-2 text-[12px] text-gray-500" data-testid="treatment-timeline-meta">
+      <p
+        className="mt-2 text-[12px] text-fg-secondary"
+        data-testid="treatment-timeline-meta"
+      >
         {data.total_subjects} subject{data.total_subjects === 1 ? '' : 's'},{' '}
-        {data.total_treatments} treatment{data.total_treatments === 1 ? '' : 's'}
+        {data.total_treatments} treatment
+        {data.total_treatments === 1 ? '' : 's'}
       </p>
     </div>
   );
@@ -307,19 +341,19 @@ function parseMaxSubjects(raw: string): number | null {
 }
 
 /**
- * Build the synthetic tool-call list passed to CodeExportButton so the
- * generated Python / MATLAB snippet mirrors what this panel ran. The
- * `treatment_timeline` toolName matches the canonical NDI-python wrapper
- * that the code-export generators know how to emit.
+ * Build the cleaned args object passed to ShowCodeButton so the
+ * generated Python / MATLAB snippet mirrors what this panel ran.
+ * Strip empty fields so the snippet doesn't render `title: ""` lines.
  */
-function buildToolCall(
+function cleanArgs(
   args: TreatmentTimelineRequestBody & { datasetId: string },
-): RecordedToolCall[] {
-  // Strip empty fields so the snippet doesn't render `title: ""` lines.
-  const cleanedArgs: Record<string, unknown> = { datasetId: args.datasetId };
-  if (args.title) cleanedArgs.title = args.title;
-  if (typeof args.maxSubjects === 'number') cleanedArgs.maxSubjects = args.maxSubjects;
-  return [{ toolName: 'treatment_timeline', args: cleanedArgs }];
+): Record<string, unknown> {
+  const cleaned: Record<string, unknown> = { datasetId: args.datasetId };
+  if (args.title) cleaned.title = args.title;
+  if (typeof args.maxSubjects === 'number') {
+    cleaned.maxSubjects = args.maxSubjects;
+  }
+  return cleaned;
 }
 
 /**
@@ -342,4 +376,3 @@ function WarnIcon() {
     </svg>
   );
 }
-

@@ -80,8 +80,14 @@ function withClient() {
   return Provider;
 }
 
+// Response shape matches the chat-tool's TabularQueryToolResult (what
+// the workspace wrapper at POST /api/datasets/[id]/tabular-query
+// returns since the Stream 4.1 migration on 2026-05-15). Previously
+// this test mocked the raw FastAPI shape `{ groups, _meta }`; the
+// migration consolidated the panel onto the wrapper that returns
+// `groups_summary` + `chart_payload` + `empty_hint`.
 const successResponse = {
-  groups: [
+  groups_summary: [
     {
       name: 'Saline',
       count: 12,
@@ -105,13 +111,25 @@ const successResponse = {
       q3: 9.2,
     },
   ],
+  chart_payload: {
+    datasetId: 'ds1',
+    variableNameContains: 'ElevatedPlusMaze',
+    groupBy: 'Treatment',
+  },
+  references: [],
 };
 
 const emptyWithHintResponse = {
-  groups: [],
-  _meta: {
+  groups_summary: [],
+  chart_payload: {
+    datasetId: 'ds1',
+    variableNameContains: 'ElevatedPlusMaze',
+    groupBy: 'Treatment',
+  },
+  references: [],
+  empty_hint: {
     reason: "No column matched groupBy 'Treatment' in the selected table.",
-    columns: ['Treatment_CNOOrSaline', 'Strain', 'AnimalID'],
+    available_columns: ['Treatment_CNOOrSaline', 'Strain', 'AnimalID'],
   },
 };
 
@@ -193,11 +211,19 @@ describe('<BehavioralComparePanel/>', () => {
     expect(table).toHaveTextContent('12'); // n for Saline
     expect(table).toHaveTextContent('14'); // n for CNO
 
-    // Verify the call shape — query string carries both filters.
+    // Verify the call shape — POSTs to the workspace wrapper with the
+    // filter payload in the body (post-Stream-4.1 migration; was a
+    // GET with query string before that).
     const calledUrl = mockedApiFetch.mock.calls[0]![0] as string;
-    expect(calledUrl).toContain('/api/datasets/ds1/tabular_query');
-    expect(calledUrl).toContain('variableNameContains=ElevatedPlusMaze');
-    expect(calledUrl).toContain('groupBy=Treatment');
+    const calledOpts = mockedApiFetch.mock.calls[0]![1] as
+      | { method?: string; body?: Record<string, unknown> }
+      | undefined;
+    expect(calledUrl).toBe('/api/datasets/ds1/tabular-query');
+    expect(calledOpts?.method).toBe('POST');
+    expect(calledOpts?.body).toEqual({
+      variableNameContains: 'ElevatedPlusMaze',
+      groupBy: 'Treatment',
+    });
   });
 
   it('renders the column-pick retry buttons when the result is empty with empty_hint', async () => {
@@ -262,8 +288,12 @@ describe('<BehavioralComparePanel/>', () => {
       expect(screen.getByTestId('violin-chart')).toBeInTheDocument(),
     );
     expect(mockedApiFetch).toHaveBeenCalledTimes(2);
-    const secondUrl = mockedApiFetch.mock.calls[1]![0] as string;
-    expect(secondUrl).toContain('groupBy=Treatment_CNOOrSaline');
+    const secondOpts = mockedApiFetch.mock.calls[1]![1] as
+      | { body?: Record<string, unknown> }
+      | undefined;
+    expect(secondOpts?.body).toMatchObject({
+      groupBy: 'Treatment_CNOOrSaline',
+    });
     // The groupBy input was updated so the user can see what fired.
     expect(
       (screen.getByTestId('behavioral-compare-groupby-input') as HTMLInputElement)

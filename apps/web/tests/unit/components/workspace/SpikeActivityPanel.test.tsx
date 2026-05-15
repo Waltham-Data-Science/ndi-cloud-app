@@ -160,7 +160,7 @@ describe('SpikeActivityPanel', () => {
     renderPanel();
 
     expect(
-      screen.getByRole('heading', { level: 2, name: 'Spike activity' }),
+      screen.getByRole('heading', { level: 3, name: 'Spike activity' }),
     ).toBeInTheDocument();
     expect(screen.getByLabelText('Unit document ID')).toBeInTheDocument();
     expect(screen.getByLabelText('Unit name match')).toBeInTheDocument();

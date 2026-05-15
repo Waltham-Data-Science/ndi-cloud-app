@@ -5,18 +5,28 @@
  * histogram rendering. Mirrors the chat's `fetch_spike_summary` tool
  * loop but driven by a parameter form + Run button instead of an LLM
  * tool call. Embeds the same `SpikeRaster` + `IsiHistogram` chart
- * components the chat uses; offers a "Show code" affordance that opens
- * the existing Python/MATLAB modal with a single recorded tool call.
+ * components the chat uses.
+ *
+ * Migrated 2026-05-15 (Stream 4.2 + 4.4) to the canonical workspace
+ * panel pattern — PanelCard chrome, `<Button>` for Run, and
+ * `<ShowCodeButton>` for the code-export affordance. Previously this
+ * file used a bespoke `<section>` with `<h2>` (instead of PanelCard's
+ * `<h3>`) and a raw `<button>` styled with literal Tailwind class
+ * strings, breaking heading-level outline and visual consistency
+ * with the other 6 panels.
  */
 import { useMutation } from '@tanstack/react-query';
 import { useCallback, useId, useMemo, useState } from 'react';
+import { Activity } from 'lucide-react';
 
-import { CodeExportButton } from '@/components/ai/CodeExportButton';
 import { IsiHistogram } from '@/components/ndi/charts/IsiHistogram';
 import { SpikeRaster } from '@/components/ndi/charts/SpikeRaster';
+import { PanelCard } from '@/components/workspace/PanelCard';
+import { ShowCodeButton } from '@/components/workspace/ShowCodeButton';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ApiError, apiFetch } from '@/lib/api/client';
-import type { RecordedToolCall } from '@/lib/ndi/code-export/types';
 import type {
   FetchSpikeSummaryToolResult,
   IsiHistogramChartPayload,
@@ -61,13 +71,9 @@ const MAX_UNITS_HARD = 50;
 // returns both shapes under a 200 response. `ToolError` shape is
 // `{ error: string }` (single key); the success shape always carries
 // at least `kind` and `chart_payloads`.
-type EndpointResponse =
-  | FetchSpikeSummaryToolResult
-  | { error: string };
+type EndpointResponse = FetchSpikeSummaryToolResult | { error: string };
 
-function isErrorEnvelope(
-  r: EndpointResponse,
-): r is { error: string } {
+function isErrorEnvelope(r: EndpointResponse): r is { error: string } {
   return (
     typeof r === 'object' &&
     r !== null &&
@@ -105,7 +111,8 @@ function buildRequestBody(form: FormState): RequestBody | { error: string } {
   if (t0Trim || t1Trim) {
     if (!t0Trim || !t1Trim) {
       return {
-        error: 'Time window requires both start and end values (or leave both blank).',
+        error:
+          'Time window requires both start and end values (or leave both blank).',
       };
     }
     const t0 = Number(t0Trim);
@@ -127,11 +134,7 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
   const [formError, setFormError] = useState<string | null>(null);
   const headingId = useId();
 
-  const mutation = useMutation<
-    EndpointResponse,
-    Error,
-    RequestBody
-  >({
+  const mutation = useMutation<EndpointResponse, Error, RequestBody>({
     mutationFn: (body) =>
       apiFetch<EndpointResponse>(
         `/api/datasets/${encodeURIComponent(datasetId)}/spike-summary`,
@@ -168,29 +171,13 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
     return { raster, isi, result };
   }, [mutation.data]);
 
-  const recordedToolCalls: RecordedToolCall[] = useMemo(() => {
-    // Construct the args object the chat tool would have seen. We
-    // include the resolved request body (only the fields actually
-    // sent) plus `datasetId` so the snippet renders a reproducible
-    // call.
+  // Args for ShowCodeButton — only meaningful after a successful run.
+  const showCodeArgs = useMemo(() => {
     const built = buildRequestBody(form);
-    const args =
-      'error' in built
-        ? { datasetId, kind: form.kind }
-        : { datasetId, ...built };
-    return [
-      {
-        toolName: 'fetch_spike_summary',
-        args,
-        // `result` is undefined when no run has happened yet OR when
-        // the run errored — the snippet generator handles both.
-        result:
-          mutation.data && !isErrorEnvelope(mutation.data)
-            ? mutation.data
-            : undefined,
-      },
-    ];
-  }, [form, datasetId, mutation.data]);
+    return 'error' in built
+      ? { datasetId, kind: form.kind }
+      : { datasetId, ...built };
+  }, [form, datasetId]);
 
   const errorEnvelope =
     mutation.data && isErrorEnvelope(mutation.data) ? mutation.data : null;
@@ -200,22 +187,36 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
     !!mutation.data && !isErrorEnvelope(mutation.data) && !mutation.isPending;
 
   return (
-    <section
-      aria-labelledby={headingId}
-      className="rounded-md border border-border-strong bg-bg-surface p-4"
+    <PanelCard
+      icon={Activity}
+      title="Spike activity"
+      subtitle="Spike raster + ISI histogram for one or more units."
+      headingId={headingId}
+      footer={
+        <>
+          <Button
+            type="button"
+            variant="primary"
+            onClick={handleRun}
+            disabled={isRunning}
+            data-testid="spike-activity-run"
+          >
+            {isRunning ? 'Running…' : 'Run'}
+          </Button>
+          {hasSuccessRun && (
+            <ShowCodeButton
+              toolName="fetch_spike_summary"
+              args={showCodeArgs}
+              result={
+                mutation.data && !isErrorEnvelope(mutation.data)
+                  ? mutation.data
+                  : undefined
+              }
+            />
+          )}
+        </>
+      }
     >
-      <header className="mb-3">
-        <h2
-          id={headingId}
-          className="text-base font-semibold text-fg-primary m-0"
-        >
-          Spike activity
-        </h2>
-        <p className="text-sm text-fg-muted m-0 mt-1">
-          Spike raster + ISI histogram for one or more units.
-        </p>
-      </header>
-
       <ParameterForm
         form={form}
         onChange={setForm}
@@ -224,7 +225,7 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
         onRun={handleRun}
       />
 
-      <div className="mt-4">
+      <div>
         {isRunning && <LoadingState />}
         {!isRunning && networkError && (
           <ErrorBlock message={describeNetworkError(networkError)} />
@@ -234,7 +235,9 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
         )}
         {!isRunning &&
           charts &&
-          (charts.raster || charts.isi || charts.result.unit_count === 0) && (
+          (charts.raster ||
+            charts.isi ||
+            charts.result.unit_count === 0) && (
             <ResultArea
               datasetId={datasetId}
               raster={charts.raster}
@@ -244,13 +247,7 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
             />
           )}
       </div>
-
-      {hasSuccessRun && (
-        <div className="mt-4 flex justify-end">
-          <CodeExportButton toolCalls={recordedToolCalls} />
-        </div>
-      )}
-    </section>
+    </PanelCard>
   );
 }
 
@@ -344,15 +341,9 @@ function ParameterForm({
 
       {formError && <ErrorBlock message={formError} />}
 
-      <div className="flex justify-end">
-        <button
-          type="submit"
-          disabled={disabled}
-          className="rounded-md bg-ndi-teal px-4 py-2 text-sm font-semibold text-white hover:bg-ndi-teal/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-ndi-teal/40 disabled:cursor-not-allowed disabled:opacity-60"
-        >
-          {disabled ? 'Running…' : 'Run'}
-        </button>
-      </div>
+      {/* Hidden submit so Enter triggers Run; visible button lives in the
+          PanelCard footer. */}
+      <button type="submit" className="hidden" aria-hidden tabIndex={-1} />
     </form>
   );
 }
@@ -378,13 +369,10 @@ function TextField({
   const hintId = hint ? `${id}-hint` : undefined;
   return (
     <div className="flex flex-col gap-1">
-      <label
-        htmlFor={id}
-        className="text-sm font-semibold text-fg-primary"
-      >
+      <label htmlFor={id} className="text-[13px] font-medium text-fg-primary">
         {label}
       </label>
-      <input
+      <Input
         id={id}
         type="text"
         inputMode={inputMode}
@@ -392,10 +380,9 @@ function TextField({
         onChange={(e) => onChange(e.target.value)}
         placeholder={placeholder}
         aria-describedby={hintId}
-        className="w-full rounded-md border border-border-strong bg-bg-surface px-3 py-2 text-sm text-fg-primary focus:outline-none focus:border-ndi-teal focus:ring-2 focus:ring-ndi-teal/20 disabled:cursor-not-allowed disabled:opacity-50"
       />
       {hint && (
-        <p id={hintId} className="text-xs text-fg-muted m-0">
+        <p id={hintId} className="text-[11.5px] text-fg-secondary m-0">
           {hint}
         </p>
       )}
@@ -425,7 +412,7 @@ function RadioGroup({
 }: RadioGroupProps) {
   return (
     <div className="flex flex-col gap-1">
-      <span className="text-sm font-semibold text-fg-primary">{label}</span>
+      <span className="text-[13px] font-medium text-fg-primary">{label}</span>
       <div
         role="radiogroup"
         aria-label={label}
@@ -434,7 +421,7 @@ function RadioGroup({
         {options.map((opt) => (
           <label
             key={opt.value}
-            className="inline-flex items-center gap-2 text-sm text-fg-primary cursor-pointer"
+            className="inline-flex items-center gap-2 text-[13px] text-fg-primary cursor-pointer"
           >
             <input
               type="radio"
@@ -471,7 +458,7 @@ function ErrorBlock({ message }: { message: string }) {
   return (
     <div
       role="alert"
-      className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+      className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[13px] text-red-800"
     >
       {message}
     </div>
@@ -497,7 +484,7 @@ function ResultArea({
     return (
       <div
         role="status"
-        className="rounded-md border border-border-subtle bg-bg-surface-subtle px-3 py-4 text-sm text-fg-muted"
+        className="rounded-md border border-border-subtle bg-bg-surface-subtle px-3 py-4 text-[13px] text-fg-secondary"
       >
         {emptyHint ?? 'No spike data matched these parameters.'}
       </div>
