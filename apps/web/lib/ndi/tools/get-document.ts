@@ -24,6 +24,7 @@ import {
   fetchJson,
   isErrorResult,
   logToolInvocation,
+  type ToolContext,
   type ToolResult,
 } from './shared';
 
@@ -66,6 +67,7 @@ export interface GetDocumentToolResult {
 
 export async function getDocumentHandler(
   input: GetDocumentInput,
+  ctx?: ToolContext,
 ): Promise<ToolResult<GetDocumentToolResult>> {
   logToolInvocation('get_document', {
     datasetId: input?.datasetId,
@@ -83,7 +85,7 @@ export async function getDocumentHandler(
   const url =
     `${base}/api/datasets/${encodeURIComponent(datasetId)}/documents/` +
     `${encodeURIComponent(docId)}`;
-  const res = await fetchJson<BackendDocumentResponse>(url);
+  const res = await fetchJson<BackendDocumentResponse>(url, ctx);
   if (isErrorResult(res)) return res;
 
   const cls =

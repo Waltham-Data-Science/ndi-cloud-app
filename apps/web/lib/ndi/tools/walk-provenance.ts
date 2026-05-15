@@ -40,6 +40,7 @@ import {
   fetchJson,
   isErrorResult,
   logToolInvocation,
+  type ToolContext,
   type ToolResult,
 } from './shared';
 
@@ -91,6 +92,7 @@ interface RawDependenciesResponse {
 
 export async function walkProvenanceHandler(
   input: z.infer<typeof walkProvenanceInput>,
+  ctx?: ToolContext,
 ): Promise<ToolResult<WalkProvenanceResult>> {
   logToolInvocation('walk_provenance', {
     datasetId: (input as { datasetId?: unknown } | undefined)?.datasetId,
@@ -110,7 +112,7 @@ export async function walkProvenanceHandler(
     `${base}/api/datasets/${encodeURIComponent(datasetId)}` +
     `/documents/${encodeURIComponent(docId)}/dependencies?depth=${maxDepth}`;
 
-  const result = await fetchJson<RawDependenciesResponse>(url);
+  const result = await fetchJson<RawDependenciesResponse>(url, ctx);
   if (isErrorResult(result)) return result;
 
   const nodes: ProvenanceNode[] = (result.nodes ?? [])

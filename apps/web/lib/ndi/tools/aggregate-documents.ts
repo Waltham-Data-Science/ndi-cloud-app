@@ -26,7 +26,13 @@ import {
   makeReference,
   type Reference,
 } from '../references';
-import { baseUrl, logToolInvocation, type ToolResult } from './shared';
+import {
+  baseUrl,
+  freshRequestId,
+  logToolInvocation,
+  type ToolContext,
+  type ToolResult,
+} from './shared';
 
 const TOOL_TIMEOUT_MS = 15_000; // longer than ndi_query — we may fetch up to 50k docs
 
@@ -193,6 +199,7 @@ export interface AggregateDocumentsToolResult {
 
 export async function aggregateDocumentsHandler(
   input: AggregateDocumentsInput,
+  ctx?: ToolContext,
 ): Promise<ToolResult<AggregateDocumentsToolResult>> {
   logToolInvocation('aggregate_documents', {
     scope: input?.scope,
@@ -234,6 +241,11 @@ export async function aggregateDocumentsHandler(
         // OriginEnforcementMiddleware rejects POST without an
         // allowlisted Origin. ndi-cloud.com is on the default list.
         Origin: 'https://ndi-cloud.com',
+        // Match postJson contract: always emit X-Request-Id; forward
+        // auth headers when the caller supplied a context (workspace
+        // wrapper routes pass them; the chat path leaves ctx undefined).
+        'X-Request-Id': ctx?.requestId ?? freshRequestId(),
+        ...(ctx?.authHeaders ?? {}),
       },
       signal: controller.signal,
       cache: 'no-store',

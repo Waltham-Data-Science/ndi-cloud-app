@@ -64,7 +64,15 @@ describe('ndi_dataset_overview', () => {
       `${TEST_BASE}/api/datasets/${DSID}/ndi_overview`,
       expect.objectContaining({
         method: 'GET',
-        headers: { Accept: 'application/json' },
+        // Stream 3.5 followup (2026-05-16): handler now matches the
+        // postJson/fetchJson contract — emits an X-Request-Id on every
+        // outbound call so the FastAPI request_id middleware can correlate.
+        // Assert via objectContaining so the test doesn't break when
+        // additional contract headers are introduced.
+        headers: expect.objectContaining({
+          Accept: 'application/json',
+          'X-Request-Id': expect.stringMatching(/^[a-f0-9]{16}$/),
+        }),
       }),
     );
     if ('error' in res) throw new Error(res.error);

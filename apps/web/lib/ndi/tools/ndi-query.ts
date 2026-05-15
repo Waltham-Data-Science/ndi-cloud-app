@@ -37,7 +37,9 @@ import {
 } from '../references';
 import {
   baseUrl,
+  freshRequestId,
   logToolInvocation,
+  type ToolContext,
   type ToolError,
   type ToolResult,
 } from './shared';
@@ -238,6 +240,7 @@ export interface NdiQueryToolResult {
 
 export async function ndiQueryHandler(
   input: NdiQueryInput,
+  ctx?: ToolContext,
 ): Promise<ToolResult<NdiQueryToolResult>> {
   logToolInvocation('ndi_query', {
     scope: input?.scope,
@@ -280,6 +283,12 @@ export async function ndiQueryHandler(
         // call 403s on the experimental Railway env. Caught by chatbot
         // accuracy E2E audit, 2026-05-14.
         Origin: 'https://ndi-cloud.com',
+        // Match postJson contract: always emit X-Request-Id; forward
+        // auth headers when the caller supplied a context (workspace
+        // wrapper routes pass them; the chat path leaves ctx undefined
+        // and the call goes anonymous).
+        'X-Request-Id': ctx?.requestId ?? freshRequestId(),
+        ...(ctx?.authHeaders ?? {}),
       },
       signal: controller.signal,
       cache: 'no-store',

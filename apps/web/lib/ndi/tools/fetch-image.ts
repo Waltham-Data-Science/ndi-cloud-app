@@ -38,6 +38,7 @@ import {
   fetchJson,
   isErrorResult,
   logToolInvocation,
+  type ToolContext,
   type ToolResult,
 } from './shared';
 
@@ -117,6 +118,7 @@ export interface FetchImageResult {
 
 export async function fetchImageHandler(
   input: FetchImageInput,
+  ctx?: ToolContext,
 ): Promise<ToolResult<FetchImageResult>> {
   logToolInvocation('fetch_image', {
     datasetId: input?.datasetId,
@@ -137,7 +139,7 @@ export async function fetchImageHandler(
     `${base}/api/datasets/${encodeURIComponent(datasetId)}` +
     `/documents/${encodeURIComponent(docId)}/image?${qs.toString()}`;
 
-  const result = await fetchJson<BackendImageResponse>(url);
+  const result = await fetchJson<BackendImageResponse>(url, ctx);
   if (isErrorResult(result)) return result;
 
   // Backend soft-error envelope — passes through as a typed tool error

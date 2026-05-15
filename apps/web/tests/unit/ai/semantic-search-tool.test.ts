@@ -65,7 +65,11 @@ describe('semanticSearchDatasetsHandler', () => {
     });
 
     if ('error' in result) throw new Error(`expected success, got ${result.error}`);
-    expect(mockedEmbed).toHaveBeenCalledWith('rodent behavior');
+    // Stream 3.2 extension (2026-05-16): handler now passes the
+    // per-request Voyage usage accumulator as the second arg. With no
+    // ctx provided, that's `undefined` — but vi.fn() observes the
+    // arity in call args. Assert against the full call shape.
+    expect(mockedEmbed).toHaveBeenCalledWith('rodent behavior', undefined);
     expect(mockedHybridSearch).toHaveBeenCalledWith(
       'rodent behavior',
       expect.any(Array),
@@ -75,6 +79,7 @@ describe('semanticSearchDatasetsHandler', () => {
       'rodent behavior',
       ['about mice', 'about rats', 'about birds'],
       5,
+      undefined,
     );
     expect(result.results).toHaveLength(2);
     expect(result.results[0]).toMatchObject({
@@ -162,6 +167,36 @@ describe('semanticSearchDatasetsHandler', () => {
     mockedHybridSearch.mockResolvedValueOnce([fakeChunk('d1', 'a')]);
     mockedRerank.mockResolvedValueOnce([{ index: 0, relevanceScore: 1 }]);
     await semanticSearchDatasetsHandler({ query: 'x', limit: 3 });
-    expect(mockedRerank).toHaveBeenCalledWith('x', ['a'], 3);
+    // Trailing `undefined` is the optional ctx.voyageUsage accumulator
+    // (Stream 3.2 extension, 2026-05-16). When ctx is absent the
+    // handler passes through `undefined` so embedQuery / rerank know
+    // not to bother attributing tokens.
+    expect(mockedRerank).toHaveBeenCalledWith('x', ['a'], 3, undefined);
+  });
+
+  it('forwards ctx.voyageUsage to embedQuery + rerank when ctx is provided', async () => {
+    // Stream 3.2 (2026-05-16) — lock the cost-attribution contract:
+    // the handler must pass the SAME accumulator object to both Voyage
+    // helpers so embed + rerank counts both land in chat_usage_events
+    // for a single request. The helpers themselves mutate the object;
+    // here we just verify the wiring (they're mocked so no mutation
+    // actually happens — we only assert reference equality).
+    const voyageUsage = { embedTokens: 0, rerankUnits: 0 };
+    const ctx = { voyageUsage };
+    mockedEmbed.mockResolvedValueOnce(Float32Array.from([0.1, 0.2]));
+    mockedHybridSearch.mockResolvedValueOnce([fakeChunk('d1', 'about mice')]);
+    mockedRerank.mockResolvedValueOnce([{ index: 0, relevanceScore: 1 }]);
+
+    await semanticSearchDatasetsHandler({ query: 'rodent' }, ctx);
+
+    // Reference-equal accumulator threaded into both Voyage helpers
+    // — that's what makes the route's onFinish read accurate totals.
+    expect(mockedEmbed).toHaveBeenCalledWith('rodent', voyageUsage);
+    expect(mockedRerank).toHaveBeenCalledWith(
+      'rodent',
+      ['about mice'],
+      5,
+      voyageUsage,
+    );
   });
 });

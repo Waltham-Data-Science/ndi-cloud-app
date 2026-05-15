@@ -124,7 +124,10 @@ import {
   treatmentTimelineHandler,
   treatmentTimelineInput,
 } from '@/lib/ndi/tools/treatment-timeline';
-import { logToolInvocation } from '@/lib/ndi/tools/shared';
+import {
+  logToolInvocation,
+  type ToolContext,
+} from '@/lib/ndi/tools/shared';
 import {
   walkProvenanceHandler,
   walkProvenanceInput,
@@ -187,6 +190,7 @@ type ToolResult<T> = T | ToolError;
 
 export async function semanticSearchDatasetsHandler(
   input: z.infer<typeof semanticSearchDatasetsInput>,
+  ctx?: ToolContext,
 ): Promise<
   ToolResult<{
     results: SemanticSearchResultEntry[];
@@ -221,7 +225,12 @@ export async function semanticSearchDatasetsHandler(
   let queryVec: Float32Array;
   try {
     pipeline.stage = 'embed';
-    queryVec = await embedQuery(parsed.data.query);
+    // Stream 3.2 extension (2026-05-16): forward the per-request Voyage
+    // usage accumulator so the route's onFinish can populate
+    // chat_usage_events.voyage_embed_tokens accurately. When ctx is
+    // omitted (build-ask-index scripts, unit tests), the helper just
+    // skips the increment.
+    queryVec = await embedQuery(parsed.data.query, ctx?.voyageUsage);
   } catch (e) {
     return { error: `Embedding failed: ${errMsg(e)}` };
   }
@@ -248,7 +257,12 @@ export async function semanticSearchDatasetsHandler(
   try {
     pipeline.stage = 'rerank';
     const rerankInputs = candidates.map((c) => c.content);
-    const reranked = await rerank(parsed.data.query, rerankInputs, limit);
+    const reranked = await rerank(
+      parsed.data.query,
+      rerankInputs,
+      limit,
+      ctx?.voyageUsage,
+    );
     const finalResults: SemanticSearchResultEntry[] = reranked.map((r) => {
       const chunk = candidates[r.index]!;
       return {
@@ -310,15 +324,31 @@ function errMsg(e: unknown): string {
 //   tool({
 //     description: '...',
 //     inputSchema: xInput,
-//     execute: (input) => xHandler(input),
+//     execute: (input) => xHandler(input, ctx),
 //   })
 //
-// The `(input) => handler(input)` wrap is REQUIRED for handlers that
-// accept the optional `ToolContext` (ADR-003) because the AI SDK's
+// The `(input) => handler(input, ctx)` wrap is REQUIRED for handlers
+// that accept the optional `ToolContext` (ADR-003) because the AI SDK's
 // `execute` callback type is the stricter `(input) => Promise<R>`.
 // Without the wrap, TypeScript rejects the registration.
+//
+// The registry is exported in TWO shapes:
+//
+//   - `tools`         — anonymous default (ctx === undefined). Backwards
+//                       compatible with the chat path that doesn't have
+//                       a session cookie. Behavior unchanged.
+//
+//   - `makeTools(ctx)` — ctx-aware factory. Stream 3.5 followup
+//                       (2026-05-16): when the inbound request carries
+//                       a session cookie, /api/ask passes a built
+//                       ToolContext here so EVERY tool call forwards
+//                       Cookie + X-XSRF-TOKEN + X-Request-Id to FastAPI.
+//                       This is what unlocks private-dataset reads from
+//                       the chat once /my/ask becomes the primary
+//                       entry point.
 
-export const tools = {
+export function makeTools(ctx?: ToolContext) {
+  return {
   list_published_datasets: tool({
     description:
       'List published datasets in the NDI Commons catalog. Use this to ' +
@@ -326,7 +356,7 @@ export const tools = {
       '"what datasets cover X" (set query). Returns a `references` array — ' +
       'cite each dataset you mention via a [^N] footnote.',
     inputSchema: listPublishedDatasetsInput,
-    execute: (input) => listPublishedDatasetsHandler(input),
+    execute: (input) => listPublishedDatasetsHandler(input, ctx),
   }),
   get_dataset: tool({
     description:
@@ -334,7 +364,7 @@ export const tools = {
       'contributors, DOI, license, and other metadata. Returns a ' +
       '`references` array citing the dataset record.',
     inputSchema: getDatasetInput,
-    execute: (input) => getDatasetHandler(input),
+    execute: (input) => getDatasetHandler(input, ctx),
   }),
   get_dataset_summary: tool({
     description:
@@ -342,7 +372,7 @@ export const tools = {
       'Prefer this over get_dataset when full record is overkill. ' +
       'Returns a `references` array citing the summary.',
     inputSchema: getDatasetSummaryInput,
-    execute: (input) => getDatasetSummaryHandler(input),
+    execute: (input) => getDatasetSummaryHandler(input, ctx),
   }),
   get_dataset_class_counts: tool({
     description:
@@ -350,7 +380,7 @@ export const tools = {
       'epochs, probes, subjects). Returns a `references` array citing ' +
       'the dataset.',
     inputSchema: getDatasetClassCountsInput,
-    execute: (input) => getDatasetClassCountsHandler(input),
+    execute: (input) => getDatasetClassCountsHandler(input, ctx),
   }),
   get_facets: tool({
     description:
@@ -358,7 +388,7 @@ export const tools = {
       'brain regions, strains, etc. Use for "what species/regions are ' +
       'represented?". Returns a `references` array.',
     inputSchema: getFacetsInput,
-    execute: (input) => getFacetsHandler(input),
+    execute: (input) => getFacetsHandler(input, ctx),
   }),
   semantic_search_datasets: tool({
     description:
@@ -373,7 +403,9 @@ export const tools = {
       'whenever the query is fuzzy or synonym-heavy. Returns a ' +
       '`references` array citing each hit.',
     inputSchema: semanticSearchDatasetsInput,
-    execute: semanticSearchDatasetsHandler,
+    // Stream 3.2 extension (2026-05-16): forward ctx so the handler
+    // can increment ctx.voyageUsage on each Voyage embed/rerank call.
+    execute: (input) => semanticSearchDatasetsHandler(input, ctx),
   }),
   query_documents: tool({
     description:
@@ -403,7 +435,10 @@ export const tools = {
       'one name often means treatment variation lives in ' +
       '`ontologyTableRow`, not `treatment`).',
     inputSchema: queryDocumentsInput,
-    execute: queryDocumentsHandler,
+    // Chat runs anonymous; wrap to satisfy the AI SDK's stricter
+    // (input) => Promise<R> callback shape now that the handler accepts
+    // an optional ToolContext. Stream 3.5 followup retrofit (2026-05-16).
+    execute: (input) => queryDocumentsHandler(input, ctx),
   }),
   walk_provenance: tool({
     description:
@@ -415,7 +450,9 @@ export const tools = {
       'a depends_on field name), plus a `references` array citing each ' +
       'node. Set maxDepth between 1 and 6 (default 3).',
     inputSchema: walkProvenanceInput,
-    execute: walkProvenanceHandler,
+    // Stream 3.5 followup retrofit — wrap so AI SDK v6 accepts the now-
+    // ctx-accepting handler.
+    execute: (input) => walkProvenanceHandler(input, ctx),
   }),
   fetch_signal: tool({
     description:
@@ -442,7 +479,9 @@ export const tools = {
       'tool call. Always describe what the chart shows in plain English ' +
       'before the fence — never just dump the chart without context.',
     inputSchema: fetchSignalInput,
-    execute: fetchSignalHandler,
+    // Stream 3.5 followup retrofit — wrap so AI SDK v6 accepts the now-
+    // ctx-accepting handler.
+    execute: (input) => fetchSignalHandler(input, ctx),
   }),
   lookup_ontology: tool({
     description:
@@ -507,7 +546,9 @@ export const tools = {
       '`total_items` is the total query matches before numeric filtering. ' +
       '`truncated` is true when more docs matched than maxDocs scanned.',
     inputSchema: aggregateDocumentsInput,
-    execute: aggregateDocumentsHandler,
+    // Stream 3.5 followup retrofit — wrap so AI SDK v6 accepts the now-
+    // ctx-accepting handler.
+    execute: (input) => aggregateDocumentsHandler(input, ctx),
   }),
   ndi_query: tool({
     description:
@@ -564,7 +605,9 @@ export const tools = {
       'specific doc, chain into `get_document`. The response also ' +
       'returns a `references` array — cite each result you mention.',
     inputSchema: ndiQueryInput,
-    execute: ndiQueryHandler,
+    // Stream 3.5 followup retrofit — wrap so AI SDK v6 accepts the now-
+    // ctx-accepting handler.
+    execute: (input) => ndiQueryHandler(input, ctx),
   }),
   get_document: tool({
     description:
@@ -578,7 +621,9 @@ export const tools = {
       'citation. Use sparingly — full bodies are large and only useful ' +
       'when the projection didn\'t carry the field you need.',
     inputSchema: getDocumentInput,
-    execute: getDocumentHandler,
+    // Stream 3.5 followup retrofit — wrap so AI SDK v6 accepts the now-
+    // ctx-accepting handler.
+    execute: (input) => getDocumentHandler(input, ctx),
   }),
   ndi_dataset_overview: tool({
     description:
@@ -601,7 +646,9 @@ export const tools = {
       'Do NOT retry ndi_dataset_overview after a binding-unavailable ' +
       'error — the binding may be down in this environment.',
     inputSchema: ndiDatasetOverviewInput,
-    execute: ndiDatasetOverviewHandler,
+    // Stream 3.5 followup retrofit — wrap so AI SDK v6 accepts the now-
+    // ctx-accepting handler.
+    execute: (input) => ndiDatasetOverviewHandler(input, ctx),
   }),
   treatment_timeline: tool({
     description:
@@ -643,7 +690,7 @@ export const tools = {
     // `(input) => Promise<R>` callback shape. The workspace wrapper
     // at /api/datasets/[id]/treatment-timeline forwards auth headers
     // when present.
-    execute: (input) => treatmentTimelineHandler(input),
+    execute: (input) => treatmentTimelineHandler(input, ctx),
   }),
   fetch_image: tool({
     description:
@@ -683,7 +730,9 @@ export const tools = {
       "'unsupported' fires for raw NDI-native image formats (.nim) " +
       "that Pillow can't decode.",
     inputSchema: fetchImageInput,
-    execute: fetchImageHandler,
+    // Stream 3.5 followup retrofit — wrap so AI SDK v6 accepts the now-
+    // ctx-accepting handler.
+    execute: (input) => fetchImageHandler(input, ctx),
   }),
   fetch_spike_summary: tool({
     description:
@@ -731,7 +780,7 @@ export const tools = {
     // `(input) => Promise<R>` callback shape is satisfied. The
     // workspace's wrapper route at /api/datasets/[id]/spike-summary
     // is what forwards auth headers when present.
-    execute: (input) => fetchSpikeSummaryHandler(input),
+    execute: (input) => fetchSpikeSummaryHandler(input, ctx),
   }),
   psth: tool({
     description:
@@ -778,7 +827,7 @@ export const tools = {
     // AI SDK's stricter `(input) => Promise<R>` callback shape is
     // satisfied. The workspace wrapper route at
     // /api/datasets/[id]/psth forwards auth headers when present.
-    execute: (input) => psthHandler(input),
+    execute: (input) => psthHandler(input, ctx),
   }),
   tabular_query: tool({
     description:
@@ -834,10 +883,19 @@ export const tools = {
       'source via the returned `references` array. Always describe ' +
       'in plain English what the comparison shows before the fence.',
     inputSchema: tabularQueryInput,
-    // Chat is anonymous; wrap to drop the optional ToolContext (same
-    // shape as the other auth-aware handlers). The workspace wrapper
-    // at /api/datasets/[id]/tabular-query forwards auth headers + the
-    // x-request-id via toolContextFromRequest when present.
-    execute: (input) => tabularQueryHandler(input),
+    // ctx is forwarded when present; for anonymous chat ctx === undefined
+    // and the handler goes out anonymous (same behavior as before).
+    execute: (input) => tabularQueryHandler(input, ctx),
   }),
-} as const;
+  } as const;
+}
+
+/**
+ * Anonymous default — used by the chat path that doesn't have a
+ * session cookie. Equivalent to `makeTools(undefined)`.
+ *
+ * Authenticated callers should construct a fresh registry per-request
+ * via `makeTools(toolContextFromRequest(req))` so the per-call ctx is
+ * captured in each tool's execute closure.
+ */
+export const tools = makeTools();

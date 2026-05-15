@@ -43,6 +43,7 @@ import {
   fetchJson,
   isErrorResult,
   logToolInvocation,
+  type ToolContext,
   type ToolResult,
 } from './shared';
 
@@ -94,7 +95,17 @@ export type DistinctSummary =
 interface RawTableResponse {
   columns?: TableColumn[];
   rows?: Array<Record<string, unknown>>;
+  /**
+   * Legacy unpaged envelopes expose `total`; paged envelopes (Stream 5.8,
+   * 2026-05-16) expose `totalRows`. Accept either so this handler works
+   * against both deployments during the rollout window.
+   */
   total?: number;
+  totalRows?: number;
+  /** Paginated envelope fields (Stream 5.8). Optional for backward compat. */
+  page?: number;
+  pageSize?: number;
+  hasMore?: boolean;
   distinct_summary?: DistinctSummary;
 }
 
@@ -138,6 +149,7 @@ function rowDocId(row: Record<string, unknown>, key: string | null): string | nu
 
 export async function queryDocumentsHandler(
   input: z.infer<typeof queryDocumentsInput>,
+  ctx?: ToolContext,
 ): Promise<ToolResult<QueryDocumentsResult>> {
   logToolInvocation('query_documents', {
     datasetId: input?.datasetId,
@@ -156,20 +168,27 @@ export async function queryDocumentsHandler(
     `${base}/api/datasets/${encodeURIComponent(datasetId)}` +
     `/tables/${encodeURIComponent(className)}?page=1&pageSize=${limit}`;
 
-  const result = await fetchJson<RawTableResponse>(url);
+  const result = await fetchJson<RawTableResponse>(url, ctx);
   if (isErrorResult(result)) return result;
 
   const columns = result.columns ?? [];
   const allRawRows = result.rows ?? [];
-  // CRITICAL: The FastAPI `/tables/{class}` endpoint ignores
-  // page/pageSize and returns ALL rows (it was built for the
-  // Document Explorer's client-side virtual scroller). For the
-  // chatbot we MUST slice here — a 5,314-subject dataset would
-  // otherwise blow past Claude's 200K-token context window.
-  // Smoke-tested 2026-05-13: 20 unsliced subject rows = 6 MB
-  // response → context overflow. Server-side pagination is a
-  // proper follow-up; client-side slice is the safe bound now.
-  const totalAvailable = result.total ?? allRawRows.length;
+  // Stream 5.8 (2026-05-16): the FastAPI `/tables/{class}` endpoint
+  // now honors `page` + `pageSize` query params and returns a paginated
+  // envelope `{rows, totalRows, hasMore, page, pageSize}`. We pass
+  // pageSize=limit above, so `rows` is already server-sliced.
+  //
+  // Prefer the new `totalRows` field; fall back to `total` (legacy
+  // pre-pagination envelope still in use until Railway redeploys); fall
+  // back to `allRawRows.length` (sealed envelope without either field).
+  //
+  // The client-side `.slice(0, limit)` we used to apply is now a safety
+  // net only — when the backend respects pagination, `allRawRows` is
+  // already capped at `limit`, so this slice is a no-op. We keep it to
+  // defensively bound the LLM-visible rows even if a future backend
+  // regression starts returning all rows again.
+  const totalAvailable =
+    result.totalRows ?? result.total ?? allRawRows.length;
   const rawRows = allRawRows.slice(0, limit);
   const docIdKey = findDocIdColumn(columns);
 

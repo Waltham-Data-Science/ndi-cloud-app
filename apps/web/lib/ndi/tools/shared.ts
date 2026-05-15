@@ -55,6 +55,22 @@ export interface ToolContext {
    * now; the chat /api/ask route will be wired in a follow-up.
    */
   requestId?: string;
+  /**
+   * Mutable per-request Voyage usage counter (Stream 3.2 extension,
+   * 2026-05-16). When provided, `semantic_search_datasets` increments
+   * counts as it calls Voyage's `embedQuery` / `rerank`. The /api/ask
+   * route pre-allocates this and reads in `onFinish` to populate
+   * chat_usage_events.voyage_embed_tokens + voyage_rerank_units.
+   *
+   * Shape matches `voyage-client.ts::VoyageUsageAccumulator` —
+   * inlined structurally to avoid a cross-layer import from
+   * lib/ndi/tools/ into lib/ai/. Tools that don't call Voyage just
+   * ignore this field.
+   */
+  voyageUsage?: {
+    embedTokens: number;
+    rerankUnits: number;
+  };
 }
 
 /**
@@ -110,8 +126,13 @@ export function toolContextFromRequest(req: Request): ToolContext {
 /**
  * Generate a fresh outbound request id. Hex, 16 chars (matching the
  * FastAPI middleware's own fallback pattern from `secrets.token_hex(8)`).
+ *
+ * Exported so tool handlers that bypass `fetchJson` / `postJson` (the
+ * three raw-fetch handlers: ndi-query, ndi-dataset-overview,
+ * aggregate-documents — each has bespoke timeout / error-shape
+ * requirements) can still emit a correlation id matching the contract.
  */
-function freshRequestId(): string {
+export function freshRequestId(): string {
   if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
     // Strip dashes so the value matches the FastAPI middleware's
     // `[A-Za-z0-9_.-]{8,128}` allow regex without surprises.

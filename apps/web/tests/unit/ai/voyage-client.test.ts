@@ -6,7 +6,11 @@
  * missing API key).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { embedQuery, rerank } from '@/lib/ai/voyage-client';
+import {
+  embedQuery,
+  rerank,
+  type VoyageUsageAccumulator,
+} from '@/lib/ai/voyage-client';
 
 describe('lib/ai/voyage-client', () => {
   beforeEach(() => {
@@ -60,6 +64,42 @@ describe('lib/ai/voyage-client', () => {
     it('throws on network failure', async () => {
       vi.spyOn(globalThis, 'fetch').mockRejectedValueOnce(new Error('econnreset'));
       await expect(embedQuery('anything')).rejects.toThrow(/network/i);
+    });
+
+    it('accumulates embed tokens when a usage accumulator is supplied', async () => {
+      // Stream 3.2 extension (2026-05-16): Voyage's /v1/embeddings
+      // response includes `usage.total_tokens`. When the caller (the
+      // /api/ask chat route) passes the per-request accumulator, we
+      // add to it so chat_usage_events.voyage_embed_tokens gets the
+      // accurate total at stream end.
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [{ embedding: [0.1, 0.2, 0.3] }],
+            usage: { total_tokens: 17 },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+      const usage: VoyageUsageAccumulator = { embedTokens: 0, rerankUnits: 0 };
+      await embedQuery('hippocampus recordings', usage);
+      expect(usage.embedTokens).toBe(17);
+      expect(usage.rerankUnits).toBe(0);
+    });
+
+    it('does not crash when the response omits usage (defensive)', async () => {
+      // Pre-2026 Voyage responses (and degraded responses today) may
+      // omit the usage envelope. Skip the accumulator bump — never
+      // throw, never add NaN.
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({ data: [{ embedding: [0.1, 0.2, 0.3] }] }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+      const usage: VoyageUsageAccumulator = { embedTokens: 0, rerankUnits: 0 };
+      await embedQuery('anything', usage);
+      expect(usage.embedTokens).toBe(0); // unchanged
     });
   });
 
@@ -128,6 +168,34 @@ describe('lib/ai/voyage-client', () => {
     it('throws when VOYAGE_API_KEY is unset', async () => {
       vi.unstubAllEnvs();
       await expect(rerank('q', ['d'], 1)).rejects.toThrow(/VOYAGE_API_KEY/);
+    });
+
+    it('accumulates rerank units (1 per successful call) when a usage accumulator is supplied', async () => {
+      // Stream 3.2 extension (2026-05-16): rerank is BILLED per query
+      // ($0.05 each at rate-card time), so each successful call bumps
+      // rerankUnits by exactly 1. Token count from the response is
+      // informational — billing is per-query.
+      vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            data: [{ index: 0, relevance_score: 0.9 }],
+            usage: { total_tokens: 250 },
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+      const usage: VoyageUsageAccumulator = { embedTokens: 0, rerankUnits: 0 };
+      await rerank('q', ['doc'], 1, usage);
+      expect(usage.rerankUnits).toBe(1);
+      expect(usage.embedTokens).toBe(0); // rerank tokens are NOT embed tokens
+    });
+
+    it('does not bump rerankUnits on the short-circuit empty-docs path', async () => {
+      // The function early-returns [] without hitting the API when
+      // documents is empty. No API call = no billed unit.
+      const usage: VoyageUsageAccumulator = { embedTokens: 0, rerankUnits: 0 };
+      await rerank('q', [], 5, usage);
+      expect(usage.rerankUnits).toBe(0);
     });
   });
 });

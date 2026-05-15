@@ -45,6 +45,7 @@ import {
   fetchJson,
   isErrorResult,
   logToolInvocation,
+  type ToolContext,
   type ToolResult,
 } from './shared';
 
@@ -151,6 +152,7 @@ export interface FetchSignalResult {
 
 export async function fetchSignalHandler(
   input: z.infer<typeof fetchSignalInput>,
+  ctx?: ToolContext,
 ): Promise<ToolResult<FetchSignalResult>> {
   logToolInvocation('fetch_signal', {
     datasetId: input?.datasetId,
@@ -176,7 +178,7 @@ export async function fetchSignalHandler(
     `${base}/api/datasets/${encodeURIComponent(datasetId)}` +
     `/documents/${encodeURIComponent(docId)}/signal?${qs.toString()}`;
 
-  const result = await fetchJson<BackendSignalResponse>(url);
+  const result = await fetchJson<BackendSignalResponse>(url, ctx);
   if (isErrorResult(result)) return result;
 
   // Backend soft-error envelope — passes through as a typed tool error

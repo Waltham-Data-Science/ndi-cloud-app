@@ -32,7 +32,9 @@ import { z } from 'zod';
 import { makeDatasetReference, type Reference } from '../references';
 import {
   baseUrl,
+  freshRequestId,
   logToolInvocation,
+  type ToolContext,
   type ToolError,
   type ToolResult,
 } from './shared';
@@ -90,6 +92,7 @@ export interface NdiDatasetOverviewResult {
 
 export async function ndiDatasetOverviewHandler(
   input: NdiDatasetOverviewInput,
+  ctx?: ToolContext,
 ): Promise<ToolResult<NdiDatasetOverviewResult>> {
   logToolInvocation('ndi_dataset_overview', {
     datasetId: input?.datasetId,
@@ -111,7 +114,13 @@ export async function ndiDatasetOverviewHandler(
   try {
     res = await fetch(url, {
       method: 'GET',
-      headers: { Accept: 'application/json' },
+      headers: {
+        Accept: 'application/json',
+        // Match fetchJson contract: always emit X-Request-Id so the
+        // FastAPI request_id middleware has a stable correlation id.
+        'X-Request-Id': ctx?.requestId ?? freshRequestId(),
+        ...(ctx?.authHeaders ?? {}),
+      },
       signal: controller.signal,
       cache: 'no-store',
     });

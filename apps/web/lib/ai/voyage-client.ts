@@ -33,6 +33,12 @@ const TIMEOUT_MS = 8_000;
 
 interface VoyageEmbeddingResponse {
   data: Array<{ embedding: number[] }>;
+  /**
+   * Voyage's /v1/embeddings response includes a usage envelope with
+   * the total tokens billed. Surface it here so callers can attribute
+   * cost via the rate-card. Absent on degraded responses; treat as 0.
+   */
+  usage?: { total_tokens?: number };
 }
 
 interface VoyageRerankResponse {
@@ -41,6 +47,13 @@ interface VoyageRerankResponse {
     relevance_score: number;
     document?: string;
   }>;
+  /**
+   * Voyage's /v1/rerank response also includes usage. Rerank is BILLED
+   * per query (one unit per rerank call regardless of token count), so
+   * the field is informational only — the accumulator increments
+   * `rerankUnits` once per successful call.
+   */
+  usage?: { total_tokens?: number };
 }
 
 export interface RerankResult {
@@ -49,7 +62,27 @@ export interface RerankResult {
   relevanceScore: number;
 }
 
-export async function embedQuery(text: string): Promise<Float32Array> {
+/**
+ * Per-request Voyage usage counter. Threaded through the chat tool
+ * handler via `ToolContext.voyageUsage` so /api/ask can populate the
+ * Voyage cost columns of `chat_usage_events` in onFinish.
+ *
+ * Mutable on purpose — handlers increment the same object the route
+ * pre-allocated. Anonymous test/script callers can pass `undefined` to
+ * opt out of cost tracking; the call still goes through to Voyage as
+ * before.
+ */
+export interface VoyageUsageAccumulator {
+  /** Sum of `usage.total_tokens` from every /v1/embeddings response. */
+  embedTokens: number;
+  /** Count of successful /v1/rerank calls — billed per query at the rate-card rate. */
+  rerankUnits: number;
+}
+
+export async function embedQuery(
+  text: string,
+  usage?: VoyageUsageAccumulator,
+): Promise<Float32Array> {
   const apiKey = requireApiKey();
   const body = await voyageFetch<VoyageEmbeddingResponse>(VOYAGE_EMBED_API, apiKey, {
     input: [text],
@@ -60,6 +93,11 @@ export async function embedQuery(text: string): Promise<Float32Array> {
   if (!Array.isArray(first)) {
     throw new Error('Voyage response missing embedding');
   }
+  // Accumulate cost — only if the caller passed an accumulator (the
+  // chat path does; build-ask-index scripts + tests can omit).
+  if (usage && typeof body.usage?.total_tokens === 'number') {
+    usage.embedTokens += body.usage.total_tokens;
+  }
   return Float32Array.from(first);
 }
 
@@ -67,11 +105,15 @@ export async function embedQuery(text: string): Promise<Float32Array> {
  * Cross-encoder rerank. Returns relevance scores indexed back into the
  * original `documents` array so the caller can apply them to chunk
  * records.
+ *
+ * When `usage` is provided, increments `rerankUnits` by 1 on success.
+ * Empty-documents short-circuit (no API call) does NOT bump the counter.
  */
 export async function rerank(
   query: string,
   documents: string[],
   topK: number,
+  usage?: VoyageUsageAccumulator,
 ): Promise<RerankResult[]> {
   const apiKey = requireApiKey();
   if (documents.length === 0) return [];
@@ -81,6 +123,7 @@ export async function rerank(
     model: VOYAGE_RERANK_MODEL,
     top_k: Math.min(topK, documents.length),
   });
+  if (usage) usage.rerankUnits += 1;
   return (body.data ?? []).map((r) => ({
     index: r.index,
     relevanceScore: r.relevance_score,

@@ -4,7 +4,7 @@
  * Table hooks — summary tables (per NDI class), combined join, ontology
  * groups. Ported verbatim from `ndi-data-browser-v2/frontend/src/api/tables.ts`.
  */
-import { useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { apiFetch } from './client';
 import { TABLE_TIMEOUT_MS } from './timeouts';
 
@@ -96,6 +96,69 @@ export function useOntologyTables(datasetId: string | undefined) {
         { signal, timeoutMs: TABLE_TIMEOUT_MS },
       ),
     enabled: !!datasetId,
+    retry: 0,
+    staleTime: TABLE_STALE_MS,
+  });
+}
+
+/**
+ * Stream 5.8 (2026-05-16) — paginated single-class table envelope.
+ *
+ * Returned by `/api/datasets/:id/tables/:class?page=N&pageSize=M`. The
+ * backend caches the FULL row set and slices server-side, so each page
+ * fetch reads ~250 KB instead of the unpaged ~6 MB blob (Bhar's
+ * `ontologyTableRow` is the worst case). `distinct_summary` is computed
+ * over the full set and carried on every page so consumers can still
+ * answer "how many distinct strains" without paging through.
+ */
+export interface PagedTableResponse extends TableResponse {
+  page: number;
+  pageSize: number;
+  totalRows: number;
+  hasMore: boolean;
+  distinct_summary?: Record<string, unknown> | { _meta: string };
+}
+
+/**
+ * Page-by-page table loader for large per-class tables. Use when the
+ * caller wants infinite-scroll semantics over a class whose row count
+ * might be in the thousands (Bhar's `ontologyTableRow` is 5,297 rows;
+ * the unpaged hook returns a ~6 MB blob that bloats memory + bandwidth).
+ *
+ * Contract:
+ *   - The query function fetches one page (`pageParam`) at a time using
+ *     the server-side pagination supported by the backend's tables
+ *     router (Stream 5.8 acceptance: `{page, pageSize, totalRows, hasMore}`).
+ *   - The component flat-maps `data.pages.flatMap(p => p.rows)` for
+ *     rendering; `distinct_summary` is taken from `data.pages[0]` since
+ *     it's identical across pages.
+ *   - `getNextPageParam` advances while `hasMore === true`.
+ *
+ * Per-page timeout / retry posture matches `useSummaryTable`. Stale
+ * window same.
+ *
+ * The legacy `useSummaryTable` is preserved for callers that genuinely
+ * want every row in one shot (Document Explorer's full-set fetch).
+ * Callers should prefer this hook for any view that can do progressive
+ * loading.
+ */
+export function usePagedDatasetTable(
+  datasetId: string | undefined,
+  className: string | undefined,
+  pageSize: number,
+) {
+  return useInfiniteQuery({
+    queryKey: ['table:paged', datasetId, className, pageSize],
+    queryFn: ({ pageParam, signal }) =>
+      apiFetch<PagedTableResponse>(
+        `/api/datasets/${datasetId}/tables/${className}?page=${pageParam}&pageSize=${pageSize}`,
+        { signal, timeoutMs: TABLE_TIMEOUT_MS },
+      ),
+    initialPageParam: 1,
+    /** Walk to the next page while the backend says there's more. */
+    getNextPageParam: (lastPage) =>
+      lastPage.hasMore ? lastPage.page + 1 : undefined,
+    enabled: !!datasetId && !!className,
     retry: 0,
     staleTime: TABLE_STALE_MS,
   });

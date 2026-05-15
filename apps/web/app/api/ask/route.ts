@@ -31,9 +31,13 @@ import { chatModel } from '@/lib/ai/anthropic-client';
 import { askEnabled } from '@/lib/ai/feature-flag';
 import { checkRateLimitKv } from '@/lib/ai/rate-limit-kv';
 import { SYSTEM_PROMPT } from '@/lib/ai/system-prompt';
-import { tools } from '@/lib/ai/chat-tools';
+import { makeTools } from '@/lib/ai/chat-tools';
 import { env } from '@/lib/env';
-import { logEvent } from '@/lib/ndi/tools/shared';
+import {
+  authHeadersFromRequest,
+  logEvent,
+  type ToolContext,
+} from '@/lib/ndi/tools/shared';
 import { logUsage } from '@/lib/usage/log';
 import type { ProviderUsage } from '@/lib/usage/rate-card';
 
@@ -284,10 +288,28 @@ export async function POST(req: Request): Promise<Response> {
   // single-line edit the upgrade-inventory doc flagged
   // (apps/web/docs/specs/2026-05-15-ai-sdk-v6-upgrade-inventory.md).
   const modelMessages = await convertToModelMessages(messages);
+  // Build a per-request ToolContext so every ctx-aware tool handler
+  // forwards Cookie + X-XSRF-TOKEN to FastAPI (private-dataset reads
+  // post Stream 3.1) and emits the same X-Request-Id our telemetry
+  // uses (Stream 4.5 cross-boundary tracing). Anonymous requests get
+  // `authHeaders === undefined`; the request id still propagates.
+  //
+  // Stream 3.2 extension (2026-05-16): pre-allocate the Voyage usage
+  // accumulator so `semantic_search_datasets` can increment as it calls
+  // embedQuery / rerank. Read in onFinish + onError to populate
+  // chat_usage_events.voyage_embed_tokens + voyage_rerank_units. The
+  // mutation happens INSIDE the streaming tool loop; reading post-
+  // stream is safe because all tool calls have completed by then.
+  const ctx: ToolContext = {
+    requestId,
+    voyageUsage: { embedTokens: 0, rerankUnits: 0 },
+  };
+  const authHeaders = authHeadersFromRequest(req);
+  if (authHeaders) ctx.authHeaders = authHeaders;
   const result = streamText({
     model: chatModel(),
     messages: [systemMessage, ...modelMessages],
-    tools,
+    tools: makeTools(ctx),
     // Cap output + tool loops to bound cost. See spec §Cost.
     //
     // maxOutputTokens trajectory:
@@ -351,7 +373,13 @@ export async function POST(req: Request): Promise<Response> {
       // Stream 3.2 — record the failure as a usage event so the
       // admin cost-dashboard can attribute failed turns. Anthropic
       // tokens are zero on a hard error (request didn't bill); we
-      // still want the row for outcome attribution.
+      // still want the row for outcome attribution. Voyage calls
+      // that completed BEFORE the error counted are still surfaced
+      // (cost was already incurred — the row would otherwise
+      // under-report).
+      const partialUsage = zeroProviderUsage();
+      partialUsage.voyageEmbedTokens = ctx.voyageUsage?.embedTokens ?? 0;
+      partialUsage.voyageRerankUnits = ctx.voyageUsage?.rerankUnits ?? 0;
       void logUsage({
         userId,
         organizationId: organizationId ?? null,
@@ -359,7 +387,7 @@ export async function POST(req: Request): Promise<Response> {
         requestId,
         startedAt: new Date(askStartedAtMs),
         durationMs: Date.now() - askStartedAtMs,
-        provider: zeroProviderUsage(),
+        provider: partialUsage,
         toolCallsCount: 0,
         toolNames: [],
         outcome: 'upstream_error',
@@ -385,14 +413,15 @@ export async function POST(req: Request): Promise<Response> {
           anthropicOutputTokens: usage?.outputTokens ?? 0,
           anthropicCacheReadTokens: usage?.cachedInputTokens ?? 0,
           anthropicCacheCreateTokens: 0,
-          // Voyage counts aren't surfaced through streamText.usage
-          // because Voyage is called inside our tool handlers, not
-          // through the AI SDK. Per-tool Voyage accounting is a
-          // future Stream 3.2 extension; for now we leave Voyage
-          // costs at 0 in the row. Total cost still rolls up
-          // Anthropic accurately (the binding cost line item).
-          voyageEmbedTokens: 0,
-          voyageRerankUnits: 0,
+          // Stream 3.2 extension (2026-05-16): Voyage is called inside
+          // semantic_search_datasets, not through streamText.usage —
+          // the per-request `ctx.voyageUsage` accumulator captures the
+          // embed-token totals + per-call rerank-units as each handler
+          // runs. Read here at the very end of the stream so a multi-
+          // step turn that calls semantic_search N times gets the
+          // summed count (every increment is in this single object).
+          voyageEmbedTokens: ctx.voyageUsage?.embedTokens ?? 0,
+          voyageRerankUnits: ctx.voyageUsage?.rerankUnits ?? 0,
         },
         toolCallsCount: 0, // populated by a tool-counter follow-up
         toolNames: [],
