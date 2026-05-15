@@ -56,7 +56,7 @@ vi.mock('@/lib/api/datasets', () => ({
 const mountCounts = new Map<string, number>();
 
 function panelMock(name: string) {
-  return ({ datasetId }: { datasetId: string }) => {
+  const Mock = ({ datasetId }: { datasetId: string }) => {
     // Bump the mount count for THIS panel on every fresh React mount
     // (React only calls a function-component body on mount, not on
     // prop-change rerenders of the same instance — when the parent
@@ -70,6 +70,11 @@ function panelMock(name: string) {
       </div>
     );
   };
+  // Explicit displayName so the eslint `react/display-name` rule
+  // doesn't flag the anonymous-arrow component returned by the
+  // factory. Useful for React DevTools too.
+  Mock.displayName = `PanelMock(${name})`;
+  return Mock;
 }
 
 vi.mock('@/components/workspace/BehavioralComparePanel', () => ({

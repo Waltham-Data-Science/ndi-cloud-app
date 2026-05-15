@@ -107,6 +107,27 @@ If you ever find yourself about to operate on `main` or on production Vercel/Rai
 
 ---
 
+## ⏱ Status as of 2026-05-16
+
+**51 of 54 sub-streams landed (94%).** Streams 1, 2, 3, 6 are complete.
+Stream 4 has 4.9 deferred with a spec; Stream 5 has 5.3 + 5.8 deferred
+with specs.
+
+| Stream | Status |
+|---|---|
+| 1 — Tier 1 quick wins | ✅ 9/11 (T1.9 + T1.10 are user actions) |
+| 2 — HIPAA + strategic docs | ✅ 6/6 |
+| 3 — `/ask` → auth-gated | ✅ 6/6 |
+| 4 — Architecture rectifications | ✅ 10/11 (S4.9 deferred with spec) |
+| 5 — Data correctness | ✅ 5/8 (S5.3, S5.6 partial — diagnostic only — and S5.8 deferred with specs) |
+| 6 — Tests + Dataset Health + AI SDK v6 | ✅ 14/14 |
+
+**Read this for the full picture:** `apps/web/docs/specs/2026-05-16-pre-compact-handoff.md` — covers every sub-stream's status, all commit refs, every finding surfaced + its disposition, user-side action items, and pre-compact orientation.
+
+**Deferred-with-spec items:** `apps/web/docs/specs/2026-05-15-remaining-backend-work.md`.
+
+---
+
 ## What this plan covers
 
 This is the consolidated plan covering EVERYTHING agreed-on across both audits, the strategic-gap work, and the major architectural shifts confirmed in chat:
