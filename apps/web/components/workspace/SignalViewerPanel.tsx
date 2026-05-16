@@ -111,6 +111,7 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
       title="Signal viewer"
       subtitle="Plot a downsampled trace from any NDI binary document (voltage, position, multi-channel sweep)."
       headingId="panel-signal-viewer"
+      id="signal-viewer"
       footer={
         <>
           <MarketingButton

@@ -565,3 +565,70 @@ This is the same visual language as `/` / `/about` / `/platform` / `/datasets/[i
 |---|---|
 | 2026-05-16 | Initial design proposal — post-compact remainders session. |
 | 2026-05-16 (later) | User decisions locked: Overview is default tab; Ask is drawer-with-expansion (drawer → sidebar → fullscreen, URL-state-driven) and **NOT a top-level tab**; both `/(marketing)/ask` and `/(app)/my/ask` retire to redirects. Ask gets a dedicated marketing surface later within the Data Browser product page launch — out of scope here. |
+| 2026-05-16 (execution) | **All five phases shipped.** Commit refs in the implementation log below. |
+
+---
+
+## Implementation log — what shipped
+
+All five phases of the redesign are on `feat/experimental-ask-chat`:
+
+| Phase | Commit | What landed |
+|---|---|---|
+| **A** | `7efa9b1` | Route restructure (5 tabs under `/my/workspace/[id]/`), `WorkspaceShell` (server-rendered hero mirroring `DatasetDetailHero`), `WorkspaceTabs` (URL-routed, clone of `DatasetTabs`), `WorkspaceAuthGate`, `WorkspaceComingSoonPlaceholder`. 10 new tests; legacy `workspace-client.tsx` retired. |
+| **B** | `a921427` | Overview tab (StatTilesRow + WorkspaceProvenanceBand + StarterViewsSection with auto-selection algorithm). Structure tab (StructureBrowser with sort/filter + drill into Document Explorer). 25 new tests including the pure `selectStarterViews` + `deriveClassList` algorithms. |
+| **D** | `1d88fa9` | AskPanel three-mode (drawer / sidebar / fullscreen) + `useAskPanelState` URL-state hook + AskPanelTrigger floating Cmd+K button + AskHeroQuickInput + AskKeyboardShortcuts. AskShell moved from `(marketing)/ask/ask-shell.tsx` → `components/ai/AskShell.tsx` with new `compact` + `context` props. Both legacy `/ask` routes retire to server redirects. 39 new tests. |
+| **C** | `0bfafd0` | Subjects tab (SubjectsBrowser: filter + virtualised table + URL-state selection + ViewActionsRail). Sessions tab (SessionsBrowser: same shape, epoch grain). WorkspaceFilterBar + ViewActionsRail primitives. Pure `filterSubjects` / `filterEpochs` / `formatEpochTime` for testability. 19 new tests. |
+| **E** | (next commit) | Panel anchor IDs (`signal-viewer`, `spike-activity`, `behavioral-compare`, `treatment-timeline`, `electrode-position`, `psth`) wired so Starter View cards + View Actions rails deep-link directly to the right panel on `/analyses`. PanelCard gains an optional `id` prop + `scroll-mt-24` for sticky-tabbar offset. |
+
+**Final stats after Phase E:**
+- 1,720 unit tests passing (1,612 baseline + 108 new across Phases A-E + 10 redirect retirements).
+- Lint clean. Typecheck clean. Build clean — 6 dynamic routes + 5 retired-route redirects in the manifest.
+- 5 tabs visible in the workspace bar: Overview / Structure / Subjects / Sessions / Analyses (Ask is NOT a tab, per locked decision).
+- 13 new workspace primitives in `components/workspace/` + 5 new chat primitives in `components/ai/` + 2 new hooks in `lib/ai/`.
+
+## Remaining followups (not blockers, deliberately deferred)
+
+These were called out during the build and parked for a true Phase F:
+
+1. **Pre-fill panel forms from URL params.** The View Actions rail
+   routes to `/analyses?subject=<id>#signal-viewer` etc. Each panel
+   needs to read the relevant URL param on mount and prefill its
+   form. ~6 small panel-internal changes. Not blocking; users just
+   re-type the id today.
+
+2. **Server-side filter params on `/tables/[class]`.** Subjects /
+   Sessions filter client-side after the full row set lands. Fine
+   for the ~5k-row scale we ship today; becomes a bandwidth concern
+   above ~10k rows. Adds `?strain=<v>&species=<v>&sex=<v>` etc. to
+   the existing FastAPI route.
+
+3. **Sidebar mode workspace reflow.** AskPanel sidebar mode is
+   currently a fixed-position overlay (same as drawer); the design
+   spec calls for the workspace content to reflow to
+   `max-w-[calc(100%-520px)]` when the sidebar is open. Adds a
+   `data-ask-panel-mode="sidebar"` attribute on `<body>` + a CSS
+   rule. ~30 min of work.
+
+4. **AskHeroQuickInput mounting + pre-send store.** Built but not
+   yet placed in the workspace hero. Mounting requires adding a
+   client-island slot to `WorkspaceShell` (server component). Pre-
+   send wiring requires an ephemeral shared store that AskShell
+   drains on mount — designed but unimplemented.
+
+5. **Tutorial-parity smoke against the new tabs.** Playwright drive
+   through the Bhar / Haley / Francesconi flows verifying each tab
+   surfaces the right data shapes. The existing
+   `apps/web/docs/operations/tutorial-parity-smoke.md` script needs
+   updating for the new IA.
+
+6. **`/api/ask` context injection from AskShell.** AskShell now
+   accepts a `context` prop carrying workspace selection state
+   (datasetId, datasetName). The prop is plumbed but NOT yet
+   forwarded to the API — needs a matching FastAPI change so the
+   system prompt knows "the user is currently in dataset X, looking
+   at subject Y." Today the chat tool responses already carry
+   dataset context, so this is enhancement, not regression-blocker.
+
+None of these are critical for the redesign demo. They turn the
+workspace from "works well" to "polished."

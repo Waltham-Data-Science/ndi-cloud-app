@@ -203,6 +203,7 @@ export function BehavioralComparePanel({
       title="Behavioral comparison"
       subtitle="Compare a measurement across groups (e.g. Saline vs CNO) as a violin chart."
       headingId="behavioral-compare-panel-heading"
+      id="behavioral-compare"
       footer={
         <>
           <Button type="button" variant="primary" onClick={handleRun} disabled={mutation.isPending} data-testid="behavioral-compare-run">

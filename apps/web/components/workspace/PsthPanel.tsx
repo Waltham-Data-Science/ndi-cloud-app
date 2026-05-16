@@ -187,6 +187,7 @@ export function PsthPanel({ datasetId }: PsthPanelProps) {
       title="PSTH"
       subtitle="Peri-stimulus time histogram. Aligns spike times to stimulus onsets and bins them — the standard neural-response visualization."
       headingId="panel-psth"
+      id="psth"
       footer={
         <>
           <MarketingButton

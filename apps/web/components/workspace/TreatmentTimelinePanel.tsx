@@ -113,6 +113,7 @@ export function TreatmentTimelinePanel({
       title="Treatment timeline"
       subtitle="Gantt-style view of which subjects received which treatments and when."
       headingId={headingId}
+      id="treatment-timeline"
       footer={
         <>
           <Button

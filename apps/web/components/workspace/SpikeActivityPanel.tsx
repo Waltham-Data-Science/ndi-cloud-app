@@ -192,6 +192,7 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
       title="Spike activity"
       subtitle="Spike raster + ISI histogram for one or more units."
       headingId={headingId}
+      id="spike-activity"
       footer={
         <>
           <Button

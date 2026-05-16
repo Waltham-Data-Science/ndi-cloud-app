@@ -42,6 +42,16 @@ interface PanelCardProps {
    * links from inside the body (e.g., a "go back to this panel" link).
    */
   headingId?: string;
+  /**
+   * Optional stable id on the wrapping `<section>`. Used as the
+   * deep-link anchor target from the Overview tab's Starter Views and
+   * the Subjects / Sessions tabs' View Actions rail (`#signal-viewer`,
+   * `#psth`, etc.). Distinct from `headingId` because `headingId` is
+   * tied to the h3 + aria-labelledby and is often `useId()`-generated
+   * for ARIA uniqueness; the anchor needs to be stable across mounts
+   * so /analyses#psth always lands on the PSTH panel.
+   */
+  id?: string;
   className?: string;
 }
 
@@ -52,13 +62,19 @@ export function PanelCard({
   children,
   footer,
   headingId,
+  id,
   className,
 }: PanelCardProps) {
   return (
     <section
+      id={id}
       className={cn(
         'rounded-lg border border-border-subtle bg-bg-surface shadow-sm',
         'p-6 space-y-4',
+        // When the panel is the target of an in-page anchor jump, give
+        // it some visual breathing room so the heading isn't flush with
+        // the sticky tab bar that sits at 58px from the top.
+        id && 'scroll-mt-24',
         className,
       )}
       aria-labelledby={headingId}

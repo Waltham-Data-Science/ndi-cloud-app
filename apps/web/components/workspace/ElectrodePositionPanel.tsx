@@ -203,6 +203,7 @@ export function ElectrodePositionPanel({ datasetId }: ElectrodePositionPanelProp
       title="Electrode positions"
       subtitle="Spatial map of probes / electrodes within a subject's brain. Colored by depth when present, otherwise by brain region."
       headingId="panel-electrode-positions"
+      id="electrode-position"
       footer={
         <ShowCodeButton
           toolName="query_documents"
