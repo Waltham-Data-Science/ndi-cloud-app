@@ -32,12 +32,17 @@
  */
 import { Suspense } from 'react';
 
+import { AskKeyboardShortcuts } from '@/components/ai/AskKeyboardShortcuts';
+import { AskPanel } from '@/components/ai/AskPanel';
+import { AskPanelTrigger } from '@/components/ai/AskPanelTrigger';
+import { WorkspaceAuthGate } from '@/components/workspace/WorkspaceAuthGate';
 import {
   WorkspaceShell,
   WorkspaceShellSkeleton,
 } from '@/components/workspace/WorkspaceShell';
 import { WorkspaceTabs } from '@/components/workspace/WorkspaceTabs';
-import { WorkspaceAuthGate } from '@/components/workspace/WorkspaceAuthGate';
+import { safeFetchDataset } from '@/lib/api/datasets-server';
+import { cleanDatasetName } from '@/lib/format';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -50,6 +55,14 @@ export default async function WorkspaceLayout({
 }: LayoutProps) {
   const { id } = await params;
 
+  // Pre-fetch the dataset name so AskPanel's context line ("Asking
+  // about: <name>") renders correctly on first paint. The same fetch
+  // is cached for WorkspaceShell's render below (same RSC request).
+  const datasetForContext = await safeFetchDataset(id).catch(() => null);
+  const datasetName = datasetForContext
+    ? cleanDatasetName(datasetForContext.name)
+    : undefined;
+
   return (
     <>
       <Suspense fallback={<WorkspaceShellSkeleton />}>
@@ -59,6 +72,29 @@ export default async function WorkspaceLayout({
       <div key={id}>
         <WorkspaceAuthGate datasetId={id}>{children}</WorkspaceAuthGate>
       </div>
+
+      {/*
+        AskPanel + Trigger + KeyboardShortcuts — workspace-level chat
+        affordance (Phase D). All three call `useSearchParams()` via
+        `useAskPanelState`, so they MUST live inside a `<Suspense>`
+        boundary per the App Router's CSR-bailout rule for that hook.
+        Rendering them in a single shared Suspense keeps them out of
+        any potential bailout that would force the whole layout into
+        client-side rendering.
+
+        The Ask infra is mounted ONCE per workspace navigation (not
+        per tab). The panel's open/mode state lives in URL params so
+        navigating between tabs preserves the panel.
+      */}
+      <Suspense fallback={null}>
+        <AskPanel
+          context={
+            datasetName ? { datasetId: id, datasetName } : { datasetId: id }
+          }
+        />
+        <AskPanelTrigger />
+        <AskKeyboardShortcuts />
+      </Suspense>
     </>
   );
 }

@@ -1,41 +1,48 @@
 'use client';
 
 /**
- * Top-level client component for /ask.
+ * AskShell — the chat surface reused across all entry points.
  *
- * Composes:
- *   - ChatThread (messages + tool-call indicators)
- *   - SuggestedPromptChips (shown only when thread is empty)
- *   - ChatInput (textarea + Send)
- *   - ShareConversationButton (copy stable URL to clipboard)
+ * Previously lived at `app/(marketing)/ask/ask-shell.tsx`. Moved to
+ * `components/ai/` in Phase D of the workspace redesign (2026-05-16)
+ * so it can be imported by `AskPanel` without a cross-route-group
+ * import. The suggested-prompts data also moves into `lib/ai/` for
+ * the same reason.
  *
- * State managed by `useChat()` from `@ai-sdk/react` v5 — handles
- * streaming, SSE parsing, AbortSignal on unmount, and message
- * accumulation. We layer a tiny adapter on top to flatten the
- * SDK's `UIMessage[]` (each message has `parts: [{type: 'text' | 'tool-X', ...}]`)
- * into our `ThreadEntry[]` shape that ChatThread consumes.
+ * Consumers (post-Phase-D):
+ *   - `components/ai/AskPanel` — the workspace drawer / sidebar /
+ *     fullscreen chat panel.
+ *   - Nothing else. Both legacy `/ask` routes retire to redirects
+ *     as part of Phase D.
  *
- * # Persistence (added 2026-05-14)
+ * # Compact vs. full chrome
+ *
+ * The `compact` prop (default `false`) controls whether the shell
+ * renders its own `<header>` ("Ask the Commons" title + lede + share/
+ * stop button row) and the page-height container, or just the inner
+ * chat-thread + input column. The AskPanel needs `compact=true` because
+ * it provides its own header chrome and a flex container that owns the
+ * height calculation.
+ *
+ * # Context prop
+ *
+ * Optional `context` carries workspace selection state (datasetId,
+ * datasetName, selectedSubjectId, selectedSessionId). In v1 it is
+ * ACCEPTED but NOT forwarded to `/api/ask` — the API endpoint already
+ * receives dataset context from the chat tool responses themselves.
+ * Wiring context-injection into the system prompt requires a matching
+ * route change (and ideally a backend feature flag); deferred to a
+ * Phase E follow-up. The prop is here so AskPanel can pass it without
+ * a future signature change.
+ *
+ * # State management (unchanged from the pre-move version)
  *
  * The outer `AskShell` resolves the URL-hash conversation id via
- * `useConversation`, then renders the inner `AskChat` component
- * keyed by `conversationId` so `useChat` reinitializes cleanly when
- * the user clicks "New chat" (which mints a new id). Inner consumes
- * `initialMessages` as the AI SDK's `messages` init and writes the
- * latest snapshot back to localStorage via the hook's `persist`
- * callback on every `messages` change (debounced 300ms inside the
- * hook).
- *
- * v5 differences from v4 (important):
- *   - Hook does NOT manage input state — we own the textarea.
- *   - Endpoint is configured via DefaultChatTransport, not an `api`
- *     option.
- *   - Send via sendMessage({ text }), not handleSubmit.
- *
- * Failure modes:
- *   - 503 / chat_disabled: shown as friendly notice
- *   - 429 / rate_limited: shown inline with retry-after countdown
- *   - Network blip: shown as toast-like error
+ * `useConversation`, then renders the inner `AskChat` keyed by
+ * `conversationId` so `useChat` reinitializes cleanly on "New chat".
+ * v5 of `@ai-sdk/react` — transport via `DefaultChatTransport`, send
+ * via `sendMessage({ text })`. See `lib/ai/use-conversation.ts` for
+ * the conversation-id + localStorage persistence layer.
  */
 import { useChat } from '@ai-sdk/react';
 import { DefaultChatTransport, type UIMessage } from 'ai';
@@ -45,13 +52,34 @@ import { ChatInput } from '@/components/ai/ChatInput';
 import { ChatThread, type ThreadEntry } from '@/components/ai/ChatThread';
 import { ShareConversationButton } from '@/components/ai/ShareConversationButton';
 import { SuggestedPromptChips } from '@/components/ai/SuggestedPromptChips';
+import { SUGGESTED_PROMPTS } from '@/lib/ai/suggested-prompts';
 import { useConversation } from '@/lib/ai/use-conversation';
 
-import { SUGGESTED_PROMPTS } from './suggested-prompts';
+export interface AskShellContext {
+  datasetId?: string;
+  datasetName?: string;
+  selectedSubjectId?: string;
+  selectedSessionId?: string;
+}
+
+export interface AskShellProps {
+  /**
+   * Workspace context — accepted in v1 but not yet forwarded to the
+   * API. The prop is here so AskPanel can pass it through without a
+   * future signature change once backend context-injection lands.
+   */
+  context?: AskShellContext;
+  /**
+   * When true, render the inner chat column only (no shell header,
+   * no fixed-height container). Used by `AskPanel` which provides
+   * its own header + height management.
+   */
+  compact?: boolean;
+}
 
 /**
  * Outer shell: resolves the conversation id (URL hash + localStorage
- * restore) BEFORE handing off to the inner `AskChat`. We key
+ * restore) before handing off to the inner `AskChat`. We key
  * `AskChat` by `conversationId` so:
  *
  *   - On initial mount, the inner only renders once the id and
@@ -60,13 +88,11 @@ import { SUGGESTED_PROMPTS } from './suggested-prompts';
  *   - On "New chat", `conversationId` changes → React unmounts and
  *     remounts the inner → `useChat` reinitializes from scratch
  *     with `messages: []`.
- *
- * We render a "hold" state during the brief moment between mount
- * and the conversation effect — but since the effect runs
- * synchronously on the first commit, this is essentially a single
- * paint of an empty shell with a spinner-free header.
  */
-export function AskShell() {
+export function AskShell({
+  context: _context,
+  compact = false,
+}: AskShellProps = {}) {
   const {
     conversationId,
     initialMessages,
@@ -80,12 +106,20 @@ export function AskShell() {
   // mount effect fires.
   if (!conversationId) {
     return (
-      <div className="flex flex-col h-[calc(100vh-128px)] max-w-3xl mx-auto bg-white border-x border-gray-100">
-        <header className="px-6 py-5 border-b border-gray-100">
-          <h1 className="text-[22px] font-semibold text-gray-900 m-0">
-            Ask the Commons
-          </h1>
-        </header>
+      <div
+        className={
+          compact
+            ? 'flex flex-col flex-1 min-h-0 bg-bg-surface'
+            : 'flex flex-col h-[calc(100vh-128px)] max-w-3xl mx-auto bg-white border-x border-gray-100'
+        }
+      >
+        {!compact && (
+          <header className="px-6 py-5 border-b border-gray-100">
+            <h1 className="text-[22px] font-semibold text-gray-900 m-0">
+              Ask the Commons
+            </h1>
+          </header>
+        )}
       </div>
     );
   }
@@ -98,6 +132,7 @@ export function AskShell() {
       persist={persist}
       onNewConversation={startNewConversation}
       shareUrl={shareUrl}
+      compact={compact}
     />
   );
 }
@@ -108,6 +143,7 @@ type AskChatProps = {
   persist: (messages: UIMessage[]) => void;
   onNewConversation: () => void;
   shareUrl: string | null;
+  compact: boolean;
 };
 
 function AskChat({
@@ -116,6 +152,7 @@ function AskChat({
   persist,
   onNewConversation,
   shareUrl,
+  compact,
 }: AskChatProps) {
   const [input, setInput] = useState('');
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
@@ -133,11 +170,11 @@ function AskChat({
     id: conversationId,
     messages: initialMessages,
     onError: (err) => {
-      // The AI SDK surfaces Response errors as Error with response
-      // attached. Parse for our typed error envelope.
       const msg = err?.message ?? '';
       if (msg.includes('rate_limited') || msg.includes('429')) {
-        setErrorBanner("You've sent a lot of messages — wait a minute and try again.");
+        setErrorBanner(
+          "You've sent a lot of messages — wait a minute and try again.",
+        );
         setRetryAt(Date.now() + 60_000);
       } else if (msg.includes('chat_disabled') || msg.includes('503')) {
         setErrorBanner('Chat preview is not enabled in this environment.');
@@ -147,15 +184,8 @@ function AskChat({
     },
   });
 
-  // Watchdog timer: the server function has `maxDuration = 60s`, but
-  // Vercel's edge can drop the response body without emitting a typed
-  // SSE error frame — `useChat`'s `status` then stays in `'streaming'`
-  // indefinitely and the UI shows a frozen "using <tool>…" indicator.
-  // We fire a client-side fallback at ~65s (5s headroom over the server
-  // cap so the legitimate stream finish almost always wins): call
-  // `stop()` so the in-flight tool indicator drops to its static
-  // "completed/restored" rendering, then surface a friendly recovery
-  // banner. (P0-B, 2026-05-14.)
+  // Watchdog timer — see pre-move comment for the rationale (P0-B fix
+  // 2026-05-14). Carried over verbatim.
   const STREAM_TIMEOUT_MS = 65_000;
   const timeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isStreamingNow = status === 'streaming' || status === 'submitted';
@@ -165,7 +195,7 @@ function AskChat({
       timeoutRef.current = setTimeout(() => {
         stop();
         setErrorBanner(
-          "The model took too long to answer. Try again with a more specific question, or wait a moment.",
+          'The model took too long to answer. Try again with a more specific question, or wait a moment.',
         );
         timeoutRef.current = null;
       }, STREAM_TIMEOUT_MS);
@@ -183,7 +213,7 @@ function AskChat({
     return undefined;
   }, [isStreamingNow, stop]);
 
-  // Retry-after countdown (re-renders every second while we're rate-limited).
+  // Retry-after countdown.
   useEffect(() => {
     if (!retryAt) return;
     const t = setInterval(() => {
@@ -195,9 +225,8 @@ function AskChat({
     return () => clearInterval(t);
   }, [retryAt]);
 
-  // Persist the latest message snapshot whenever it changes. The
-  // `persist` callback is internally debounced 300ms in the hook so
-  // streaming tokens coalesce into a single write per pause.
+  // Persist on every message change. The hook's debounce inside
+  // `useConversation` coalesces streaming tokens.
   useEffect(() => {
     persist(messages);
   }, [messages, persist]);
@@ -205,22 +234,11 @@ function AskChat({
   const entries: ThreadEntry[] = useMemo(() => {
     const out: ThreadEntry[] = [];
     for (const m of messages) {
-      // v5 UIMessage has `parts: Array<{ type: 'text' | 'tool-<name>' | ... }>`.
-      // We flatten: text parts → message entries; tool parts → tool-call
-      // indicators. For assistant messages we ALSO collect each tool
-      // part into a `toolCalls` array attached to the resulting message
-      // entry, so the "Show code" button can render the exported
-      // snippet against the same source of truth.
       const parts = m.parts as
         | Array<{
             type: string;
             text?: string;
             toolName?: string;
-            // AI SDK v5 ToolUIPart fields. `state` advances through
-            // input-streaming → input-available → output-available; we
-            // record whatever inputs/outputs are present at render
-            // time. See node_modules/.pnpm/ai@5.0.186/dist/index.d.mts
-            // around line 1655 for the canonical type.
             input?: unknown;
             output?: unknown;
           }>
@@ -229,9 +247,6 @@ function AskChat({
       if (!Array.isArray(parts)) continue;
 
       let buf = '';
-      // Accumulator for tool calls in this message — gets attached to
-      // the final assistant message entry pushed below so the "Show
-      // code" button shows up once at the end of the turn.
       const toolCallsForMsg: Array<{
         toolName: string;
         args: unknown;
@@ -242,8 +257,6 @@ function AskChat({
         if (p.type === 'text' && typeof p.text === 'string') {
           buf += p.text;
         } else if (p.type.startsWith('tool-')) {
-          // Flush any buffered text before showing the tool indicator
-          // so the order in the UI matches the model's timeline.
           if (buf) {
             out.push({
               kind: 'message',
@@ -253,10 +266,7 @@ function AskChat({
             buf = '';
           }
           const toolName = p.toolName ?? p.type.replace(/^tool-/, '');
-          out.push({
-            kind: 'tool-call',
-            toolName,
-          });
+          out.push({ kind: 'tool-call', toolName });
           if (m.role === 'assistant') {
             toolCallsForMsg.push({
               toolName,
@@ -276,9 +286,6 @@ function AskChat({
             : {}),
         });
       } else if (m.role === 'assistant' && toolCallsForMsg.length > 0) {
-        // Edge case: assistant turn that ended with a tool result but
-        // no trailing text. Attach the tool history to the previous
-        // assistant message entry so the button still renders.
         for (let i = out.length - 1; i >= 0; i--) {
           const entry = out[i]!;
           if (entry.kind === 'message' && entry.role === 'assistant') {
@@ -294,7 +301,6 @@ function AskChat({
     return out;
   }, [messages]);
 
-  // Latest user question, for the snippet header banner.
   const lastUserQuestion = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
       const m = messages[i]!;
@@ -309,8 +315,6 @@ function AskChat({
     return undefined;
   }, [messages]);
 
-  // Best-effort chat URL for the snippet header. SSR-safe — returns
-  // undefined during server render so the snippet just omits the line.
   const chatUrl =
     typeof window !== 'undefined' ? window.location.href : undefined;
 
@@ -331,10 +335,6 @@ function AskChat({
     void sendMessage({ text: prompt });
   };
 
-  // Explicit user-initiated abort. Calling `stop()` cancels the in-
-  // flight stream and clears `status` back to `'ready'`. The watchdog
-  // useEffect handles the rest of the cleanup. Surface a brief banner
-  // so the user knows the request was cancelled (not silently dropped).
   const handleStop = () => {
     stop();
     if (timeoutRef.current) {
@@ -347,53 +347,61 @@ function AskChat({
   const hasAnyMessages = messages.length > 0;
 
   return (
-    <div className="flex flex-col h-[calc(100vh-128px)] max-w-3xl mx-auto bg-white border-x border-gray-100">
-      <header className="px-6 py-5 border-b border-gray-100">
-        <div className="flex items-start justify-between gap-4">
-          <div className="flex-1 min-w-0">
-            <h1 className="text-[22px] font-semibold text-gray-900 m-0">Ask the Commons</h1>
-            <p className="mt-1 text-[14px] text-gray-500 m-0">
-              Experimental preview. Ask about published NDI datasets in plain
-              English — counts, contents, contributors, anything in the
-              public catalog.
-            </p>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <ShareConversationButton shareUrl={shareUrl} />
-            {isStreaming ? (
-              // Stop button visible only while streaming. Replaces the
-              // "New chat" button to keep the header crowd-free. Gives
-              // the user an escape hatch on slow/runaway streams that
-              // would otherwise hit the 65s watchdog. (P0-B fix —
-              // 2026-05-14.)
-              <button
-                type="button"
-                onClick={handleStop}
-                className="inline-flex items-center rounded-md px-2 py-1 text-[12.5px] font-medium border border-gray-200 bg-white text-gray-700 hover:bg-red-50 hover:border-red-200 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 transition-colors duration-(--duration-base) ease-(--ease-out)"
-                aria-label="Stop generating"
-                title="Stop generating"
-              >
-                Stop
-              </button>
-            ) : (
-              hasAnyMessages && (
+    <div
+      className={
+        compact
+          ? 'flex flex-col flex-1 min-h-0 bg-bg-surface'
+          : 'flex flex-col h-[calc(100vh-128px)] max-w-3xl mx-auto bg-white border-x border-gray-100'
+      }
+    >
+      {!compact && (
+        <header className="px-6 py-5 border-b border-gray-100">
+          <div className="flex items-start justify-between gap-4">
+            <div className="flex-1 min-w-0">
+              <h1 className="text-[22px] font-semibold text-gray-900 m-0">
+                Ask the Commons
+              </h1>
+              <p className="mt-1 text-[14px] text-gray-500 m-0">
+                Experimental preview. Ask about published NDI datasets in plain
+                English — counts, contents, contributors, anything in the
+                public catalog.
+              </p>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              <ShareConversationButton shareUrl={shareUrl} />
+              {isStreaming ? (
                 <button
                   type="button"
-                  onClick={onNewConversation}
-                  className="inline-flex items-center rounded-md px-2 py-1 text-[12.5px] font-medium border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 transition-colors duration-(--duration-base) ease-(--ease-out)"
-                  aria-label="Start a new conversation"
-                  title="Start a new conversation"
+                  onClick={handleStop}
+                  className="inline-flex items-center rounded-md px-2 py-1 text-[12.5px] font-medium border border-gray-200 bg-white text-gray-700 hover:bg-red-50 hover:border-red-200 hover:text-red-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-red-500 transition-colors duration-(--duration-base) ease-(--ease-out)"
+                  aria-label="Stop generating"
+                  title="Stop generating"
                 >
-                  New chat
+                  Stop
                 </button>
-              )
-            )}
+              ) : (
+                hasAnyMessages && (
+                  <button
+                    type="button"
+                    onClick={onNewConversation}
+                    className="inline-flex items-center rounded-md px-2 py-1 text-[12.5px] font-medium border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 hover:text-gray-900 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 transition-colors duration-(--duration-base) ease-(--ease-out)"
+                    aria-label="Start a new conversation"
+                    title="Start a new conversation"
+                  >
+                    New chat
+                  </button>
+                )
+              )}
+            </div>
           </div>
-        </div>
-      </header>
+        </header>
+      )}
 
       {isEmpty ? (
-        <SuggestedPromptChips prompts={SUGGESTED_PROMPTS} onSelect={handleChipSelect} />
+        <SuggestedPromptChips
+          prompts={SUGGESTED_PROMPTS}
+          onSelect={handleChipSelect}
+        />
       ) : (
         <ChatThread
           entries={entries}
@@ -418,6 +426,23 @@ function AskChat({
         onSubmit={handleSubmit}
         disabled={isStreaming || retryAt !== null}
       />
+
+      {/* Compact mode: surface the "New chat" affordance inline since
+          the header is suppressed. Placed at the bottom of the column
+          so it doesn't compete with the input field for focus. */}
+      {compact && hasAnyMessages && !isStreaming && (
+        <div className="px-4 py-2 border-t border-border-subtle bg-bg-muted/40 flex justify-end">
+          <button
+            type="button"
+            onClick={onNewConversation}
+            className="inline-flex items-center rounded-md px-2 py-1 text-[12px] font-medium border border-border-subtle bg-bg-surface text-fg-secondary hover:bg-bg-muted hover:text-fg-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-500 transition-colors duration-(--duration-base) ease-(--ease-out)"
+            aria-label="Start a new conversation"
+            title="Start a new conversation"
+          >
+            New chat
+          </button>
+        </div>
+      )}
     </div>
   );
 }

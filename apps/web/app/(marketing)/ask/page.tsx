@@ -1,37 +1,25 @@
 /**
- * /ask — experimental chat preview.
+ * `/ask` — RETIRED (2026-05-16, Phase D workspace redesign).
  *
- * Server Component shell. Gates on `askEnabled()` server-side: if
- * `ANTHROPIC_API_KEY` is unset, render a "Coming soon" notice
- * instead of the chat shell. (The /api/ask route ALSO gates with
- * 503 — defense in depth.)
+ * Ask is now a workspace-only affordance, accessible via the drawer
+ * trigger inside `/my/workspace/[id]/*`. The public anonymous chat
+ * surface that used to live at this URL is retired as part of the
+ * Phase D migration — Ask is no longer a public marketing-side
+ * surface (per the design doc's locked decision, with a dedicated
+ * marketing page slated to appear within the Data Browser product
+ * page once that product launches publicly).
  *
- * generateMetadata is intentionally bare — this is a preview page,
- * not part of marketing SEO. noindex.
+ * Anyone arriving at `/ask` (bookmarks, external links) is
+ * server-redirected to `/create-account?next=/my` so:
+ *   - Authenticated visitors land in their dataset list after the
+ *     auth pass-through.
+ *   - New visitors are prompted to create an account before
+ *     accessing the workspace chat.
+ *
+ * `redirect()` is a server-side redirect; no client flash.
  */
-import type { Metadata } from 'next';
+import { redirect } from 'next/navigation';
 
-import { AskShell } from './ask-shell';
-import { askEnabled } from '@/lib/ai/feature-flag';
-
-export const metadata: Metadata = {
-  title: 'Ask the Commons (preview) — NDI Cloud',
-  description:
-    'Experimental chat interface for the NDI Commons published-dataset catalog.',
-  robots: { index: false, follow: false },
-};
-
-export default function AskPage() {
-  if (!askEnabled()) {
-    return (
-      <div className="max-w-2xl mx-auto px-6 py-20 text-center">
-        <h1 className="text-[24px] font-semibold text-gray-900">Ask the Commons</h1>
-        <p className="mt-3 text-[15px] text-gray-500">
-          Coming soon — this chat preview isn&apos;t enabled in this environment.
-        </p>
-      </div>
-    );
-  }
-
-  return <AskShell />;
+export default function RetiredAskPage(): never {
+  redirect('/create-account?next=/my');
 }
