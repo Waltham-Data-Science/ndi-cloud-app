@@ -1,17 +1,28 @@
 /**
- * `/my/workspace/[id]/structure` — class browser (Phase A scaffold).
+ * `/my/workspace/[id]/structure` — class browser (Phase B build).
  *
- * Phase B fills this with the full class-browser layout (sortable
- * list of all 11+ NDI document classes with counts + drill-in links).
- * Phase A shows a placeholder that points users at the existing
- * `/datasets/[id]/documents` surface — which already provides the
- * raw document browsing experience the Structure tab will eventually
- * mirror inside the workspace.
+ * Replaces the Phase A "Coming Soon" placeholder with the real
+ * class browser: every NDI document class in the dataset listed
+ * with per-class counts, sortable, filterable, click-to-drill into
+ * the Document Explorer with the class pre-selected.
+ *
+ * The browser itself is a client component (sort + filter state).
+ * The page is a server component that just supplies the dataset
+ * id and renders the section header.
+ *
+ * Routing note: classes drill to `/datasets/[id]/documents?class=…`
+ * (Document Explorer) rather than the summary-tables surface. The
+ * summary-tables endpoint only supports a fixed set of NDI classes
+ * (subject / probe / element / element_epoch / treatment /
+ * openminds_subject / probe_location); classes outside that set
+ * (ontologyTableRow, imageStack, generic_file, …) wouldn't have a
+ * tables URL to route to. The Document Explorer accepts every
+ * class so the drill path stays uniform.
  */
 import type { Metadata } from 'next';
-import { Workflow } from 'lucide-react';
 
-import { WorkspaceComingSoonPlaceholder } from '@/components/workspace/WorkspaceComingSoonPlaceholder';
+import { StructureBrowser } from '@/components/workspace/StructureBrowser';
+import { WorkspaceSectionHeader } from '@/components/workspace/WorkspaceSectionHeader';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -27,22 +38,13 @@ export const metadata: Metadata = {
 export default async function WorkspaceStructurePage({ params }: PageProps) {
   const { id } = await params;
   return (
-    <WorkspaceComingSoonPlaceholder
-      tabName="Structure"
-      icon={Workflow}
-      description="The Structure tab will surface every NDI document class in this dataset with per-class counts, sort + filter, and direct drill into the underlying documents."
-      planned={[
-        'All 11+ document classes (subject, element, treatment, ontologyTableRow, …) in one list',
-        'Per-class counts with sort + filter',
-        'One-click drill into the Summary Tables surface, scoped to the class',
-        'Show-code helper that copies the equivalent Python / MATLAB snippet',
-      ]}
-      alternative={{
-        label: 'Document Explorer',
-        href: `/datasets/${id}/documents`,
-        description:
-          'The existing Document Explorer is the raw-document surface that the Structure tab will eventually wrap inside the workspace. Filter by class, drill into individual documents, walk the depends_on graph.',
-      }}
-    />
+    <section className="mx-auto max-w-[1200px] px-7 py-10">
+      <WorkspaceSectionHeader
+        eyebrow="Dataset structure"
+        title="Every document class, every count"
+        description="The shape of this dataset at the NDI document level. Sort by count or name, filter to a class family, and click any row to open it in the Document Explorer."
+      />
+      <StructureBrowser datasetId={id} />
+    </section>
   );
 }
