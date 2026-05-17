@@ -232,54 +232,14 @@ export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
     },
   ];
 
-  // Audit 2026-05-18 (data-parity round): match the SubjectsBrowser
-  // pattern — curated columns first (Epoch + Start + Approach), then
-  // every server-discovered enrichment column appended hidden-by-
-  // default. Same backend response as the public
-  // `/datasets/[id]/tables/element_epoch` view; user can now reach
-  // the full 12+ col set via the column-toggle menu.
+  // Audit 2026-05-18 follow-up — no column hardcoding. Build columns
+  // entirely from the backend's `data.columns` envelope; the smart
+  // default cell auto-formats by value type (ISO date / CURIE / id /
+  // number / etc.) without per-column custom renderers. Same code
+  // path serves every dataset's element_epoch projection.
   const built = useMemo(
     () =>
       buildPickerColumns<EpochRow>({
-        curated: [
-          {
-            id: 'epoch',
-            header: 'Epoch',
-            accessor: (r) =>
-              r.epochNumber !== null && r.epochNumber !== undefined
-                ? String(r.epochNumber)
-                : '—',
-            cell: (v) => (
-              <span className="font-mono text-[12px] text-fg-primary truncate inline-block max-w-full">
-                {String(v ?? '—')}
-              </span>
-            ),
-            size: 130,
-            locked: true,
-          },
-          {
-            id: 'start',
-            header: 'Start',
-            accessor: (r) => formatEpochTime(r.epochStart),
-            cell: (v) => (
-              <span className="font-mono text-[11.5px] text-fg-secondary tabular-nums truncate inline-block max-w-full">
-                {String(v ?? '—')}
-              </span>
-            ),
-            size: 130,
-          },
-          {
-            id: 'approach',
-            header: 'Approach',
-            accessor: (r) => r.approachName ?? '—',
-            cell: (v) => (
-              <span className="text-[12px] text-fg-secondary truncate inline-block max-w-full">
-                {String(v ?? '—')}
-              </span>
-            ),
-            size: 90,
-          },
-        ],
         serverColumns: summary.data?.columns,
         rows: allRows,
       }),
@@ -442,10 +402,9 @@ export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
           contextMenuActions={contextMenuActions}
           bulkActions={bulkActions}
           globalFilter={globalSearch}
-          // Approach (recording type) is the natural group dimension
-          // for sessions; Start (date) would be too granular to
-          // group by without a date-bin transform.
-          groupableColumnIds={['approach']}
+          // No explicit groupableColumnIds — every backend-discovered
+          // column is offered as a group-by option (audit 2026-05-18
+          // follow-up: no hardcoding).
           columnLabels={dynamicColumnLabels}
           lockedColumnIds={dynamicLockedColumnIds}
           initialColumnVisibility={initialColumnVisibility}

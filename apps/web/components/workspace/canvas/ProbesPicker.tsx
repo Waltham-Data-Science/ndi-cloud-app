@@ -42,10 +42,6 @@
  */
 import { Copy, Crosshair, ExternalLink, MapPin, Sparkles } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
-import {
-  createColumnHelper,
-  type ColumnDef,
-} from '@tanstack/react-table';
 
 import { Skeleton } from '@/components/ui/Skeleton';
 import { WorkspaceDataGrid } from '@/components/workspace/canvas/WorkspaceDataGrid';
@@ -57,6 +53,7 @@ import {
   emitAskPrefill,
 } from '@/lib/ai/ask-prefill-bus';
 import { useSummaryTable } from '@/lib/api/tables';
+import { buildPickerColumns } from '@/lib/workspace/build-picker-columns';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 
 interface ProbesPickerProps {
@@ -161,40 +158,24 @@ export function ProbesPicker({ datasetId }: ProbesPickerProps) {
   const filteredRows = cascadeFilteredRows;
   void filteredRows;
 
-  const columnHelper = createColumnHelper<ProbeRow>();
-  const columns = useMemo<ColumnDef<ProbeRow, unknown>[]>(
+  // Audit 2026-05-18 follow-up — no column hardcoding. Build columns
+  // from the backend's `data.columns` envelope; smart cell auto-
+  // formats by value type. ProbeColumns the workspace author didn't
+  // anticipate (probeReference, electrodeCount, brain region, etc.)
+  // now surface automatically.
+  const built = useMemo(
     () =>
-      [
-        columnHelper.accessor(
-          (r) =>
-            r.probeName ??
-            (typeof r.probeDocumentIdentifier === 'string'
-              ? `${r.probeDocumentIdentifier.slice(0, 8)}…`
-              : '—'),
-          {
-            id: 'name',
-            header: 'Probe',
-            cell: (info) => (
-              <span className="font-mono text-[12px] text-fg-primary truncate inline-block max-w-full">
-                {String(info.getValue() ?? '—')}
-              </span>
-            ),
-            size: 160,
-          },
-        ),
-        columnHelper.accessor((r) => r.probeType ?? '—', {
-          id: 'type',
-          header: 'Type',
-          cell: (info) => (
-            <span className="text-[12px] text-fg-secondary truncate inline-block max-w-full">
-              {String(info.getValue() ?? '—')}
-            </span>
-          ),
-          size: 130,
-        }),
-      ] as ColumnDef<ProbeRow, unknown>[],
-    [columnHelper],
+      buildPickerColumns<ProbeRow>({
+        serverColumns: summary.data?.columns,
+        rows: allRows,
+      }),
+    [summary.data, allRows],
   );
+
+  const columns = built.columns;
+  const initialColumnVisibility = built.initialVisibility;
+  const dynamicColumnLabels = built.columnLabels;
+  const dynamicLockedColumnIds = built.lockedColumnIds;
 
   // Context menu — "Show electrode positions" jumps to the
   // ElectrodePosition panel (matching the canvas's analysis grid).
@@ -327,9 +308,12 @@ export function ProbesPicker({ datasetId }: ProbesPickerProps) {
         globalFilter={nameQuery}
         // Probe type is the natural group dimension (Neuropixel,
         // tetrode, patch, etc.); names are too specific to group by.
-        groupableColumnIds={['type']}
-        columnLabels={{ name: 'Probe', type: 'Type' }}
-        lockedColumnIds={['name']}
+        // No explicit groupableColumnIds — every backend-discovered
+        // probe column is offered as a group-by option (audit
+        // 2026-05-18 follow-up: no hardcoding).
+        columnLabels={dynamicColumnLabels}
+        lockedColumnIds={dynamicLockedColumnIds}
+        initialColumnVisibility={initialColumnVisibility}
         label="Probes"
         emptyState={
           <div className="rounded-md border border-dashed border-border-subtle bg-bg-surface px-3 py-6 text-center text-[12.5px] text-fg-secondary">

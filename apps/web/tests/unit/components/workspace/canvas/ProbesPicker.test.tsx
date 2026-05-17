@@ -312,9 +312,13 @@ describe('ProbesPicker — grid wiring', () => {
     expect(setSelectionMock).toHaveBeenCalledWith({ probe: 'probe-doc-id-1' });
   });
 
-  it('locks the name column', () => {
+  it('locks the primary (first server-emitted) column', () => {
+    // Audit 2026-05-18 follow-up: probe columns are dynamic now;
+    // backend emits `probeDocumentIdentifier` as the canonical
+    // first column.
     render(<ProbesPicker datasetId="ds1" />);
-    expect(captured!.lockedColumnIds).toContain('name');
+    expect(captured!.lockedColumnIds).toHaveLength(1);
+    expect(captured!.lockedColumnIds![0]).toBe('probeDocumentIdentifier');
   });
 });
 

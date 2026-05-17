@@ -38,10 +38,6 @@
  */
 import { Activity, Copy, Crosshair, ExternalLink, Sparkles } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
-import {
-  createColumnHelper,
-  type ColumnDef,
-} from '@tanstack/react-table';
 
 import { Skeleton } from '@/components/ui/Skeleton';
 import { WorkspaceDataGrid } from '@/components/workspace/canvas/WorkspaceDataGrid';
@@ -53,6 +49,7 @@ import {
   emitAskPrefill,
 } from '@/lib/ai/ask-prefill-bus';
 import { useDocuments, type DocumentSummary } from '@/lib/api/documents';
+import { buildPickerColumns } from '@/lib/workspace/build-picker-columns';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 
 interface StimuliPickerProps {
@@ -60,35 +57,29 @@ interface StimuliPickerProps {
 }
 
 /**
- * Normalised stimulus row — what the table actually renders. We
- * project the raw `DocumentSummary` into this shape once so the
- * column accessors can stay simple.
+ * Stimulus row — a flattened projection of a stimulus document.
+ * Carries the doc identity + className for workspace selection,
+ * plus every key from `data[className]` flattened to the top level
+ * so the dynamic-column helper can discover them.
+ *
+ * Audit 2026-05-18 follow-up (no hardcoding): the previous version
+ * of this picker projected just 4 hardcoded fields (`docId`,
+ * `className`, `stimulusType`, `presentationCount`) and dropped
+ * everything else the doc carried — `stim_time`, `parameters`,
+ * `frequency`, etc. were silently invisible. Now: nothing is
+ * dropped. The table renders every field the doc body exposes.
  */
-export interface StimulusRow {
+export type StimulusRow = Record<string, unknown> & {
+  /** Workspace selection key. Always present; everything else is open. */
   docId: string;
-  /** Source class: `stimulus_presentation` or `stimulus_response`. */
-  className: string;
-  /** Human-readable stimulus type — best-effort. */
-  stimulusType: string;
-  /** Number of presentations / responses on the doc; null when unknown. */
-  presentationCount: number | null;
-}
+};
 
 /**
- * Project a raw document into a `StimulusRow`. Pure for testability —
- * exported so the test can pin the type-derivation + count-derivation
- * paths across the multiple known stimulus doc shapes.
- *
- * Type derivation order (best-effort):
- *   1. `data.<className>.stim_type` or `.stimulus_type`
- *   2. `data.<className>.name`
- *   3. `doc.name`
- *   4. class fallback ("Presentation" / "Response")
- *
- * Count derivation:
- *   - `stimulus_presentation`: `data.stimulus_presentation.presentations[].length`
- *   - `stimulus_response`: `data.stimulus_response.responses[].length`
- *   - null when neither array is present (older / atypical schemas)
+ * Project a raw document into a `StimulusRow` by flattening
+ * `doc.data[className]` keys to the top level. Doc-shell fields
+ * (`id`, `ndiId`, `name`, `className`) are added as `docId`,
+ * `ndiId`, `name`, `className` so they're available alongside the
+ * inner stim data. Pure for testability.
  */
 export function projectStimulusRow(
   doc: DocumentSummary,
@@ -100,35 +91,14 @@ export function projectStimulusRow(
   const data = (doc.data ?? {}) as Record<string, unknown>;
   const inner = (data[className] ?? {}) as Record<string, unknown>;
 
-  // Type derivation
-  let stimulusType = '—';
-  const innerStimType = inner.stim_type ?? inner.stimulus_type;
-  if (typeof innerStimType === 'string' && innerStimType.length > 0) {
-    stimulusType = innerStimType;
-  } else if (typeof inner.name === 'string' && inner.name.length > 0) {
-    stimulusType = inner.name;
-  } else if (typeof doc.name === 'string' && doc.name.length > 0) {
-    stimulusType = doc.name;
-  } else {
-    stimulusType =
-      className === 'stimulus_presentation' ? 'Presentation' : 'Response';
-  }
-
-  // Count derivation
-  let presentationCount: number | null = null;
-  if (className === 'stimulus_presentation') {
-    const arr = inner.presentations;
-    if (Array.isArray(arr)) presentationCount = arr.length;
-  } else if (className === 'stimulus_response') {
-    const arr = inner.responses;
-    if (Array.isArray(arr)) presentationCount = arr.length;
-  }
-
+  // Flatten: doc-shell fields + every inner field. Conflicts go to
+  // the shell value (the doc's outer `name` wins over `data.name`).
   return {
+    ...inner,
     docId,
+    ndiId: doc.ndiId ?? null,
+    name: doc.name ?? null,
     className,
-    stimulusType,
-    presentationCount,
   };
 }
 
@@ -142,16 +112,24 @@ export function filterStimuli(
 ): StimulusRow[] {
   const q = typeQuery.trim().toLowerCase();
   if (!q) return rows;
-  return rows.filter(
-    (row) =>
-      row.stimulusType.toLowerCase().includes(q) ||
-      row.className.toLowerCase().includes(q),
-  );
+  // Audit 2026-05-18 follow-up: StimulusRow is now an open record
+  // (flattened doc body), so the legacy `stimulusType` / `className`
+  // fields aren't guaranteed. Match against EVERY string value on
+  // the row — same approach the grid's globalFilter uses for its
+  // searchable substring matching.
+  return rows.filter((row) => {
+    for (const value of Object.values(row)) {
+      if (typeof value === 'string' && value.toLowerCase().includes(q)) {
+        return true;
+      }
+    }
+    return false;
+  });
 }
 
 /** Stable row id accessor — every grid touchpoint uses this. */
 function stimulusRowId(row: StimulusRow): string {
-  return row.docId;
+  return String(row.docId ?? '');
 }
 
 export function StimuliPicker({ datasetId }: StimuliPickerProps) {
@@ -198,53 +176,29 @@ export function StimuliPicker({ datasetId }: StimuliPickerProps) {
     return result;
   }, [presentationQuery.data, responseQuery.data]);
 
-  // Note: filtering moved into the grid's globalFilter (Phase H6).
-  // `filterStimuli` is kept as an exported helper for direct
-  // consumers, but no longer applied here.
-
-  const columnHelper = createColumnHelper<StimulusRow>();
-  const columns = useMemo<ColumnDef<StimulusRow, unknown>[]>(
+  // Audit 2026-05-18 follow-up — no column hardcoding. Stimuli docs
+  // come from `useDocuments` (no /tables/stimulus projection yet —
+  // see backend follow-up F-1). projectStimulusRow flattens
+  // doc.data[className] keys to the top level, so the dynamic
+  // helper discovers every field the stim doc carries (stim_time,
+  // parameters, frequency, etc.) — not just the 3 hardcoded ones
+  // (type / count / shortid) the picker used to surface.
+  const built = useMemo(
     () =>
-      [
-        columnHelper.accessor((r) => r.stimulusType, {
-          id: 'type',
-          header: 'Type',
-          cell: (info) => (
-            <span className="text-[12px] text-fg-primary truncate inline-block max-w-full">
-              {String(info.getValue() ?? '—')}
-            </span>
-          ),
-          size: 150,
-        }),
-        columnHelper.accessor(
-          (r) =>
-            r.presentationCount === null
-              ? '—'
-              : r.presentationCount.toLocaleString(),
-          {
-            id: 'count',
-            header: '#',
-            cell: (info) => (
-              <span className="text-[12px] text-fg-secondary tabular-nums">
-                {String(info.getValue() ?? '—')}
-              </span>
-            ),
-            size: 60,
-          },
-        ),
-        columnHelper.accessor((r) => `${r.docId.slice(0, 8)}…`, {
-          id: 'shortid',
-          header: 'ID',
-          cell: (info) => (
-            <span className="font-mono text-[11px] text-fg-muted">
-              {String(info.getValue() ?? '—')}
-            </span>
-          ),
-          size: 80,
-        }),
-      ] as ColumnDef<StimulusRow, unknown>[],
-    [columnHelper],
+      buildPickerColumns<StimulusRow>({
+        serverColumns: undefined, // discovered from rows
+        rows: allRows,
+        // The flattened row has `docId` as the canonical selection
+        // identity; mark it primary so it renders mono + locked.
+        primaryColumnId: 'docId',
+      }),
+    [allRows],
   );
+
+  const columns = built.columns;
+  const initialColumnVisibility = built.initialVisibility;
+  const dynamicColumnLabels = built.columnLabels;
+  const dynamicLockedColumnIds = built.lockedColumnIds;
 
   // Context menu — "Use in PSTH" sets the stimulus and jumps the
   // user to the PSTH panel. This is the most common downstream use:
@@ -363,11 +317,12 @@ export function StimuliPicker({ datasetId }: StimuliPickerProps) {
         contextMenuActions={contextMenuActions}
         bulkActions={bulkActions}
         globalFilter={typeQuery}
-        // Stimulus Type is the natural group-by dimension
-        // ("drift gratings vs gabor vs noise" cohorts).
-        groupableColumnIds={['type']}
-        columnLabels={{ type: 'Type', count: 'Count', shortid: 'ID' }}
-        lockedColumnIds={['type']}
+        // No explicit groupableColumnIds — every backend-discovered
+        // stim doc field is offered as a group-by option (audit
+        // 2026-05-18 follow-up: no hardcoding).
+        columnLabels={dynamicColumnLabels}
+        lockedColumnIds={dynamicLockedColumnIds}
+        initialColumnVisibility={initialColumnVisibility}
         label="Stimuli"
         emptyState={
           <div className="rounded-md border border-dashed border-border-subtle bg-bg-surface px-3 py-6 text-center text-[12.5px] text-fg-secondary">

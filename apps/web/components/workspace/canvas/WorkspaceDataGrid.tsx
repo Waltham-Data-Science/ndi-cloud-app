@@ -149,6 +149,12 @@ export interface WorkspaceDataGridProps<TRow> {
    * Columns that can serve as a group-by key. When the user picks
    * a group-by column from the column menu, rows collapse into
    * group headers showing the value + member count. Phase H2.
+   *
+   * Default behavior (audit 2026-05-18 follow-up — no column
+   * hardcoding): when omitted, EVERY non-locked column is offered
+   * as a group-by option. Pass an explicit list only when the
+   * picker needs to restrict the menu for UX reasons (e.g. a
+   * single-column table where group-by makes no sense).
    */
   groupableColumnIds?: ReadonlyArray<string>;
 
@@ -198,7 +204,7 @@ export function WorkspaceDataGrid<TRow>({
   lockedColumnIds = [],
   rowIcon,
   globalFilter = '',
-  groupableColumnIds = [],
+  groupableColumnIds,
   onFilteredRowsChange,
   initialColumnVisibility,
 }: WorkspaceDataGridProps<TRow>) {
@@ -453,25 +459,31 @@ export function WorkspaceDataGrid<TRow>({
     [table, columnLabels, lockedColumnIds],
   );
 
-  // Phase H2 — Group-by options for the column menu. Surfaces only
-  // columns the picker marked as `groupableColumnIds`. The menu
-  // shows a "Group by →" submenu (or list) where the user picks
-  // one column to group by (or "None" to clear).
-  const groupByEntries = useMemo(
-    () =>
-      groupableColumnIds
-        .map((id) => ({
-          id,
-          label: columnLabels[id] ?? id,
-          active: grouping[0] === id,
-        }))
-        // Defensive: only surface columns that actually exist on the
-        // table — a picker can pass a stale id without us crashing.
-        .filter((entry) =>
-          table.getAllLeafColumns().some((col) => col.id === entry.id),
-        ),
-    [groupableColumnIds, columnLabels, grouping, table],
-  );
+  // Phase H2 — Group-by options for the column menu. When the
+  // picker passes an explicit `groupableColumnIds` list, honor it.
+  // Otherwise (audit 2026-05-18 follow-up — no column hardcoding)
+  // default to "every non-locked column is groupable" so a dataset
+  // that exposes a column the workspace author didn't anticipate
+  // can still be aggregated by it.
+  const groupByEntries = useMemo(() => {
+    const ids =
+      groupableColumnIds ??
+      table
+        .getAllLeafColumns()
+        .map((c) => c.id)
+        .filter((id) => !lockedColumnIds.includes(id));
+    return ids
+      .map((id) => ({
+        id,
+        label: columnLabels[id] ?? id,
+        active: grouping[0] === id,
+      }))
+      // Defensive: only surface columns that actually exist on the
+      // table — guards against stale ids from the picker.
+      .filter((entry) =>
+        table.getAllLeafColumns().some((col) => col.id === entry.id),
+      );
+  }, [groupableColumnIds, columnLabels, grouping, table, lockedColumnIds]);
 
   // Phase H4 — distinct values per visible column, sorted desc by
   // frequency. Used to populate the column filter popover's

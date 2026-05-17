@@ -335,9 +335,12 @@ describe('SessionsBrowser — grid wiring', () => {
     expect(setMock).toHaveBeenCalledWith({ session: EPOCH_DOC_ID_1 });
   });
 
-  it('locks the epoch column', () => {
+  it('locks the primary (first server-emitted) column', () => {
+    // Audit 2026-05-18 follow-up: dynamic columns from backend; the
+    // first server-emitted column (here `epochNumber`) is locked.
     render(withProviders(<SessionsBrowser datasetId="ds-test" />));
-    expect(captured!.lockedColumnIds).toContain('epoch');
+    expect(captured!.lockedColumnIds).toHaveLength(1);
+    expect(captured!.lockedColumnIds![0]).toBe('epochNumber');
   });
 });
 

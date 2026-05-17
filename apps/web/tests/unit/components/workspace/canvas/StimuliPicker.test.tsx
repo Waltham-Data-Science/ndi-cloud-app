@@ -95,7 +95,15 @@ afterEach(() => {
 });
 
 describe('projectStimulusRow', () => {
-  it('derives type from data.stimulus_presentation.stim_type', () => {
+  // Audit 2026-05-18 follow-up: `projectStimulusRow` no longer
+  // derives a fixed 4-field shape (docId/className/stimulusType/
+  // presentationCount). It now FLATTENS every field from
+  // `doc.data[className]` to the top level of the row and adds
+  // doc-shell fields (`docId`, `ndiId`, `name`, `className`). The
+  // dynamic-column helper then builds columns from whatever keys
+  // appear. Tests below pin the new contract.
+
+  it('flattens data.<className> keys to top-level row fields', () => {
     const row = projectStimulusRow(
       {
         id: 'doc1',
@@ -103,6 +111,7 @@ describe('projectStimulusRow', () => {
           stimulus_presentation: {
             stim_type: 'drifting_gratings',
             presentations: [{}, {}, {}],
+            frequency_hz: 4.0,
           },
         },
       },
@@ -110,55 +119,60 @@ describe('projectStimulusRow', () => {
     );
     expect(row).toMatchObject({
       docId: 'doc1',
-      stimulusType: 'drifting_gratings',
-      presentationCount: 3,
+      className: 'stimulus_presentation',
+      // Inner fields hoisted verbatim — nothing dropped:
+      stim_type: 'drifting_gratings',
+      frequency_hz: 4.0,
     });
+    expect(Array.isArray(row?.presentations)).toBe(true);
+    expect((row?.presentations as unknown[]).length).toBe(3);
   });
 
-  it('falls back to data.<class>.name when stim_type is absent', () => {
+  it('promotes doc.name to the row even when data.<class>.name also exists', () => {
     const row = projectStimulusRow(
       {
         id: 'doc2',
-        data: {
-          stimulus_response: {
-            name: 'EPM_test',
-            responses: [{}, {}],
-          },
-        },
+        name: 'session intro',
+        data: { stimulus_response: { name: 'EPM_test', responses: [{}, {}] } },
       },
       'stimulus_response',
     );
-    expect(row).toMatchObject({
-      docId: 'doc2',
-      stimulusType: 'EPM_test',
-      presentationCount: 2,
-    });
+    expect(row?.name).toBe('session intro');
+    expect(row?.docId).toBe('doc2');
+    // Inner `responses` still hoisted — flattening didn't drop it.
+    expect(Array.isArray(row?.responses)).toBe(true);
   });
 
-  it('falls back to doc.name then class label', () => {
-    const namedDoc = projectStimulusRow(
-      { id: 'doc3', name: 'session intro', data: {} },
+  it('uses ndiId as the docId fallback when id is missing', () => {
+    const row = projectStimulusRow(
+      { ndiId: 'NDI_x', data: { stimulus_presentation: {} } },
       'stimulus_presentation',
     );
-    expect(namedDoc?.stimulusType).toBe('session intro');
-
-    const fallbackDoc = projectStimulusRow(
-      { id: 'doc4', data: {} },
-      'stimulus_response',
-    );
-    expect(fallbackDoc?.stimulusType).toBe('Response');
+    expect(row?.docId).toBe('NDI_x');
+    expect(row?.ndiId).toBe('NDI_x');
   });
 
   it('returns null when there is no doc id', () => {
     expect(projectStimulusRow({ data: {} }, 'stimulus_presentation')).toBeNull();
   });
 
-  it('sets presentationCount to null when arrays are absent', () => {
+  it('handles a doc whose data.<class> body is empty', () => {
     const row = projectStimulusRow(
       { id: 'doc5', data: { stimulus_presentation: {} } },
       'stimulus_presentation',
     );
-    expect(row?.presentationCount).toBeNull();
+    expect(row).toMatchObject({
+      docId: 'doc5',
+      className: 'stimulus_presentation',
+    });
+    // No invented fields — only doc-shell entries (docId, ndiId,
+    // name, className) plus whatever the inner body carried.
+    expect(Object.keys(row ?? {}).sort()).toEqual([
+      'className',
+      'docId',
+      'name',
+      'ndiId',
+    ]);
   });
 });
 
@@ -344,9 +358,13 @@ describe('StimuliPicker — grid wiring', () => {
     });
   });
 
-  it('locks the type column', () => {
+  it('locks the docId column (primary selection key for stimuli)', () => {
+    // Audit 2026-05-18 follow-up: stim columns are dynamic now
+    // (flattened from doc.data[className]). The picker explicitly
+    // marks `docId` as primary so workspace selection has a stable
+    // identity to lock onto.
     render(<StimuliPicker datasetId="ds1" />);
-    expect(captured!.lockedColumnIds).toContain('type');
+    expect(captured!.lockedColumnIds).toEqual(['docId']);
   });
 });
 

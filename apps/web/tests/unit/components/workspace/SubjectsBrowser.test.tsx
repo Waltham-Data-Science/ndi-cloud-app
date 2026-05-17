@@ -340,9 +340,14 @@ describe('SubjectsBrowser — grid wiring', () => {
     expect(setMock).toHaveBeenCalledWith({ subject: SUBJECT_DOC_ID_1 });
   });
 
-  it('locks the identifier column', () => {
+  it('locks the primary (first server-emitted) column', () => {
+    // Audit 2026-05-18 follow-up: columns are now constructed
+    // entirely from the backend `data.columns` envelope. The
+    // picker locks the first column the backend emits — for the
+    // subject projection that's `subjectIdentifier`.
     render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
-    expect(captured!.lockedColumnIds).toContain('identifier');
+    expect(captured!.lockedColumnIds).toHaveLength(1);
+    expect(captured!.lockedColumnIds![0]).toBe('subjectIdentifier');
   });
 });
 

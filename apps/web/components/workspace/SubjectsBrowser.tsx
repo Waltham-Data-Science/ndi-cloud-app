@@ -240,91 +240,19 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
     },
   ];
 
-  // Audit 2026-05-18 (data-parity round): the workspace picker used
-  // to hardcode 5 columns total — identifier / species / strain /
-  // sex / age — while the SAME backend response on the public
-  // `/datasets/[id]/tables/subject` view exposed every enriched
-  // column the `summary_table_service` projection emits (28+ for
-  // Bhar, similar for Haley / Francesconi). Same data source,
-  // different rendered surface area, very confusing for scientists
-  // looking for a column they know exists.
-  //
-  // Now: the same 5 curated columns are still the visible defaults,
-  // but every server-discovered column is appended (hidden-by-default)
-  // and reachable via the column-toggle menu. Logic lives in the
-  // shared `buildPickerColumns` helper so Sessions / Probes / Stimuli
-  // can adopt the same pattern with the same UX.
+  // Audit 2026-05-18 (data-parity round, follow-up): build columns
+  // ENTIRELY from the server-emitted `data.columns` envelope. No
+  // curated list, no per-column custom cells, no class-specific
+  // accessors. The backend's `summary_table_service` projection
+  // already canonicalises column order (identifier-first, then
+  // attributes, then enrichments); the smart default cell auto-
+  // formats values by type (CURIE / Mongo id / URL / ISO date /
+  // number / boolean / array / object). Same code path serves
+  // every dataset, every class, without dropping any column the
+  // public `/datasets/[id]/tables/subject` view exposes.
   const built = useMemo(
     () =>
       buildPickerColumns<SubjectRow>({
-        curated: [
-          {
-            id: 'identifier',
-            header: 'Subject',
-            accessor: (r) =>
-              r.subjectLocalIdentifier ?? r.subjectIdentifier ?? '—',
-            cell: (v) => (
-              <span className="font-mono text-[12px] text-fg-primary truncate inline-block max-w-full">
-                {String(v ?? '—')}
-              </span>
-            ),
-            size: 180,
-            locked: true,
-          },
-          {
-            id: 'species',
-            header: 'Species',
-            accessor: (r) => r.speciesName ?? '—',
-            cell: (v) => (
-              <span className="text-[12px] text-fg-secondary truncate inline-block max-w-full">
-                {String(v ?? '—')}
-              </span>
-            ),
-            size: 110,
-          },
-          // Strain + Sex remain in the curated set so group-by-X has
-          // a value source. They start hidden to keep the 340px rail
-          // uncluttered, and become visible when the user picks
-          // group-by-strain/sex via the column menu.
-          {
-            id: 'strain',
-            header: 'Strain',
-            accessor: (r) => r.strainName ?? '—',
-            cell: (v) => (
-              <span className="text-[12px] text-fg-secondary truncate inline-block max-w-full">
-                {String(v ?? '—')}
-              </span>
-            ),
-            size: 120,
-            visible: false,
-          },
-          {
-            id: 'sex',
-            header: 'Sex',
-            accessor: (r) => r.biologicalSexName ?? '—',
-            cell: (v) => (
-              <span className="text-[12px] text-fg-secondary truncate inline-block max-w-full">
-                {String(v ?? '—')}
-              </span>
-            ),
-            size: 80,
-            visible: false,
-          },
-          {
-            id: 'age',
-            header: 'Age',
-            accessor: (r) =>
-              r.ageAtRecording != null && r.ageAtRecording !== ''
-                ? String(r.ageAtRecording)
-                : '—',
-            cell: (v) => (
-              <span className="text-[12px] text-fg-secondary tabular-nums">
-                {String(v ?? '—')}
-              </span>
-            ),
-            size: 60,
-          },
-        ],
         serverColumns: summary.data?.columns,
         rows: allRows,
       }),
@@ -477,15 +405,13 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
           bulkActions={bulkActions}
           globalFilter={globalSearch}
           onFilteredRowsChange={setGridFilteredCount}
-          // Phase H2 — grouping options. Species + Strain + Sex are
-          // the three useful aggregation dimensions for a subject
-          // roster (matches the MATLAB tutorial's "group by Strain"
-          // workflow). Identifier never makes sense as a group key.
-          groupableColumnIds={['species', 'strain', 'sex']}
-          // Column labels + locked-from-hide ids come from
-          // buildPickerColumns so backend-discovered "extra" columns
-          // show their backend label in the column-toggle menu. The
-          // curated identifier stays locked (can't be hidden).
+          // No explicit groupableColumnIds — every column the backend
+          // returns is offered as a group-by option (audit 2026-05-18
+          // follow-up: no hardcoding). The grid filters out the locked
+          // identifier column automatically. Users can group by Strain,
+          // Species, Sex, OR any backend-discovered enrichment (e.g.
+          // Treatment, FigureName, etc.) without the workspace author
+          // having pre-enumerated them.
           columnLabels={dynamicColumnLabels}
           lockedColumnIds={dynamicLockedColumnIds}
           initialColumnVisibility={initialColumnVisibility}
