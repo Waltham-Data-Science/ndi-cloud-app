@@ -31,7 +31,10 @@ describe('walk_provenance', () => {
     vi.unstubAllEnvs();
   });
 
-  it('hits the dependencies endpoint with default depth=3', async () => {
+  it('hits the dependencies endpoint with default max_depth=3', async () => {
+    // FastAPI route uses `alias="max_depth"`; the cloud-app must emit
+    // the aliased param or the backend silently falls back to default 3
+    // (Audit 2026-05-18 finding B4).
     const fetchSpy = mockFetchOnce({
       target_id: 'doc1',
       target_ndi_id: 'NDI_target',
@@ -42,12 +45,12 @@ describe('walk_provenance', () => {
     });
     await walkProvenanceHandler({ datasetId: 'ds1', docId: 'doc1' });
     expect(fetchSpy).toHaveBeenCalledWith(
-      `${TEST_BASE}/api/datasets/ds1/documents/doc1/dependencies?depth=3`,
+      `${TEST_BASE}/api/datasets/ds1/documents/doc1/dependencies?max_depth=3`,
       expect.any(Object),
     );
   });
 
-  it('honors an explicit maxDepth', async () => {
+  it('honors an explicit maxDepth and emits the aliased query param', async () => {
     const fetchSpy = mockFetchOnce({
       target_id: 'doc1',
       nodes: [],
@@ -58,7 +61,7 @@ describe('walk_provenance', () => {
       docId: 'doc1',
       maxDepth: 5,
     });
-    expect(fetchSpy.mock.calls[0]![0]).toContain('depth=5');
+    expect(fetchSpy.mock.calls[0]![0]).toContain('max_depth=5');
   });
 
   it('rejects maxDepth > 6 via zod', async () => {

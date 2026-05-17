@@ -104,7 +104,9 @@ export function StructureBrowser({ datasetId }: StructureBrowserProps) {
     params.set('pick', 'documents');
     params.set('docClass', className);
     const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname);
+    // `scroll: false` keeps the scroll position intact — see
+    // useWorkspaceSelection. Audit 2026-05-18 finding D-A.
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
     // Fallback in case the parent isn't reading from useSearchParams
     // for the picker tab (defensive — the hook's reader is the
     // canonical path, this just hedges).

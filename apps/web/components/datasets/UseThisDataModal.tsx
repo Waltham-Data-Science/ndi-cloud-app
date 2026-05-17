@@ -73,10 +73,14 @@ const DISSONANCE_NOTE =
  */
 const PYTHON_TEMPLATE = `import ndi
 
-# Downloads to ~/ndi-datasets/<DATASET_ID>/ by default.
+# Downloads to the chosen folder (created if it doesn't exist).
 # Requires NDI_CLOUD_USERNAME + NDI_CLOUD_PASSWORD env vars,
 # OR a prior \`ndi login\` session.
-dataset = ndi.cloud.downloadDataset("<DATASET_ID>")
+#
+# NOTE: ndi.cloud.downloadDataset(id, target_folder) — target_folder
+# is a required positional argument in NDI-python (no uigetdir
+# fallback yet; that's MATLAB-only). Audit 2026-05-18 finding A1.
+dataset = ndi.cloud.downloadDataset("<DATASET_ID>", "~/ndi-datasets")
 
 # Now explore — common starters from ndi-python tutorials:
 subject_df = ndi.fun.doc_table.subject(dataset)

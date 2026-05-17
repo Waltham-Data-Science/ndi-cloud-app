@@ -31,7 +31,17 @@ interface RouteContext {
   params: Promise<{ id: string; className: string }>;
 }
 
-export async function GET(_req: NextRequest, { params }: RouteContext) {
+/**
+ * Forward `page` + `pageSize` so each pagination slice gets its own
+ * cache key. Audit 2026-05-18 finding B1 caught us discarding query
+ * params here — Stream 5.8's whole `usePagedDatasetTable` pagination
+ * was silently falling through to the legacy unpaged envelope, which
+ * meant the ~95% egress saving the spec promised never landed for
+ * traffic flowing through this proxy. Mirror the documents/route.ts
+ * pattern: only forward params the backend actually reads, so bonus
+ * params (analytics tracking, etc.) don't needlessly fragment cache.
+ */
+export async function GET(req: NextRequest, { params }: RouteContext) {
   const { id, className } = await params;
   if (!/^[a-zA-Z0-9_-]+$/.test(id) || !/^[a-zA-Z0-9_-]+$/.test(className)) {
     return new Response(
@@ -45,5 +55,16 @@ export async function GET(_req: NextRequest, { params }: RouteContext) {
       },
     );
   }
-  return cachedProxy(`/api/datasets/${id}/tables/${className}`, CACHE_ITEM);
+
+  const url = new URL(req.url);
+  const params_q = new URLSearchParams();
+  const page = url.searchParams.get('page');
+  const pageSize = url.searchParams.get('pageSize');
+  if (page) params_q.set('page', page);
+  if (pageSize) params_q.set('pageSize', pageSize);
+  const qs = params_q.toString();
+  const path = qs
+    ? `/api/datasets/${id}/tables/${className}?${qs}`
+    : `/api/datasets/${id}/tables/${className}`;
+  return cachedProxy(path, CACHE_ITEM);
 }

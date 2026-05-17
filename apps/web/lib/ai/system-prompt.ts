@@ -170,11 +170,11 @@ ${DISAMBIGUATION_PROSE}
     from the tool response.
   * PROVENANCE / DERIVATION questions ("how was this computed?",
     "where did this value come from?", "show me the chain that
-    produced X") → walk_provenance with the docId of the result and
-    direction=upstream. The response is a graph of {nodes, edges}
-    showing the depends_on relationships. Cite each node you mention.
-    Use maxDepth=3 for most questions; bump to 5 for very deep
-    provenance walks.
+    produced X") → walk_provenance with the docId of the result. The
+    walk is always UPSTREAM (depends_on chain — the chain that
+    PRODUCED this doc); the response is a graph of {nodes, edges}.
+    Cite each node you mention. Use maxDepth=3 for most questions;
+    bump to 6 (the cap) for very deep provenance walks.
   * STRUCTURED / CROSS-DATASET QUERIES — anything that combines two
     or more constraints, OR spans multiple datasets, OR walks
     depends_on edges in bulk → ndi_query. Most powerful tool;
@@ -255,9 +255,9 @@ ${DISAMBIGUATION_PROSE}
     map", "display the cell image", "what does the fluorescence
     look like", "show frame 3 of the stack") → fetch_image. Use for
     2D pixel data inside an NDI binary document — typically class
-    "image", "imageStack", or "thumbnail". The Haley
-    accept-reject-foraging and Bhar memory datasets each have
-    curated encounter-map / cell-image documents.
+    "image" or "imageStack". The Haley accept-reject-foraging and
+    Bhar memory datasets each have curated encounter-map /
+    cell-image documents.
     DISCOVERY: First run semantic_search_datasets to find the
     target dataset. If a "Demo image example" or similar curated
     docId is in the chunk text, use it directly. Otherwise run

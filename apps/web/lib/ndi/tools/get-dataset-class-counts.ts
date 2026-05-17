@@ -22,10 +22,18 @@ import {
 
 export const getDatasetClassCountsInput = getDatasetInput;
 
+/**
+ * Response shape from `GET /api/datasets/:id/class-counts`. The
+ * backend (and the upstream Cloud at `/document-class-counts`) emits
+ * the per-class map under `classCounts` — NOT `counts`. We typed this
+ * incorrectly through Stream 4.3 → 2026-05-17, so the LLM always
+ * received an empty `Object.keys(result.counts)` and concluded the
+ * dataset had no classes. Audit 2026-05-18 finding B3.
+ */
 interface ClassCountsResponse {
   datasetId?: string;
   totalDocuments?: number;
-  counts?: Record<string, number>;
+  classCounts?: Record<string, number>;
 }
 
 export async function getDatasetClassCountsHandler(
@@ -48,7 +56,7 @@ export async function getDatasetClassCountsHandler(
   );
   if (isErrorResult(result)) return result;
 
-  const classNames = Object.keys(result.counts ?? {});
+  const classNames = Object.keys(result.classCounts ?? {});
   const references: Reference[] = [
     makeDatasetReference({
       datasetId,

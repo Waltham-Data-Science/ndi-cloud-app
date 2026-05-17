@@ -48,10 +48,12 @@ describe('UseThisDataModal — minimal snippets (default)', () => {
     );
     const pre = screen.getByTestId('snippet-python-content');
     const text = pre.textContent ?? '';
-    // Minimal form — one-line download + one helper example.
+    // Minimal form — download + one helper example. Python's
+    // downloadDataset takes (id, target_folder) — both required (audit
+    // 2026-05-18 finding A1).
     expect(text).toContain('import ndi');
     expect(text).toContain(
-      `dataset = ndi.cloud.downloadDataset("${DATASET_ID}")`,
+      `dataset = ndi.cloud.downloadDataset("${DATASET_ID}", "~/ndi-datasets")`,
     );
     expect(text).toContain('subject_df = ndi.fun.doc_table.subject(dataset)');
     // None of the verbose-form auth scaffolding is present.
@@ -110,7 +112,9 @@ describe('UseThisDataModal — minimal snippets (default)', () => {
     await Promise.resolve();
     expect(writeText).toHaveBeenCalledTimes(1);
     const arg = writeText.mock.calls[0]![0] as string;
-    expect(arg).toContain(`ndi.cloud.downloadDataset("${DATASET_ID}")`);
+    expect(arg).toContain(
+      `ndi.cloud.downloadDataset("${DATASET_ID}", "~/ndi-datasets")`,
+    );
     expect(arg).not.toContain('CloudClient');
   });
 

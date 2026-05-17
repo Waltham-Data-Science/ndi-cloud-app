@@ -9,9 +9,14 @@
  *
  * Calls the existing FastAPI route:
  *
- *   GET /api/datasets/:id/documents/:docId/dependencies?depth=N
+ *   GET /api/datasets/:id/documents/:docId/dependencies?max_depth=N
  *
- * which returns:
+ * (The FastAPI handler uses `alias="max_depth"` — sending the unaliased
+ * `?depth=` is silently dropped and the backend falls back to its
+ * default 3, regardless of what the caller passed. Audit 2026-05-18
+ * finding B4 caught this.)
+ *
+ * Returns:
  *
  *   {
  *     target_id, target_ndi_id,
@@ -108,9 +113,11 @@ export async function walkProvenanceHandler(
   const { datasetId, docId } = parsed.data;
   const maxDepth = parsed.data.maxDepth ?? 3;
 
+  // FastAPI route uses `alias="max_depth"` — the unaliased `?depth=`
+  // is silently ignored. See module header.
   const url =
     `${base}/api/datasets/${encodeURIComponent(datasetId)}` +
-    `/documents/${encodeURIComponent(docId)}/dependencies?depth=${maxDepth}`;
+    `/documents/${encodeURIComponent(docId)}/dependencies?max_depth=${maxDepth}`;
 
   const result = await fetchJson<RawDependenciesResponse>(url, ctx);
   if (isErrorResult(result)) return result;

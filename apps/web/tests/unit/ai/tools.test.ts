@@ -75,18 +75,47 @@ describe('lib/ai/tools', () => {
       });
     });
 
-    it('passes through explicit page+pageSize+query', async () => {
+    it('passes through explicit page+pageSize when no query is supplied', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
         new Response(JSON.stringify({ totalNumber: 0, datasets: [] }), {
           status: 200,
           headers: { 'content-type': 'application/json' },
         }),
       );
-      await listPublishedDatasetsHandler({ page: 2, pageSize: 50, query: 'cortex' });
+      await listPublishedDatasetsHandler({ page: 2, pageSize: 50 });
       expect(fetchSpy).toHaveBeenCalledWith(
-        `${TEST_BASE}/api/datasets/published?page=2&pageSize=50&q=cortex`,
+        `${TEST_BASE}/api/datasets/published?page=2&pageSize=50`,
         expect.any(Object),
       );
+    });
+
+    it('substring-filters client-side when a query is supplied (backend has no q=)', async () => {
+      // Audit 2026-05-18 finding B5: the Railway backend (and upstream
+      // Cloud) accept only page+pageSize on /datasets/published. Sending
+      // ?q= was silently dropped, leaving the LLM looking at an
+      // unfiltered first-20. We now fetch a larger pool and substring-
+      // match client-side on name + description.
+      const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+        new Response(
+          JSON.stringify({
+            totalNumber: 3,
+            datasets: [
+              { id: 'ds1', name: 'Visual cortex study', description: 'V1 recordings' },
+              { id: 'ds2', name: 'BNST recordings', description: 'no match here' },
+              { id: 'ds3', name: 'Mouse behavior', description: 'visual cortex stim' },
+            ],
+          }),
+          { status: 200, headers: { 'content-type': 'application/json' } },
+        ),
+      );
+      const result = await listPublishedDatasetsHandler({ query: 'cortex' });
+      // Upstream URL never carries a `q=` — backend doesn't accept it.
+      expect(fetchSpy.mock.calls[0]![0]).toBe(
+        `${TEST_BASE}/api/datasets/published?page=1&pageSize=100`,
+      );
+      if ('error' in result) throw new Error('expected success');
+      expect(result.totalNumber).toBe(2);
+      expect(result.datasets.map((d) => d.id)).toEqual(['ds1', 'ds3']);
     });
 
     it('caps pageSize at 100', async () => {

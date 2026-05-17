@@ -57,14 +57,21 @@ describe('generatePythonSnippet', () => {
     expect(snip).toContain('page_size=25');
   });
 
-  it('renders list_published_datasets with a search query', () => {
+  it('renders list_published_datasets with a client-side query filter', () => {
+    // Audit 2026-05-18 finding A8: Python's getPublished accepts only
+    // (page, page_size, *, client=) — no `query` kwarg. Earlier emit
+    // passed `query=` and would raise TypeError. The snippet now does
+    // a client-side substring filter on name + description, mirroring
+    // the chat-tool's runtime behavior (finding B5).
     const snip = gen([
       {
         toolName: 'list_published_datasets',
         args: { query: 'auditory cortex' },
       },
     ]);
-    expect(snip).toContain('query="auditory cortex"');
+    expect(snip).not.toContain('query="auditory cortex"');
+    expect(snip).toContain('"auditory cortex".lower()');
+    expect(snip).toContain('d.get("name")');
   });
 
   it('renders get_dataset with a quoted dataset id', () => {
@@ -235,7 +242,11 @@ describe('generatePythonSnippet', () => {
   });
 
   // a834 P1 #C-1 (2026-05-14) — chart-tool snippet branches.
-  it('renders fetch_image with openbinarydoc + Pillow decode', () => {
+  it('renders fetch_image with fetch_cloud_file + Pillow decode', () => {
+    // Audit 2026-05-18 finding A6: `ndi.database.openbinarydoc(...)`
+    // doesn't exist — ndi.database is a class, not a package-fn
+    // namespace. The fix uses ndi.cloud.filehandler.fetch_cloud_file
+    // for the user-side download path and Pillow for the decode.
     const snip = gen([
       {
         toolName: 'fetch_image',
@@ -247,7 +258,13 @@ describe('generatePythonSnippet', () => {
         },
       },
     ]);
-    expect(snip).toContain('ndi.database.openbinarydoc("DOC1")');
+    // Don't CALL the (non-existent) package function. The comment
+    // explaining why we don't is allowed — but no `with` /
+    // assignment / etc. that would actually try to invoke it.
+    expect(snip).not.toMatch(/^\s*with\s+ndi\.database\.openbinarydoc\(/m);
+    expect(snip).not.toMatch(/^\s*\w+\s*=\s*ndi\.database\.openbinarydoc\(/m);
+    expect(snip).toContain('ndi.cloud.filehandler.fetch_cloud_file');
+    expect(snip).toContain('database_openbinarydoc'); // session-method docs
     expect(snip).toContain('from PIL import Image');
     expect(snip).toContain('img.seek(2)');
     expect(snip).toContain('Patch encounter map');

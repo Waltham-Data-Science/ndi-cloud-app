@@ -243,11 +243,17 @@ export function useImageStackParameters(
   // the original PR #135 path.
   const partnerEnabled =
     enabled && !!imageStackDoc?.ndiId && inlineParams === null;
+  // Backend caps `pageSize` at 200 on /api/datasets/:id/documents. The
+  // old value of 500 sent a request that FastAPI 422s before service
+  // dispatch — latent today (no production imageStack uses sibling
+  // partner docs) but would have silently broken the canvas decode for
+  // any dataset that did. Audit 2026-05-18 finding B2. Matches Steve's
+  // 4b2d22d fix on StimuliPicker.
   const partnerQuery = useDocuments(
     partnerEnabled ? datasetId : undefined,
     'imageStack_parameters',
     1,
-    500,
+    200,
   );
 
   const partnerParams = useMemo<ImageStackParameters | null>(() => {

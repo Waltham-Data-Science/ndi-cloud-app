@@ -148,12 +148,18 @@ export const ndiQueryInput = z.object({
    *
    * Each clause: { operation, field?, param1?, param2? }
    *
-   * Common patterns:
-   *   - isa class:                      { operation: "isa", param1: "probe" }
-   *   - field equals string:            { operation: "exact_string", field: "probe.type", param1: "n-trode" }
-   *   - field contains substring:       { operation: "contains_string", field: "subject.strain", param1: "C57" }
-   *   - numeric comparison:             { operation: "greaterthan", field: "trial.duration", param1: 30 }
-   *   - field exists:                   { operation: "hasfield", field: "subject.dob" }
+   * Common patterns (audit 2026-05-18 finding: keep example field
+   * paths grounded in REAL NDI schema fields — `subject.strain` /
+   * `subject.dob` were earlier examples but those fields don't exist
+   * on the canonical `subject` body, so example queries silently
+   * returned 0 hits; use openminds_subject / probe_location for that
+   * metadata, or stick to fields that genuinely exist on the named
+   * class):
+   *   - isa class:                      { operation: "isa", param1: "subject" }
+   *   - field equals string:            { operation: "exact_string", field: "element.ndi_element_class", param1: "stimulus_element" }
+   *   - field contains substring:       { operation: "contains_string", field: "subject.local_identifier", param1: "PR811" }
+   *   - numeric comparison:             { operation: "greaterthan", field: "vmspikesummary.mean_firing_rate", param1: 5 }
+   *   - field exists:                   { operation: "hasfield", field: "openminds_subject.openminds_id" }
    *   - depends on a doc:               { operation: "depends_on", param1: "*", param2: "<docId>" }
    *   - OR sub-trees:                   { operation: "or", param1: [{...}], param2: [{...}] }
    *   - negate any of the above:        prefix the operation with "~" (e.g. "~isa", "~contains_string")

@@ -353,8 +353,11 @@ export function makeTools(ctx?: ToolContext) {
     description:
       'List published datasets in the NDI Commons catalog. Use this to ' +
       'answer "how many datasets" (set pageSize=1, read totalNumber) or ' +
-      '"what datasets cover X" (set query). Returns a `references` array — ' +
-      'cite each dataset you mention via a [^N] footnote.',
+      'literal-substring filters like "datasets named X" (set `query` — ' +
+      'matches the substring against each dataset name + description, ' +
+      'case-insensitive). For fuzzy / topical / PI-name searches, prefer ' +
+      '`semantic_search_datasets`. Returns a `references` array — cite ' +
+      'each dataset you mention via a [^N] footnote.',
     inputSchema: listPublishedDatasetsInput,
     execute: (input) => listPublishedDatasetsHandler(input, ctx),
   }),
@@ -491,11 +494,18 @@ export function makeTools(ctx?: ToolContext) {
       '\n' +
       'Use this WHENEVER you encounter a bare CURIE in tabular_query / ' +
       'query_documents / ndi_query output and the user might want to ' +
-      'know what it means. Common cases:\n' +
-      '  - subject.species = "NCBITaxon:10116" → "Rattus norvegicus"\n' +
-      '  - subject.strain = "WBStrain:00000001" → "N2 wild-type"\n' +
-      '  - probe.brainRegion = "UBERON:0001870" → "frontal cortex"\n' +
-      '  - element.cellType = "CL:0000540" → "neuron"\n' +
+      'know what it means. CURIEs surface on enriched table rows + ' +
+      'openminds_subject / probe_location / ontologyTableRow documents — ' +
+      'NOT on the bare `subject` body (which only carries ' +
+      '`local_identifier` + `description`). Common cases:\n' +
+      '  - species CURIE on an openminds_subject row → ' +
+      '"NCBITaxon:10116" → "Rattus norvegicus"\n' +
+      '  - strain CURIE in an openminds payload → ' +
+      '"WBStrain:00000001" → "N2 wild-type"\n' +
+      '  - brainRegion CURIE on a probe_location enrichment → ' +
+      '"UBERON:0001870" → "frontal cortex"\n' +
+      '  - cell-type CURIE on an ontologyTableRow / enriched element → ' +
+      '"CL:0000540" → "neuron"\n' +
       '\n' +
       'Backed by public providers (UBERON / CL / NCBITaxon via OLS at ' +
       'EBI) with NDI-python fallback for lab-specific prefixes ' +
@@ -519,13 +529,16 @@ export function makeTools(ctx?: ToolContext) {
       '  - scope + searchstructure: same DSL as ndi_query (see that ' +
       "tool's description for operations + examples).\n" +
       '  - valueField: DOTTED PATH to the numeric field in each doc, ' +
-      'e.g. "data.subject.weight_grams", ' +
-      '"data.vmspikesummary.mean_firing_rate", "data.probe.impedance_ohms". ' +
-      'Use ndi_query first if you need to discover the field name; ' +
-      'then call this with the path.\n' +
+      'e.g. "data.vmspikesummary.mean_firing_rate", ' +
+      '"data.vmspikesummary.mean_vm", "data.element.reference" (probe ' +
+      'channel number). Field paths are class-specific — the bare ' +
+      '`subject` body has NO numeric fields, so prefer enriched classes ' +
+      '(vmspikesummary, tuningcurve_calc, openminds_subject) for numeric ' +
+      'aggregations. Use ndi_query first if you need to discover the ' +
+      'field name; then call this with the path.\n' +
       '  - groupBy: optional dotted path to a categorical field. ' +
       'Returns one stats block per distinct value (e.g. ' +
-      'groupBy="data.subject.strain" splits by strain).\n' +
+      'groupBy="data.element.ndi_element_class" splits by element type).\n' +
       '  - maxDocs: optional cap on docs scanned (default 5000, max 50000).\n' +
       '\n' +
       'EXAMPLES:\n' +
@@ -534,11 +547,11 @@ export function makeTools(ctx?: ToolContext) {
       '    searchstructure=[{operation:"isa", param1:"vmspikesummary"}]\n' +
       '    valueField="data.vmspikesummary.mean_firing_rate"\n' +
       '\n' +
-      '  "Subject weight by strain across the catalog" →\n' +
+      '  "Mean Vm by element class across the catalog" →\n' +
       '    scope="public"\n' +
-      '    searchstructure=[{operation:"isa", param1:"subject"}]\n' +
-      '    valueField="data.subject.weight_grams"\n' +
-      '    groupBy="data.subject.strain"\n' +
+      '    searchstructure=[{operation:"isa", param1:"vmspikesummary"}]\n' +
+      '    valueField="data.vmspikesummary.mean_vm"\n' +
+      '    groupBy="data.element.ndi_element_class"\n' +
       '\n' +
       'OUTPUT: per-group {count, mean, median, std, min, max}. ' +
       '`numeric_matches` says how many docs actually had a finite ' +
@@ -707,7 +720,7 @@ export function makeTools(ctx?: ToolContext) {
       '\n' +
       'INPUTS:\n' +
       '  - datasetId + docId of a document with an image file ' +
-      '(typically class "image", "imageStack", or "thumbnail").\n' +
+      '(typically class "image" or "imageStack").\n' +
       '  - frame (optional, default 0): index for multi-frame TIFF / ' +
       'animated GIF stacks. Out-of-range clamps to the last frame.\n' +
       '  - title (optional): chart caption.\n' +

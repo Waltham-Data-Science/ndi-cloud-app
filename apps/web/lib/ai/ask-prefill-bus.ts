@@ -116,10 +116,14 @@ export function buildPrefillPrompt(noun: string, ids: ReadonlyArray<string>): st
     '',
     list + trailer,
     '',
-    // Tool hints use NDI SDK function names (parallel to ndi-python /
-    // ndi-matlab packages) instead of chat-tool nicknames — so a user
-    // who picks the prompt up in a CLI session recognises the API.
-    // Carryability finding B3 from 2026-05-17 review.
-    'Use ndi.query.find / ndi.query.dependencies / ndi.cloud.api.files.read_signal as appropriate.',
+    // Tool hints use REAL NDI SDK function names parallel to the
+    // chat's tool nicknames — so a user who picks the prompt up in a
+    // CLI session sees the same vocabulary. Earlier carryability fix
+    // (2026-05-17 review §B3) emitted invented names — `ndi.query.find`,
+    // `ndi.query.dependencies`, `ndi.cloud.api.files.read_signal` — none
+    // of which exist in NDI-python or NDI-matlab. Audit 2026-05-18
+    // finding A9 caught that and replaced them with names that DO
+    // exist in both SDKs.
+    'Use ndi.cloud.api.documents.ndiquery / ndi.cloud.api.documents.bulkFetch / ndi.cloud.api.files.getFile as appropriate. Walk depends_on chains manually by following each doc.depends_on entry.',
   ].join('\n');
 }

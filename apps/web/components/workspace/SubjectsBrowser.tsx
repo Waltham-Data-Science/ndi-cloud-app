@@ -154,7 +154,9 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
     const params = new URLSearchParams(searchParams?.toString() ?? '');
     mutate(params);
     const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname);
+    // `scroll: false` — see useWorkspaceSelection comment. Audit
+    // 2026-05-18 finding D-A.
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
 
   const setParam = (key: string, value: string): void => {
@@ -192,6 +194,24 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
       }),
     [allRows, strainFilter, speciesFilter, sexFilter],
   );
+
+  // Audit 2026-05-18 finding D-C: the in-grid column-filter popovers
+  // and global search live inside WorkspaceDataGrid (TanStack state).
+  // Before this, the outer "Showing X of Y subjects" header reflected
+  // only the URL-chip filters, so narrowing via the grid's funnel
+  // icons or the search input left the page-level count stale. The
+  // grid now reports its post-filter row count up via
+  // onFilteredRowsChange; we default to the URL-filter count for
+  // the very first paint (before the grid's effect fires) and fall
+  // back to it whenever the URL filters change.
+  const [gridFilteredCount, setGridFilteredCount] = useState<
+    number | null
+  >(null);
+  // The grid's effect re-fires on filtered-row count changes; the
+  // displayed count is the grid's report when known, otherwise the
+  // URL-filter count. No effect/state-sync needed here.
+  const displayedFilteredCount =
+    gridFilteredCount ?? filteredRows.length;
 
   const sexOptions = useMemo(() => deriveSexOptions(allRows), [allRows]);
 
@@ -419,7 +439,10 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
       <WorkspaceFilterBar
         fields={filterFields}
         totalRows={allRows.length}
-        filteredRows={filteredRows.length}
+        // Audit 2026-05-18 finding D-C: use the grid-reported count so
+        // the header narrows when the user filters via a column-funnel
+        // or the search box — not just the URL chip filters.
+        filteredRows={displayedFilteredCount}
         noun="subject"
         onClear={clearFilters}
       />
@@ -440,6 +463,7 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
           contextMenuActions={contextMenuActions}
           bulkActions={bulkActions}
           globalFilter={globalSearch}
+          onFilteredRowsChange={setGridFilteredCount}
           // Phase H2 — grouping options. Species + Strain + Sex are
           // the three useful aggregation dimensions for a subject
           // roster (matches the MATLAB tutorial's "group by Strain"

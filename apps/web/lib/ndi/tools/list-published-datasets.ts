@@ -63,16 +63,42 @@ export async function listPublishedDatasetsHandler(
 
   const page = parsed.data.page ?? 1;
   const pageSize = Math.min(parsed.data.pageSize ?? 20, 100);
-  let url = `${base}/api/datasets/published?page=${page}&pageSize=${pageSize}`;
-  if (parsed.data.query) {
-    url += `&q=${encodeURIComponent(parsed.data.query)}`;
-  }
+  const query = parsed.data.query?.toLowerCase().trim();
+
+  // The Railway backend (and the upstream Cloud at /datasets/published)
+  // accept ONLY `page` + `pageSize` — no `q=` text-search param. Audit
+  // 2026-05-18 finding B5 caught us appending a spurious `&q=` that the
+  // backend silently dropped, leading the LLM to confidently summarize
+  // an unfiltered first-20 page as if its keyword search had worked.
+  //
+  // When the caller supplies a `query`, we fetch a larger pool (the
+  // public catalog is small — ~30 datasets) and do a case-insensitive
+  // substring match on the dataset name + description here. For fuzzy
+  // / topical queries the LLM should route to `semantic_search_datasets`
+  // — the system prompt's tool-selection guide already says so.
+  const backendPageSize = query ? 100 : pageSize;
+  const backendPage = query ? 1 : page;
+  const url = `${base}/api/datasets/published?page=${backendPage}&pageSize=${backendPageSize}`;
   const result = await fetchJson<DatasetListResponse>(url, ctx);
   if (isErrorResult(result)) return result;
 
+  let datasets = result.datasets ?? [];
+  let totalNumber = typeof result.totalNumber === 'number'
+    ? result.totalNumber
+    : datasets.length;
+  if (query) {
+    const matched = datasets.filter((d) => {
+      const haystack = `${d.name ?? ''} ${d.description ?? ''}`.toLowerCase();
+      return haystack.includes(query);
+    });
+    totalNumber = matched.length;
+    const start = (page - 1) * pageSize;
+    datasets = matched.slice(start, start + pageSize);
+  }
+
   // One reference per dataset in the response — citation chip links to
   // the dataset's overview page in the Document Explorer.
-  const references: Reference[] = (result.datasets ?? [])
+  const references: Reference[] = datasets
     .map((d) => {
       const id = d.id ?? d._id;
       if (typeof id !== 'string' || !id) return null;
@@ -86,5 +112,5 @@ export async function listPublishedDatasetsHandler(
     })
     .filter((r): r is Reference => r !== null);
 
-  return { ...result, references };
+  return { totalNumber, datasets, references };
 }

@@ -109,7 +109,9 @@ export function DocumentsPicker({ datasetId }: DocumentsPickerProps) {
       params.delete('docClass');
     }
     const qs = params.toString();
-    router.replace(qs ? `${pathname}?${qs}` : pathname);
+    // `scroll: false` keeps the scroll position intact — see
+    // useWorkspaceSelection. Audit 2026-05-18 finding D-A.
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
   };
 
   if (docClass) {

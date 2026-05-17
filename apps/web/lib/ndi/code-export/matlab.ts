@@ -142,16 +142,23 @@ function renderListPublishedDatasets(args: unknown): string {
   const page = pickNumber(args, 'page') ?? 1;
   const pageSize = pickNumber(args, 'pageSize') ?? 20;
   const query = pickString(args, 'query');
+  // MATLAB's ndi.cloud.api.datasets.getPublished(args.page, args.pageSize)
+  // accepts only page + pageSize — no `query` arg (audit 2026-05-18
+  // finding A8). The chat substring-filters client-side; for MATLAB
+  // we annotate so the user knows to filter the returned struct.
   const lines = [
-    `% Browse the public NDI catalog (one page).`,
+    `% Browse the public NDI catalog (one page). All MATLAB cloud-API`,
+    `% wrappers return [b, answer, ...] — capture the second LHS to`,
+    `% get the data (audit 2026-05-18 findings A2/A5).`,
+    `[success, published] = ndi.cloud.api.datasets.getPublished('page', ${page}, 'pageSize', ${pageSize});`,
   ];
   if (query) {
     lines.push(
-      `published = ndi.cloud.api.datasets.getPublished('page', ${page}, 'pageSize', ${pageSize}, 'query', ${formatMatlabValue(query)});`,
-    );
-  } else {
-    lines.push(
-      `published = ndi.cloud.api.datasets.getPublished('page', ${page}, 'pageSize', ${pageSize});`,
+      `% getPublished has no server-side text-search arg — filter client-side:`,
+      `q = lower(${formatMatlabValue(query)});`,
+      `matches = arrayfun(@(d) contains(lower(string(d.name)), q) || contains(lower(string(d.description)), q), published.datasets);`,
+      `published.datasets = published.datasets(matches);`,
+      `published.totalNumber = numel(published.datasets);`,
     );
   }
   lines.push(`fprintf('Total datasets: %d\\n', published.totalNumber);`);
@@ -160,9 +167,11 @@ function renderListPublishedDatasets(args: unknown): string {
 
 function renderGetDataset(args: unknown): string {
   const id = pickString(args, 'id') ?? '<dataset-id>';
+  // getDataset returns [b, answer, apiResponse, apiURL] — single-LHS
+  // capture grabs the boolean. Audit 2026-05-18 finding A2.
   return (
     `% Fetch the full record for one dataset.\n` +
-    `dataset = ndi.cloud.api.datasets.getDataset(${formatMatlabValue(id)});\n` +
+    `[success, dataset] = ndi.cloud.api.datasets.getDataset(${formatMatlabValue(id)});\n` +
     `disp(dataset);`
   );
 }
@@ -171,18 +180,21 @@ function renderGetDatasetSummary(args: unknown): string {
   const id = pickString(args, 'id') ?? '<dataset-id>';
   return (
     `% Fetch a compact summary for one dataset.\n` +
-    `% TODO: NDI-matlab does not yet expose a dedicated summary call;\n` +
+    `% NDI-matlab does not yet expose a dedicated summary call;\n` +
     `% use getDataset for the full record and read its count fields.\n` +
-    `summary = ndi.cloud.api.datasets.getDataset(${formatMatlabValue(id)});`
+    `[success, summary] = ndi.cloud.api.datasets.getDataset(${formatMatlabValue(id)});`
   );
 }
 
 function renderGetDatasetClassCounts(args: unknown): string {
   const id = pickString(args, 'id') ?? '<dataset-id>';
+  // documentClassCounts answer is {datasetId, totalDocuments, classCounts}
+  // — the per-class map lives under classCounts (NOT a top-level
+  // dict). Audit 2026-05-18 findings A2 + A13.
   return (
     `% Count documents per class for one dataset.\n` +
-    `counts = ndi.cloud.api.documents.documentClassCounts(${formatMatlabValue(id)});\n` +
-    `disp(counts);`
+    `[success, counts] = ndi.cloud.api.documents.documentClassCounts(${formatMatlabValue(id)});\n` +
+    `disp(counts.classCounts);`
   );
 }
 
@@ -220,11 +232,19 @@ function renderQueryDocuments(args: unknown): string {
   const datasetId = pickString(args, 'datasetId') ?? '<dataset-id>';
   const className = pickString(args, 'className') ?? 'subject';
   const limit = pickNumber(args, 'limit') ?? 10;
+  // ndiqueryAll(scope, query_obj, args) — takes the query OBJECT
+  // (the wrapper extracts .searchstructure internally) and returns
+  // [b, answer, ...] where `answer` is a struct ARRAY of document
+  // summaries {id, ndiId, name, className, datasetId}. For full
+  // document bodies follow up with bulkFetch. Audit 2026-05-18
+  // findings A4/A5.
   return (
     `% Pull all documents of a given class inside one dataset.\n` +
     `q = ndi.query('', 'isa', ${formatMatlabValue(className)});\n` +
-    `result = ndi.cloud.api.documents.ndiqueryAll(${formatMatlabValue(datasetId)}, q.searchstructure, 'pageSize', ${limit});\n` +
-    `fprintf('Found %d ${className} document(s)\\n', numel(result));`
+    `[success, summaries] = ndi.cloud.api.documents.ndiqueryAll(${formatMatlabValue(datasetId)}, q, 'pageSize', ${limit});\n` +
+    `% summaries is a struct array. For full bodies with .data:\n` +
+    `%   [~, docs] = ndi.cloud.api.documents.bulkFetch(${formatMatlabValue(datasetId)}, string({summaries.id}));\n` +
+    `fprintf('Found %d ${className} document(s)\\n', numel(summaries));`
   );
 }
 
@@ -233,10 +253,14 @@ function renderNdiQuery(args: unknown): string {
   const limit = pickNumber(args, 'limit') ?? 50;
   const searchstructure = pickValue(args, 'searchstructure');
   const queryExpr = serializeQueryStruct(searchstructure, 'matlab');
+  // ndiquery(scope, query_obj, 'page', P, 'pageSize', PS) — takes the
+  // query OBJECT (not its searchstructure) and returns [b, answer, ...]
+  // where answer is a struct with .documents (struct array) + search
+  // metadata. Audit 2026-05-18 findings A4/A5.
   return (
     `% Structured NDI Query across one or many datasets.\n` +
     `q = ${queryExpr};\n` +
-    `result = ndi.cloud.api.documents.ndiquery(${formatMatlabValue(scope)}, q.searchstructure, 'pageSize', ${limit});\n` +
+    `[success, result] = ndi.cloud.api.documents.ndiquery(${formatMatlabValue(scope)}, q, 'pageSize', ${limit});\n` +
     `documents = result.documents;\n` +
     `fprintf('Matched %d document(s)\\n', numel(documents));`
   );
@@ -244,20 +268,52 @@ function renderNdiQuery(args: unknown): string {
 
 function renderAggregateDocuments(args: unknown): string {
   const scope = pickString(args, 'scope') ?? 'public';
-  const valueField = pickString(args, 'valueField') ?? 'data.subject.weight_grams';
+  // Default valueField was `data.subject.weight_grams` — that field
+  // doesn't exist on the canonical NDI subject schema (audit
+  // 2026-05-18 finding C/T3). Default to a field that genuinely
+  // exists on vmspikesummary so the snippet works on real data.
+  const valueField = pickString(args, 'valueField') ?? 'data.vmspikesummary.mean_firing_rate';
   const groupBy = pickString(args, 'groupBy');
   const maxDocs = pickNumber(args, 'maxDocs') ?? 5000;
   const searchstructure = pickValue(args, 'searchstructure');
   const queryExpr = serializeQueryStruct(searchstructure, 'matlab');
-
+  // ndiqueryAll → struct ARRAY of summaries (no .data). To reach the
+  // .data field we follow up with bulkFetch — required for numeric
+  // aggregation. Audit 2026-05-18 finding A4/A5.
+  // Backend bulkFetch caps at 500 per call; chunk if maxDocs > 500.
   const lines = [
     `% Aggregate a numeric field across documents matching a Query.`,
     `% The chat ran this server-side; the client-side replica uses`,
-    `% ndiqueryAll + a manual reduce.`,
+    `% ndiqueryAll (IDs) → bulkFetch (full data) → manual reduce.`,
     ``,
     `q = ${queryExpr};`,
-    `docs = ndi.cloud.api.documents.ndiqueryAll(${formatMatlabValue(scope)}, q.searchstructure, 'pageSize', 1000);`,
-    `if numel(docs) > ${maxDocs}; docs = docs(1:${maxDocs}); end`,
+    `[~, summaries] = ndi.cloud.api.documents.ndiqueryAll(${formatMatlabValue(scope)}, q, 'pageSize', 1000);`,
+    `if numel(summaries) > ${maxDocs}; summaries = summaries(1:${maxDocs}); end`,
+    ``,
+    `% Hydrate full doc bodies in 500-doc chunks (bulkFetch cap).`,
+    `docs = struct('id', {}, 'ndiId', {}, 'name', {}, 'className', {}, 'datasetId', {}, 'data', {});`,
+    `ids = string({summaries.id});`,
+    `% bulkFetch is per-dataset. When scope == 'public' (mixed datasets),`,
+    `% group by datasetId first; otherwise call once.`,
+    `byDataset = struct();`,
+    `for i = 1:numel(summaries)`,
+    `    key = char(summaries(i).datasetId);`,
+    `    fld = matlab.lang.makeValidName(key);`,
+    `    if ~isfield(byDataset, fld); byDataset.(fld) = {}; end`,
+    `    byDataset.(fld){end+1} = summaries(i).id; %#ok<AGROW>`,
+    `end`,
+    `dsFields = fieldnames(byDataset);`,
+    `for di = 1:numel(dsFields)`,
+    `    keyIds = string(byDataset.(dsFields{di}));`,
+    `    % Find the datasetId of any summary in this group:`,
+    `    dsId = '';`,
+    `    for i = 1:numel(summaries); if matlab.lang.makeValidName(char(summaries(i).datasetId)) == string(dsFields{di}); dsId = summaries(i).datasetId; break; end; end`,
+    `    for offset = 1:500:numel(keyIds)`,
+    `        chunk = keyIds(offset:min(offset+499, numel(keyIds)));`,
+    `        [~, chunkDocs] = ndi.cloud.api.documents.bulkFetch(dsId, chunk);`,
+    `        docs = [docs; chunkDocs(:)]; %#ok<AGROW>`,
+    `    end`,
+    `end`,
     ``,
     `groups = containers.Map('KeyType', 'char', 'ValueType', 'any');`,
     `valuePath = strsplit(${formatMatlabValue(valueField)}, '.');`,
@@ -268,7 +324,7 @@ function renderAggregateDocuments(args: unknown): string {
   lines.push(
     ``,
     `for i = 1:numel(docs)`,
-    `    d = docs{i};`,
+    `    d = docs(i);`,
     `    v = d;`,
     `    for k = 1:numel(valuePath); if isfield(v, valuePath{k}); v = v.(valuePath{k}); else; v = NaN; break; end; end`,
     `    if ~isnumeric(v) || ~isfinite(v); continue; end`,
@@ -300,19 +356,28 @@ function renderTabularQuery(args: unknown): string {
   const variableNameContains = pickString(args, 'variableNameContains') ?? '';
   const groupBy = pickString(args, 'groupBy');
   const title = pickString(args, 'title');
-
+  // ndiqueryAll returns ID/summary struct array; .data lives only on
+  // bulkFetch results. Audit 2026-05-18 finding A4/A5.
   const lines = [
     `% Aggregate an ontologyTableRow into per-group statistics.`,
     `% The NDI Ask chat called a custom backend endpoint; this is the`,
-    `% closest user-side equivalent using ndiqueryAll + a table reduce.`,
+    `% closest user-side equivalent: ndiqueryAll (IDs) → bulkFetch (data) → reduce.`,
     ``,
     `q1 = ndi.query('', 'isa', 'ontologyTableRow');`,
     `q2 = ndi.query('ontologyTableRow.variableNames', 'contains_string', ${formatMatlabValue(variableNameContains)});`,
     `q = q1 & q2;`,
-    `rows = ndi.cloud.api.documents.ndiqueryAll(${formatMatlabValue(datasetId)}, q.searchstructure, 'pageSize', 1000);`,
+    `[~, summaries] = ndi.cloud.api.documents.ndiqueryAll(${formatMatlabValue(datasetId)}, q, 'pageSize', 1000);`,
+    `% Hydrate full bodies in 500-doc chunks (bulkFetch cap).`,
+    `rows = struct('id', {}, 'ndiId', {}, 'name', {}, 'className', {}, 'datasetId', {}, 'data', {});`,
+    `ids = string({summaries.id});`,
+    `for offset = 1:500:numel(ids)`,
+    `    chunk = ids(offset:min(offset+499, numel(ids)));`,
+    `    [~, chunkDocs] = ndi.cloud.api.documents.bulkFetch(${formatMatlabValue(datasetId)}, chunk);`,
+    `    rows = [rows; chunkDocs(:)]; %#ok<AGROW>`,
+    `end`,
     ``,
     `% Flatten the ontologyTableRow body into a struct array for analysis.`,
-    `bodies = cellfun(@(r) r.data.ontologyTableRow, rows, 'UniformOutput', false);`,
+    `bodies = arrayfun(@(r) r.data.ontologyTableRow, rows, 'UniformOutput', false);`,
   ];
   if (groupBy) {
     lines.push(
@@ -344,7 +409,7 @@ function renderFetchSignal(args: unknown): string {
     `% the typical flow is: fetch the doc, locate its file ref, download`,
     `% bytes via getFile, then decode with the matching daq reader.`,
     ``,
-    `doc = ndi.cloud.api.documents.getDocument(${formatMatlabValue(datasetId)}, ${formatMatlabValue(docId)});`,
+    `[~, doc] = ndi.cloud.api.documents.getDocument(${formatMatlabValue(datasetId)}, ${formatMatlabValue(docId)});`,
   ];
   if (file) {
     lines.push(`% Chat selected file: ${oneLine(file)}`);
@@ -352,7 +417,7 @@ function renderFetchSignal(args: unknown): string {
   lines.push(
     `% TODO: choose the right file ref (typically the largest .nbf / .vhsb)`,
     `% from doc.files, then:`,
-    `%   localPath = ndi.cloud.api.files.getFile(${formatMatlabValue(datasetId)}, '<file-id>');`,
+    `%   [~, localPath] = ndi.cloud.api.files.getFile(${formatMatlabValue(datasetId)}, '<file-id>');`,
     `%   reader    = ndi.daq.reader.<format>();`,
     `%   data      = reader.readchannels_epochsamples(...);`,
     `% Downsample to ${downsample} points per channel before plotting.`,
@@ -379,7 +444,7 @@ function renderWalkProvenance(args: unknown): string {
     `        cur = stack{end}; stack(end) = [];\n` +
     `        if cur.depth > maxDepth || isKey(seen, cur.id); continue; end\n` +
     `        seen(cur.id) = true;\n` +
-    `        doc = ndi.cloud.api.documents.getDocument(datasetId, cur.id);\n` +
+    `        [~, doc] = ndi.cloud.api.documents.getDocument(datasetId, cur.id);\n` +
     `        lineage{end+1} = doc; %#ok<AGROW>\n` +
     `        if isfield(doc, 'depends_on') && iscell(doc.depends_on)\n` +
     `            for k = 1:numel(doc.depends_on)\n` +
@@ -421,11 +486,13 @@ function renderFetchImage(args: unknown): string {
     `% Mirrors the chat's image endpoint: open the doc binary, decode,`,
     `% then imshow. Frame ${frame} selected for multi-frame containers.`,
     ``,
-    `doc = ndi.cloud.api.documents.getDocument(${formatMatlabValue(datasetId)}, ${formatMatlabValue(docId)});`,
-    `% openbinarydoc returns a file handle to the doc's binary file.`,
-    `% Requires an active ndi.session S; uncomment + wire as needed:`,
-    `%   S = ndi.session.dir(<localPath>);`,
-    `%   fh = ndi.database.openbinarydoc(S, ${formatMatlabValue(docId)});`,
+    `[~, doc] = ndi.cloud.api.documents.getDocument(${formatMatlabValue(datasetId)}, ${formatMatlabValue(docId)});`,
+    `% openbinarydoc is a METHOD on ndi.session/ndi.dataset (NOT a`,
+    `% package-level function). The wrapper signature is`,
+    `% S.database_openbinarydoc(doc_or_id, filename). Audit 2026-05-18`,
+    `% finding A7. Requires an active local session/dataset:`,
+    `%   S = ndi.session.dir([], '<localPath>');`,
+    `%   fh = S.database_openbinarydoc(${formatMatlabValue(docId)}, '<filename>');`,
     `% Then read via imread on the file path (or the handle's filename).`,
     `img = imread('<path-to-image-binary>');`,
     `if size(img, 3) > 1; img = rgb2gray(img); end`,
@@ -448,13 +515,16 @@ function renderTreatmentTimeline(args: unknown): string {
     `% Each treatment doc carries subjectDocumentIdentifier + treatmentName +`,
     `% numericValue ([start, end] when present). We project to (subject,`,
     `% start, dur) tuples and draw one bar per treatment via patch().`,
+    `% ndiqueryAll returns ID summaries; bulkFetch hydrates the .data`,
+    `% bodies (audit 2026-05-18 finding A4/A5).`,
     ``,
     `q = ndi.query('', 'isa', 'treatment');`,
-    `treatments = ndi.cloud.api.documents.ndiqueryAll(${formatMatlabValue(datasetId)}, q.searchstructure, 'pageSize', 500);`,
+    `[~, summaries] = ndi.cloud.api.documents.ndiqueryAll(${formatMatlabValue(datasetId)}, q, 'pageSize', 500);`,
+    `[~, treatments] = ndi.cloud.api.documents.bulkFetch(${formatMatlabValue(datasetId)}, string({summaries.id}));`,
     `subjects = {};`,
     `bars = {};   % each: [t0, dur, yIdx]`,
     `for i = 1:numel(treatments)`,
-    `    body = treatments{i}.data.treatment;`,
+    `    body = treatments(i).data.treatment;`,
     `    subj = '(unknown)'; if isfield(body, 'subjectDocumentIdentifier'); subj = body.subjectDocumentIdentifier; end`,
     `    yIdx = find(strcmp(subjects, subj), 1);`,
     `    if isempty(yIdx); subjects{end+1} = subj; yIdx = numel(subjects); end %#ok<AGROW>`,
@@ -487,8 +557,10 @@ function renderFetchSpikeSummary(args: unknown): string {
     ``,
   ];
   if (unitDocId) {
+    // getDocument returns [b, answer, ...] — pass the answer onward.
     lines.push(
-      `docs = {ndi.cloud.api.documents.getDocument(${formatMatlabValue(datasetId)}, ${formatMatlabValue(unitDocId)})};`,
+      `[~, doc] = ndi.cloud.api.documents.getDocument(${formatMatlabValue(datasetId)}, ${formatMatlabValue(unitDocId)});`,
+      `docs = doc;  % single-element struct so the loop below works uniformly`,
     );
   } else {
     lines.push(`q = ndi.query('', 'isa', 'vmspikesummary');`);
@@ -497,15 +569,18 @@ function renderFetchSpikeSummary(args: unknown): string {
         `q = q & ndi.query('vmspikesummary.name', 'contains_string', ${formatMatlabValue(unitNameMatch)});`,
       );
     }
+    // ndiqueryAll returns ID summaries; bulkFetch hydrates .data
+    // (audit 2026-05-18 finding A4/A5).
     lines.push(
-      `docs = ndi.cloud.api.documents.ndiqueryAll(${formatMatlabValue(datasetId)}, q.searchstructure, 'pageSize', ${maxUnits});`,
-      `if numel(docs) > ${maxUnits}; docs = docs(1:${maxUnits}); end`,
+      `[~, summaries] = ndi.cloud.api.documents.ndiqueryAll(${formatMatlabValue(datasetId)}, q, 'pageSize', ${maxUnits});`,
+      `if numel(summaries) > ${maxUnits}; summaries = summaries(1:${maxUnits}); end`,
+      `[~, docs] = ndi.cloud.api.documents.bulkFetch(${formatMatlabValue(datasetId)}, string({summaries.id}));`,
     );
   }
   lines.push(
     `figure; hold on;`,
     `for k = 1:numel(docs)`,
-    `    body = docs{k}.data.vmspikesummary;`,
+    `    body = docs(k).data.vmspikesummary;`,
     `    if ~isfield(body, 'spike_times'); continue; end`,
     `    t = double(body.spike_times);`,
   );
@@ -548,8 +623,8 @@ function renderPsth(args: unknown): string {
     `% this snippet hand-rolls the alignment so it works regardless of which`,
     `% upstream wrapper lands first (see upstream-asks for context).`,
     ``,
-    `unitDoc = ndi.cloud.api.documents.getDocument(${formatMatlabValue(datasetId)}, ${formatMatlabValue(unitDocId)});`,
-    `stimDoc = ndi.cloud.api.documents.getDocument(${formatMatlabValue(datasetId)}, ${formatMatlabValue(stimulusDocId)});`,
+    `[~, unitDoc] = ndi.cloud.api.documents.getDocument(${formatMatlabValue(datasetId)}, ${formatMatlabValue(unitDocId)});`,
+    `[~, stimDoc] = ndi.cloud.api.documents.getDocument(${formatMatlabValue(datasetId)}, ${formatMatlabValue(stimulusDocId)});`,
     ``,
     `% Spike times live at data.vmspikesummary.spike_times (seconds).`,
     `if isfield(unitDoc.data.vmspikesummary, 'spike_times')`,

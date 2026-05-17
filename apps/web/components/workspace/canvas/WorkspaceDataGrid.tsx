@@ -151,6 +151,17 @@ export interface WorkspaceDataGridProps<TRow> {
    * group headers showing the value + member count. Phase H2.
    */
   groupableColumnIds?: ReadonlyArray<string>;
+
+  /**
+   * Called whenever the post-filter row count changes (after
+   * globalFilter + per-column richFilter). The outer browser uses
+   * this to keep the "Showing X of Y" header in sync with what's
+   * actually visible. Audit 2026-05-18 finding D-C: prior to this
+   * callback the outer header reflected only the URL-chip filter
+   * and stayed stale when the user narrowed via the in-grid column
+   * filter popover.
+   */
+  onFilteredRowsChange?: (count: number) => void;
 }
 
 const DEFAULT_ROW_HEIGHTS: Readonly<Record<GridDensity, number>> = {
@@ -178,6 +189,7 @@ export function WorkspaceDataGrid<TRow>({
   rowIcon,
   globalFilter = '',
   groupableColumnIds = [],
+  onFilteredRowsChange,
 }: WorkspaceDataGridProps<TRow>) {
   const multi = useTableMultiSelect();
   const [sorting, setSorting] = useState<SortingState>([]);
@@ -296,6 +308,15 @@ export function WorkspaceDataGrid<TRow>({
     getGroupedRowModel: getGroupedRowModel(),
     getExpandedRowModel: getExpandedRowModel(),
   });
+
+  // Audit 2026-05-18 finding D-C: notify the outer browser when the
+  // post-filter row count changes, so the page-level "Showing X of Y"
+  // header in WorkspaceFilterBar can reflect the in-grid column /
+  // global-search narrowing too — not just the URL chip filters.
+  const filteredRowsCount = table.getFilteredRowModel().rows.length;
+  useEffect(() => {
+    onFilteredRowsChange?.(filteredRowsCount);
+  }, [onFilteredRowsChange, filteredRowsCount]);
 
   const rows = table.getRowModel().rows;
   const orderedIds = useMemo(() => rows.map((r) => r.id), [rows]);

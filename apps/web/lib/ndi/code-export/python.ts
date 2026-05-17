@@ -185,18 +185,22 @@ function renderListPublishedDatasets(args: unknown): string {
   const page = pickNumber(args, 'page') ?? 1;
   const pageSize = pickNumber(args, 'pageSize') ?? 20;
   const query = pickString(args, 'query');
+  // ndi.cloud.api.datasets.getPublished accepts only (page, page_size,
+  // *, client=) — no `query` kwarg (audit 2026-05-18 finding A8). The
+  // chat substring-filters client-side; mirror that pattern here.
   const lines = [
     `# Browse the public NDI catalog. Returns a page of dataset records.`,
+    `published = ndi.cloud.api.datasets.getPublished(page=${page}, page_size=${pageSize})`,
   ];
   if (query) {
     lines.push(
-      `published = ndi.cloud.api.datasets.getPublished(`,
-      `    page=${page}, page_size=${pageSize}, query=${formatPythonValue(query)}`,
-      `)`,
-    );
-  } else {
-    lines.push(
-      `published = ndi.cloud.api.datasets.getPublished(page=${page}, page_size=${pageSize})`,
+      `# getPublished has no server-side text-search arg — filter client-side:`,
+      `_q = ${formatPythonValue(query)}.lower()`,
+      `published["datasets"] = [`,
+      `    d for d in published.get("datasets", [])`,
+      `    if _q in (d.get("name") or "").lower() or _q in (d.get("description") or "").lower()`,
+      `]`,
+      `published["totalNumber"] = len(published["datasets"])`,
     );
   }
   lines.push(`print(f"Total datasets: {published.get('totalNumber', 0)}")`);
@@ -225,10 +229,15 @@ function renderGetDatasetSummary(args: unknown): string {
 
 function renderGetDatasetClassCounts(args: unknown): string {
   const id = pickString(args, 'id') ?? '<dataset-id>';
+  // documentClassCounts returns {datasetId, totalDocuments, classCounts}
+  // — the per-class map lives under classCounts, not at top level
+  // (audit 2026-05-18 finding A13). Iterating .items() flat would
+  // print ('datasetId', '...'), ('totalDocuments', N), ('classCounts',
+  // {...}) instead of the per-class entries.
   return (
     `# Count documents per class for one dataset.\n` +
     `counts = ndi.cloud.api.documents.documentClassCounts(${formatPythonValue(id)})\n` +
-    `for cls, n in counts.items():\n` +
+    `for cls, n in counts.get("classCounts", {}).items():\n` +
     `    print(f"{cls}: {n}")\n`
   );
 }
@@ -300,7 +309,12 @@ function renderNdiQuery(args: unknown): string {
 
 function renderAggregateDocuments(args: unknown): string {
   const scope = pickString(args, 'scope') ?? 'public';
-  const valueField = pickString(args, 'valueField') ?? 'data.subject.weight_grams';
+  // Default valueField changed from `data.subject.weight_grams`
+  // (which doesn't exist on the canonical NDI subject schema; audit
+  // 2026-05-18 finding C/T3) to a field that genuinely exists on
+  // vmspikesummary, so the placeholder snippet works against a real
+  // dataset.
+  const valueField = pickString(args, 'valueField') ?? 'data.vmspikesummary.mean_firing_rate';
   const groupBy = pickString(args, 'groupBy');
   const maxDocs = pickNumber(args, 'maxDocs') ?? 5000;
   const searchstructure = pickValue(args, 'searchstructure');
@@ -493,9 +507,21 @@ function renderFetchImage(args: unknown): string {
     `doc = ndi.cloud.api.documents.getDocument(`,
     `    ${formatPythonValue(datasetId)}, ${formatPythonValue(docId)}`,
     `)`,
-    `# openbinarydoc returns a file-like handle pointing at the doc's`,
-    `# binary file (TIFF / PNG / JPEG / GIF auto-detected by Pillow).`,
-    `with ndi.database.openbinarydoc(${formatPythonValue(docId)}) as fh:`,
+    `# NOTE: ndi.database is a CLASS, not a module — there's no`,
+    `# ndi.database.openbinarydoc(...) package function (audit`,
+    `# 2026-05-18 finding A6). The user-side options are:`,
+    `#   1) ndi.cloud.filehandler.fetch_cloud_file("<ndic-uri>") — the`,
+    `#      direct binary download via NDI-python's cloud client; the`,
+    `#      doc's ndic:// URI lives at doc["files"][0]["uri"].`,
+    `#   2) Within a local ndi.session/ndi.dataset S:`,
+    `#         fh = S.database_openbinarydoc(doc, "<filename>")`,
+    `#      (openbinarydoc is a method on session/dataset, not a`,
+    `#      package-level function).`,
+    `# Both yield a file-like handle Pillow can decode.`,
+    `files = doc.get("files") or []`,
+    `ndic_uri = files[0].get("uri") if files else None`,
+    `local_path = ndi.cloud.filehandler.fetch_cloud_file(ndic_uri) if ndic_uri else None`,
+    `with open(local_path, "rb") as fh:`,
     `    img = Image.open(fh)`,
     `    img.seek(${frame})  # multi-frame TIFF / animated GIF: pick frame`,
     `    arr = img.convert("F")  # float grayscale; matches the chart backend`,

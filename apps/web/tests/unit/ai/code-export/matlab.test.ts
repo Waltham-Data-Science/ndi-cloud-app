@@ -159,7 +159,12 @@ describe('generateMatlabSnippet', () => {
     expect(snip).toContain("containers.Map('KeyType', 'char'");
     expect(snip).toContain("strsplit('data.subject.weight_grams'");
     expect(snip).toContain("strsplit('data.subject.strain'");
-    expect(snip).toContain('docs(1:1000)');
+    // After audit 2026-05-18 fix (A4/A5): ndiqueryAll returns ID
+    // summaries (no .data field) — the snippet now hydrates via
+    // bulkFetch and the maxDocs slice is on `summaries` before
+    // hydration, not `docs`.
+    expect(snip).toContain('summaries(1:1000)');
+    expect(snip).toContain('bulkFetch');
   });
 
   it('uses "all" as the only group key when aggregate_documents has no groupBy', () => {
