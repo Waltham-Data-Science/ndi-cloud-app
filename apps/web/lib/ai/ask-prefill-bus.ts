@@ -116,6 +116,10 @@ export function buildPrefillPrompt(noun: string, ids: ReadonlyArray<string>): st
     '',
     list + trailer,
     '',
-    'Use whatever tools you need (query_documents, walk_provenance, fetch_signal, etc.) to answer.',
+    // Tool hints use NDI SDK function names (parallel to ndi-python /
+    // ndi-matlab packages) instead of chat-tool nicknames — so a user
+    // who picks the prompt up in a CLI session recognises the API.
+    // Carryability finding B3 from 2026-05-17 review.
+    'Use ndi.query.find / ndi.query.dependencies / ndi.cloud.api.files.read_signal as appropriate.',
   ].join('\n');
 }

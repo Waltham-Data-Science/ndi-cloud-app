@@ -265,6 +265,13 @@ function DocumentList({ datasetId, docClass, onBack }: DocumentListProps) {
   const { set } = useWorkspaceSelection();
   const [searchQuery, setSearchQuery] = useState('');
   const docs = useDocuments(datasetId, docClass, 1, 200);
+  // F3 — surface the server-side total when it exceeds what we
+  // fetched. Pre-fix the grid footer read "200 documents" even when
+  // the class had 5,000 — misleading the user into thinking the
+  // class was tiny. Backend always returns `total` alongside `documents`.
+  const serverTotal = docs.data?.total ?? 0;
+  const fetchedCount = docs.data?.documents?.length ?? 0;
+  const truncated = serverTotal > fetchedCount;
 
   // Project + filter once.
   const filteredRows = useMemo<DocRow[]>(() => {
@@ -430,7 +437,22 @@ function DocumentList({ datasetId, docClass, onBack }: DocumentListProps) {
           Couldn&rsquo;t load documents for this class.
         </div>
       ) : (
-        <WorkspaceDataGrid<DocRow>
+        <>
+          {truncated && (
+            <div
+              role="status"
+              className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[11.5px] text-amber-900"
+            >
+              Showing the first {fetchedCount.toLocaleString()} of{' '}
+              <span className="font-semibold tabular-nums">
+                {serverTotal.toLocaleString()}
+              </span>{' '}
+              documents in this class. Use the search above to find a
+              specific id, or pick a more specific class from the
+              class list.
+            </div>
+          )}
+          <WorkspaceDataGrid<DocRow>
           data={filteredRows}
           columns={columns}
           rowId={docRowId}
@@ -460,6 +482,7 @@ function DocumentList({ datasetId, docClass, onBack }: DocumentListProps) {
             </div>
           }
         />
+        </>
       )}
     </div>
   );

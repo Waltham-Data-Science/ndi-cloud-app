@@ -178,6 +178,7 @@ Reference plans (read in this order if picking up the branch cold):
 - **Tests:** Vitest + Testing Library (jsdom) for unit (cloud-app, 1,612 tests); Playwright for E2E. pytest for ndb-v2 (893 tests).
 - **Bundle gate:** `scripts/check-bundle-size.mjs` — marketing 80 KB gz, app 200 KB gz. Ratchets DOWN over time, never up.
 - **Package manager:** pnpm 10.22 via Corepack.
+- **pnpm-lock.yaml gotcha:** the lockfile lives at the repo root (NOT inside `apps/web/`). After ANY `pnpm add` / `pnpm remove`, you MUST `git add pnpm-lock.yaml` from the repo root (or `git add -A` from the repo root, NOT from `apps/web/`). Phase G + Phase H both shipped commits where the lockfile silently dropped because `git add -A apps/web` scoped to the wrong dir, and Vercel CI failed with `ERR_PNPM_OUTDATED_LOCKFILE`. Fixed in commit `61562ff` with a documented process note.
 
 ## Route groups
 
