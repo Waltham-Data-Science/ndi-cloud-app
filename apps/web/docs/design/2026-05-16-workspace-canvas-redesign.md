@@ -442,3 +442,87 @@ Additionally **out of scope for this round**, parked for a future polish session
 | Date | Change |
 |---|---|
 | 2026-05-16 | Initial draft — supersedes the 5-tab redesign in `2026-05-16-workspace-redesign.md`. |
+| 2026-05-16 (execution) | All 8 phases (F1–F8) shipped in commit `8664f64`. 1,852 unit tests passing (+132 net new), lint + typecheck clean, build green. Audit-driven follow-ups (Sessions backend-empty fallback, AskShell context injection, permissive id-shape validator) folded in. |
+
+---
+
+## Implementation log — what shipped (single commit, `8664f64`)
+
+**Net new files:**
+
+- `lib/workspace/use-workspace-selection.ts` — multi-key URL-state hook
+- `components/workspace/canvas/`
+  - `WorkspaceCanvas.tsx` — the layout
+  - `WorkspaceCanvasClient.tsx` — slot wiring (picker bodies + 6 panels)
+  - `SelectionBar.tsx` — 5-chip sticky bar
+  - `PickerRail.tsx` + `PickerRailTabs.tsx` — left rail
+  - `SnapshotSection.tsx` — stats + provenance + cold-start
+  - `AnalysesGrid.tsx` — responsive 2-col panel grid
+  - `DocumentExplorerEscape.tsx` — single outbound link
+  - `ProbesPicker.tsx` / `StimuliPicker.tsx` / `DocumentsPicker.tsx` — new picker bodies
+- `docs/design/2026-05-16-workspace-canvas-redesign.md` — this doc
+
+**Modified files:**
+
+- `app/(app)/my/workspace/[id]/page.tsx` — renders the canvas directly
+- `app/(app)/my/workspace/[id]/layout.tsx` — drops `WorkspaceTabs`
+- All 6 analysis panels — read selection via `useWorkspaceSelection`; auto-fill + auto-run; `<details>Advanced</details>` collapse; outbound links removed
+- `SubjectsBrowser` / `SessionsBrowser` / `StructureBrowser` — refactored to write through the hook; ViewActionsRail removed; reactive subject cascade in Sessions
+- `components/ai/AskShell.tsx` — `DefaultChatTransport.body.context` forwards selection; transport rebuilds on context change
+- `components/ai/AskPanel.tsx` — enriches baseline context with live selection from the hook
+- `app/api/ask/route.ts` — reads `body.context`, prepends a workspace-context system message
+- 19 test files updated to mock the new hook
+
+**Deleted files (10):**
+
+- 5 sub-route pages: `overview/`, `structure/`, `subjects/`, `sessions/`, `analyses/`
+- `WorkspaceTabs.tsx`, `WorkspaceComingSoonPlaceholder.tsx`, `ViewActionsRail.tsx`
+- Legacy overview-tab pieces: `DatasetStructurePanel.tsx`, `StarterViewCard.tsx`, `StarterViewsSection.tsx`, `WorkspaceSectionHeader.tsx`, `StatTile.tsx`, `StatTilesRow.tsx`
+- All 4 associated test files
+
+**New tests added (~12 files, ~132 net new tests):**
+
+- `use-workspace-selection.test.ts` — 38 tests covering URL read/write, atomic patches, clear all/one, picker tab state, permissive id-shape validation, unrelated-param preservation
+- `SelectionBar.test.tsx` — 11 tests, chip rendering + interactions
+- `PickerRailTabs.test.tsx` — 9 tests, ARIA tablist + keyboard nav
+- `PickerRail.test.tsx` — 7 tests, slot rendering
+- `WorkspaceCanvas.test.tsx` — 4 tests, integration
+- `SnapshotSection.test.tsx` — 8 tests, stat tile clicks, cold-start visibility
+- `DocumentExplorerEscape.test.tsx` — 3 tests
+- `ProbesPicker.test.tsx` — 15 tests
+- `StimuliPicker.test.tsx` — 13 tests
+- `DocumentsPicker.test.tsx` — 12 tests
+- `AskPanel.test.tsx` — +8 F7 enrichment tests
+- Per-panel selection tests — +13 across SignalViewer / PSTH / SpikeActivity / TreatmentTimeline / ElectrodePosition
+
+**Audit findings (from `audit/2026-05-16-workspace-breaks/`) dispositions:**
+
+| Finding | Severity | Status |
+|---|---|---|
+| B1 Sessions backend returns empty `element_epoch` | Blocker | Frontend workaround: subject cascade in `SessionsBrowser` filters client-side, picker rail surfaces a clear empty state. True fix needs `summary_table_service` backend change (out of scope). |
+| B2 TreatmentTimeline reports "no treatments" | Blocker | Not actually a frontend bug — route handler correctly wraps `chart_payload`. Auditor likely observed FastAPI direct response. Panel agent added auto-run-on-mount to surface diagnostic info immediately. |
+| W1 Panels never consume URL params | Blocker | **Obsoleted by Phase F.** Selection bar replaces URL-param wiring; every panel reads from the hook. |
+| W2 PSTH/Signal pre-fill broken by design | Blocker | **Obsoleted.** Multi-key selection model surfaces unit + stimulus as orthogonal dimensions; user picks both via the appropriate picker tabs. |
+| W3/W4 Starter card hrefs wrong | Annoying | **Obsoleted.** Starter cards retired in F6; cold-start guidance replaces them. |
+| W5 Tab switches strip query params | Blocker | **Obsoleted.** No more tabs. |
+| W6 Auth-gate strips query params | Annoying | Unchanged. Tracked for a future polish round. |
+| W7 AskPanel context theatre | Blocker | **Fixed.** `DefaultChatTransport.body.context` forwards live selection; `/api/ask` prepends workspace-context system message. |
+| U1 No copy-id button on Document Detail | Annoying | Untouched — out of workspace scope. Selection now flows without copy-paste, so this is less critical. |
+| U2 Selection mono ID truncates without copy | Minor | **Obsoleted.** Selection lives in URL + chip; no need to copy. |
+| U3 Sessions empty-state dead-end | Minor | Fixed by the canvas's single-page model. |
+| U4 Compound subject ids rejected by 24-hex validator | Blocker | **Fixed in hook.** Permissive validator accepts 24-hex, 32-char compound, and local NDI identifiers. |
+| U5 Tile count mismatch with tab count | Annoying | Inherited — tile counts are display, picker shows what backend returns. |
+| U6 Drawer placeholder generic | Minor | Tracked — workspace-aware placeholder is a future polish item. |
+
+**Routes/destinations OUTSIDE the workspace from a typical pass (was ~10):**
+
+After Phase F: **1.** The single `DocumentExplorerEscape` link in the picker footer (`target="_blank"` so workspace stays put).
+
+## Followups (deliberately deferred)
+
+1. **AskHeroQuickInput mount.** Designed in the prior round, not yet placed in the workspace hero. Trivial — add a client-island slot to `WorkspaceShell` and pre-send wiring via a shared store that AskShell drains on mount.
+2. **Sidebar mode workspace reflow.** AskPanel sidebar mode is currently a fixed-position overlay; the spec calls for the workspace to reflow to `max-w-[calc(100%-520px)]` when the sidebar is open. Adds a `data-ask-panel-mode="sidebar"` attribute on `<body>` + a CSS rule.
+3. **Sessions backend filter param.** `summary_table_service` projection for `element_epoch` returns `[]` on every dataset. Backend fix needed (in `ndi-data-browser-v2`); the cascade in `SessionsBrowser` is a workaround that only helps when the projection DOES return rows.
+4. **Stimuli subject cascade.** Probes filter by `?subject=` when set; stimuli don't (their `depends_on` structure varies more). Future polish.
+5. **DocumentsPicker "Set as Unit" affordance discoverability.** The dropdown is small; a hover hint would help.
+6. **`panel-defaults/{name}` backend endpoint.** Would let TreatmentTimeline auto-discover `groupBy` instead of relying on empty-body backend defaults. Not blocking — current backend defaults work for the datasets we ship.
