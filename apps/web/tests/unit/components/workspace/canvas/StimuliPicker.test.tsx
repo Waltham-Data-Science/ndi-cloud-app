@@ -287,7 +287,9 @@ describe('StimuliPicker — render', () => {
     render(<StimuliPicker datasetId="ds1" />);
 
     expect(screen.getByTestId('grid-row-count')).toHaveTextContent('2');
-    expect(screen.getByText(/2 stimulus documents/i)).toBeInTheDocument();
+    // Phase H6 — the "Showing N of M" count line was dropped in
+    // favor of the grid's own footer row-count. Grid is mocked
+    // out in this test so we only verify the data length above.
   });
 });
 

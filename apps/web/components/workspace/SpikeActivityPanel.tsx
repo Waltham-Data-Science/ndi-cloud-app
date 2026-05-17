@@ -37,11 +37,13 @@ import { Activity } from 'lucide-react';
 import { IsiHistogram } from '@/components/ndi/charts/IsiHistogram';
 import { SpikeRaster } from '@/components/ndi/charts/SpikeRaster';
 import { PanelCard } from '@/components/workspace/PanelCard';
+import { PanelEmptyState } from '@/components/workspace/canvas/PanelEmptyState';
 import { ShowCodeButton } from '@/components/workspace/ShowCodeButton';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ApiError, apiFetch } from '@/lib/api/client';
+import { usePanelChangeIndicator } from '@/lib/workspace/use-panel-change-indicator';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 import type {
   FetchSpikeSummaryToolResult,
@@ -147,6 +149,8 @@ function buildRequestBody(form: FormState): RequestBody | { error: string } {
 
 export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
   const { selection } = useWorkspaceSelection();
+  // H7 pulse: spike activity tracks the `unit` selection only.
+  const pulse = usePanelChangeIndicator([selection.unit]);
 
   const [form, setForm] = useState<FormState>({
     ...DEFAULT_FORM_BASE,
@@ -256,6 +260,17 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
   const hasSuccessRun =
     !!mutation.data && !isErrorEnvelope(mutation.data) && !mutation.isPending;
   const showAutoHint = isAutoFilled && !!form.unitDocId;
+  // Illustrated empty state: no run pending, no run completed, nothing
+  // typed manually, no validation error showing. Surface the raster
+  // preview + hint.
+  const showEmptyState =
+    !isRunning &&
+    !networkError &&
+    !errorEnvelope &&
+    !charts &&
+    !formError &&
+    form.unitDocId.trim().length === 0 &&
+    form.unitNameMatch.trim().length === 0;
 
   return (
     <PanelCard
@@ -264,6 +279,7 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
       subtitle="Spike raster + ISI histogram for one or more units."
       headingId={headingId}
       id="spike-activity"
+      pulse={pulse}
       footer={
         <>
           <Button
@@ -308,6 +324,14 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
       />
 
       <div>
+        {showEmptyState && (
+          <PanelEmptyState
+            illustration="raster"
+            title="Plot spike activity"
+            hint={<>Pick a unit (vmspikesummary document).</>}
+            testId="spike-activity-empty"
+          />
+        )}
         {isRunning && <LoadingState />}
         {!isRunning && networkError && (
           <ErrorBlock message={describeNetworkError(networkError)} />

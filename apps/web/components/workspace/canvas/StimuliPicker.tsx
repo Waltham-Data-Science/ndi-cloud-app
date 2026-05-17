@@ -47,12 +47,12 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { WorkspaceDataGrid } from '@/components/workspace/canvas/WorkspaceDataGrid';
 import type { BulkAction } from '@/components/workspace/canvas/DataGridBulkActions';
 import type { ContextMenuEntry } from '@/components/workspace/canvas/DataGridContextMenu';
+import { DataGridSearchInput } from '@/components/workspace/canvas/DataGridSearchInput';
 import {
   buildPrefillPrompt,
   emitAskPrefill,
 } from '@/lib/ai/ask-prefill-bus';
 import { useDocuments, type DocumentSummary } from '@/lib/api/documents';
-import { cn } from '@/lib/cn';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 
 interface StimuliPickerProps {
@@ -192,10 +192,9 @@ export function StimuliPicker({ datasetId }: StimuliPickerProps) {
     return result;
   }, [presentationQuery.data, responseQuery.data]);
 
-  const filteredRows = useMemo(
-    () => filterStimuli(allRows, typeQuery),
-    [allRows, typeQuery],
-  );
+  // Note: filtering moved into the grid's globalFilter (Phase H6).
+  // `filterStimuli` is kept as an exported helper for direct
+  // consumers, but no longer applied here.
 
   const columnHelper = createColumnHelper<StimulusRow>();
   const columns = useMemo<ColumnDef<StimulusRow, unknown>[]>(
@@ -341,32 +340,15 @@ export function StimuliPicker({ datasetId }: StimuliPickerProps) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <input
-          type="search"
-          value={typeQuery}
-          onChange={(e) => setTypeQuery(e.target.value)}
-          placeholder="Type contains…"
-          className={cn(
-            'flex-1 min-w-0 rounded-md border border-border-subtle bg-bg-surface',
-            'px-2 py-1 text-[12px] text-fg-primary placeholder:text-fg-muted',
-            'focus:outline-none focus:ring-2 focus:ring-brand-500/40',
-          )}
-          aria-label="Filter stimuli by type"
-        />
-      </div>
-
-      <div className="text-[11px] text-fg-muted tabular-nums">
-        Showing{' '}
-        <span className="font-semibold text-fg-secondary">
-          {filteredRows.length.toLocaleString()}
-        </span>{' '}
-        of {allRows.length.toLocaleString()} stimulus document
-        {allRows.length === 1 ? '' : 's'}
-      </div>
+      <DataGridSearchInput
+        value={typeQuery}
+        onChange={setTypeQuery}
+        placeholder="Search stimuli…"
+        ariaLabel="Search stimuli"
+      />
 
       <WorkspaceDataGrid<StimulusRow>
-        data={filteredRows}
+        data={allRows}
         columns={columns}
         rowId={stimulusRowId}
         noun="stimulus"
@@ -374,6 +356,10 @@ export function StimuliPicker({ datasetId }: StimuliPickerProps) {
         onPrimaryChange={(id) => set({ stimulus: id })}
         contextMenuActions={contextMenuActions}
         bulkActions={bulkActions}
+        globalFilter={typeQuery}
+        // Stimulus Type is the natural group-by dimension
+        // ("drift gratings vs gabor vs noise" cohorts).
+        groupableColumnIds={['type']}
         columnLabels={{ type: 'Type', count: 'Count', shortid: 'ID' }}
         lockedColumnIds={['type']}
         label="Stimuli"

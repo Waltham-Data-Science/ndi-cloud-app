@@ -37,7 +37,7 @@
  * `WorkspaceDataGrid` primitive.
  */
 import { Copy, Crosshair, ExternalLink, Sparkles, Waves } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   createColumnHelper,
   type ColumnDef,
@@ -52,6 +52,7 @@ import {
 import { WorkspaceDataGrid } from '@/components/workspace/canvas/WorkspaceDataGrid';
 import type { BulkAction } from '@/components/workspace/canvas/DataGridBulkActions';
 import type { ContextMenuEntry } from '@/components/workspace/canvas/DataGridContextMenu';
+import { DataGridSearchInput } from '@/components/workspace/canvas/DataGridSearchInput';
 import {
   buildPrefillPrompt,
   emitAskPrefill,
@@ -159,6 +160,8 @@ export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
   // params collide with the workspace selection keys, and the
   // subject cascade below covers the most common case).
   const windowFilter = searchParams?.get('window') ?? '';
+  // Phase H6 — global free-text search, in-memory.
+  const [globalSearch, setGlobalSearch] = useState('');
 
   // Workspace selection — the cascade source (selection.subject
   // pre-filters this table client-side) and the active row marker
@@ -380,7 +383,13 @@ export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
   const hasNoEpochs = allRows.length === 0;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      <DataGridSearchInput
+        value={globalSearch}
+        onChange={setGlobalSearch}
+        placeholder="Search sessions…"
+        ariaLabel="Search sessions"
+      />
       <WorkspaceFilterBar
         fields={filterFields}
         totalRows={subjectCascadeId ? filteredRows.length : allRows.length}
@@ -418,6 +427,11 @@ export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
           onPrimaryChange={(id) => set({ session: id })}
           contextMenuActions={contextMenuActions}
           bulkActions={bulkActions}
+          globalFilter={globalSearch}
+          // Approach (recording type) is the natural group dimension
+          // for sessions; Start (date) would be too granular to
+          // group by without a date-bin transform.
+          groupableColumnIds={['approach']}
           columnLabels={{
             epoch: 'Epoch',
             start: 'Start',

@@ -233,6 +233,49 @@ describe('SpikeActivityPanel', () => {
     expect(screen.queryByTestId('spike-activity-auto-hint')).not.toBeInTheDocument();
   });
 
+  it('renders the illustrated empty state when no unit is set', () => {
+    renderPanel();
+
+    const empty = screen.getByTestId('spike-activity-empty');
+    expect(empty).toBeInTheDocument();
+    expect(empty).toHaveAttribute('data-illustration', 'raster');
+    expect(screen.getByText(/plot spike activity/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/pick a unit \(vmspikesummary document\)/i),
+    ).toBeInTheDocument();
+  });
+
+  it('pulses the PanelCard chrome when selection.unit changes', async () => {
+    // Stable QC so the rerender keeps the same hook instance.
+    selectionStub = { ...selectionStub, unit: VALID_UNIT_ID };
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const { container, rerender } = render(
+      <QueryClientProvider client={qc}>
+        <SpikeActivityPanel datasetId="dataset123" />
+      </QueryClientProvider>,
+    );
+
+    const section = container.querySelector('section#spike-activity')!;
+    expect(section.getAttribute('data-pulse')).toBeNull();
+
+    // Change the unit dimension → pulse fires.
+    const NEW_UNIT_ID = 'd'.repeat(24);
+    selectionStub = { ...selectionStub, unit: NEW_UNIT_ID };
+    rerender(
+      <QueryClientProvider client={qc}>
+        <SpikeActivityPanel datasetId="dataset123" />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('section#spike-activity')!.getAttribute('data-pulse'),
+      ).toBe('true');
+    });
+  });
+
   it('Run button is enabled by default with the kind radio set, and submits with default values', async () => {
     apiFetchMock.mockResolvedValueOnce(makeBothResult());
     renderPanel();

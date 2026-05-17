@@ -196,6 +196,51 @@ describe('PsthPanel', () => {
     expect(screen.queryByTestId('psth-auto-hint')).not.toBeInTheDocument();
   });
 
+  it('renders the illustrated empty state on mount when no ids are set', () => {
+    renderPanel();
+
+    const empty = screen.getByTestId('psth-empty');
+    expect(empty).toBeInTheDocument();
+    expect(empty).toHaveAttribute('data-illustration', 'histogram');
+    expect(screen.getByText(/build a psth/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/pick a unit and a stimulus/i),
+    ).toBeInTheDocument();
+  });
+
+  it('pulses the PanelCard chrome when selection.unit OR selection.stimulus changes', async () => {
+    // Stable QC so the rerender swaps props without remounting the
+    // tree — otherwise the initial-mount guard in the hook would
+    // suppress every "pulse" detection.
+    selectionStub = { ...selectionStub, unit: VALID_UNIT_ID };
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const ui = (
+      <QueryClientProvider client={qc}>
+        <PsthPanel datasetId="dataset123" />
+      </QueryClientProvider>
+    );
+    const { container, rerender } = render(ui);
+
+    const section = container.querySelector('section#psth')!;
+    expect(section.getAttribute('data-pulse')).toBeNull();
+
+    // Adding a stimulus → second dep changed → pulse fires.
+    selectionStub = { ...selectionStub, stimulus: VALID_STIM_ID };
+    rerender(
+      <QueryClientProvider client={qc}>
+        <PsthPanel datasetId="dataset123" />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('section#psth')!.getAttribute('data-pulse'),
+      ).toBe('true');
+    });
+  });
+
   it('blocks Run with empty unitDocId and surfaces an inline error', () => {
     renderPanel();
 

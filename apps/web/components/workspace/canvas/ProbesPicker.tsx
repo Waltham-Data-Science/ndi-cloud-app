@@ -51,12 +51,12 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { WorkspaceDataGrid } from '@/components/workspace/canvas/WorkspaceDataGrid';
 import type { BulkAction } from '@/components/workspace/canvas/DataGridBulkActions';
 import type { ContextMenuEntry } from '@/components/workspace/canvas/DataGridContextMenu';
+import { DataGridSearchInput } from '@/components/workspace/canvas/DataGridSearchInput';
 import {
   buildPrefillPrompt,
   emitAskPrefill,
 } from '@/lib/ai/ask-prefill-bus';
 import { useSummaryTable } from '@/lib/api/tables';
-import { cn } from '@/lib/cn';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 
 interface ProbesPickerProps {
@@ -149,10 +149,17 @@ export function ProbesPicker({ datasetId }: ProbesPickerProps) {
     [summary.data],
   );
 
-  const filteredRows = useMemo(
-    () => filterProbes(allRows, nameQuery, selection.subject),
-    [allRows, nameQuery, selection.subject],
+  // Subject cascade — narrows the row set when a subject is
+  // picked. The text search is handled by the grid's globalFilter
+  // (Phase H6), so we pass an empty query to filterProbes here.
+  const cascadeFilteredRows = useMemo(
+    () => filterProbes(allRows, '', selection.subject),
+    [allRows, selection.subject],
   );
+  // Kept as an alias for backward compatibility with anything still
+  // reading `filteredRows` (e.g. count display). Same value.
+  const filteredRows = cascadeFilteredRows;
+  void filteredRows;
 
   const columnHelper = createColumnHelper<ProbeRow>();
   const columns = useMemo<ColumnDef<ProbeRow, unknown>[]>(
@@ -291,37 +298,25 @@ export function ProbesPicker({ datasetId }: ProbesPickerProps) {
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <input
-          type="search"
-          value={nameQuery}
-          onChange={(e) => setNameQuery(e.target.value)}
-          placeholder="Name contains…"
-          className={cn(
-            'flex-1 min-w-0 rounded-md border border-border-subtle bg-bg-surface',
-            'px-2 py-1 text-[12px] text-fg-primary placeholder:text-fg-muted',
-            'focus:outline-none focus:ring-2 focus:ring-brand-500/40',
-          )}
-          aria-label="Filter probes by name"
-        />
-      </div>
+      <DataGridSearchInput
+        value={nameQuery}
+        onChange={setNameQuery}
+        placeholder="Search probes…"
+        ariaLabel="Search probes"
+      />
 
-      <div className="text-[11px] text-fg-muted tabular-nums">
-        Showing{' '}
-        <span className="font-semibold text-fg-secondary">
-          {filteredRows.length.toLocaleString()}
-        </span>{' '}
-        of {allRows.length.toLocaleString()} probe
-        {allRows.length === 1 ? '' : 's'}
-        {subjectFilterActive && (
-          <span className="ml-1 text-fg-muted">
-            (filtered to selected subject)
-          </span>
-        )}
-      </div>
+      {subjectFilterActive && (
+        <p
+          data-testid="probes-cascade-hint"
+          className="text-[11.5px] text-fg-secondary"
+        >
+          Filtered to the active subject. Clear the subject chip in
+          the selection bar to see all probes.
+        </p>
+      )}
 
       <WorkspaceDataGrid<ProbeRow>
-        data={filteredRows}
+        data={cascadeFilteredRows}
         columns={columns}
         rowId={probeRowId}
         noun="probe"
@@ -329,6 +324,10 @@ export function ProbesPicker({ datasetId }: ProbesPickerProps) {
         onPrimaryChange={(id) => set({ probe: id })}
         contextMenuActions={contextMenuActions}
         bulkActions={bulkActions}
+        globalFilter={nameQuery}
+        // Probe type is the natural group dimension (Neuropixel,
+        // tetrode, patch, etc.); names are too specific to group by.
+        groupableColumnIds={['type']}
         columnLabels={{ name: 'Probe', type: 'Type' }}
         lockedColumnIds={['name']}
         label="Probes"

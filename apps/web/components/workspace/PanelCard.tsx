@@ -52,6 +52,16 @@ interface PanelCardProps {
    * so /analyses#psth always lands on the PSTH panel.
    */
   id?: string;
+  /**
+   * H7 polish (workspace-canvas-redesign 2026-05-16): when true, the
+   * card renders a subtle fading ring + glow to acknowledge that its
+   * inputs just changed. Driven by `usePanelChangeIndicator` from each
+   * panel — see `lib/workspace/use-panel-change-indicator.ts`. The
+   * effect uses a Tailwind transition + ring-2 + ring-brand-blue/40 so
+   * it integrates with the card's existing rounded-lg border without
+   * a custom keyframe.
+   */
+  pulse?: boolean;
   className?: string;
 }
 
@@ -63,6 +73,7 @@ export function PanelCard({
   footer,
   headingId,
   id,
+  pulse,
   className,
 }: PanelCardProps) {
   return (
@@ -71,12 +82,21 @@ export function PanelCard({
       className={cn(
         'rounded-lg border border-border-subtle bg-bg-surface shadow-sm',
         'p-6 space-y-4',
+        // Pulse-on-selection-change ring. The transition keeps the
+        // fade smooth in both directions — light up fast, fade slow.
+        // `ring-offset-0` is explicit to prevent the ring from
+        // doubling up against the existing border.
+        'transition-shadow duration-500 ease-out',
+        pulse
+          ? 'ring-2 ring-brand-blue/40 shadow-md'
+          : 'ring-2 ring-transparent',
         // When the panel is the target of an in-page anchor jump, give
         // it some visual breathing room so the heading isn't flush with
         // the sticky tab bar that sits at 58px from the top.
         id && 'scroll-mt-24',
         className,
       )}
+      data-pulse={pulse ? 'true' : undefined}
       aria-labelledby={headingId}
     >
       <header className="flex items-start gap-3">

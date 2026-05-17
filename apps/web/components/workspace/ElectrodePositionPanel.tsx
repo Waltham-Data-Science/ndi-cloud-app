@@ -35,6 +35,7 @@ import {
 } from '@/components/ndi/charts/ElectrodeMapChart';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useDocuments, type DocumentSummary } from '@/lib/api/documents';
+import { usePanelChangeIndicator } from '@/lib/workspace/use-panel-change-indicator';
 
 import { PanelCard } from './PanelCard';
 import { ShowCodeButton } from './ShowCodeButton';
@@ -165,6 +166,10 @@ function extractSubjectId(doc: DocumentSummary): string | null {
 const PROBE_LOCATION_PAGE_SIZE = 200;
 
 export function ElectrodePositionPanel({ datasetId }: ElectrodePositionPanelProps) {
+  // H7 pulse: dataset-wide panel — empty deps means it never pulses.
+  // Wired for consistency with the analysis-card family.
+  const pulse = usePanelChangeIndicator([]);
+
   // Auto-load: same useDocuments hook the Document Explorer uses.
   // Page size capped at the backend's 200 limit.
   const { data, isLoading, isError } = useDocuments(
@@ -213,6 +218,7 @@ export function ElectrodePositionPanel({ datasetId }: ElectrodePositionPanelProp
       subtitle="Spatial map of probes / electrodes within a subject's brain. Colored by depth when present, otherwise by brain region."
       headingId="panel-electrode-positions"
       id="electrode-position"
+      pulse={pulse}
       footer={
         <ShowCodeButton
           toolName="query_documents"

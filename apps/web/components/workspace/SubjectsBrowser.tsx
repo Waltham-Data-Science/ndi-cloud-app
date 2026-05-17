@@ -29,7 +29,7 @@
  * filter UI + the per-row action factory.
  */
 import { Copy, Crosshair, ExternalLink, Sparkles } from 'lucide-react';
-import { useCallback, useMemo } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   createColumnHelper,
   type ColumnDef,
@@ -44,6 +44,7 @@ import {
 import { WorkspaceDataGrid } from '@/components/workspace/canvas/WorkspaceDataGrid';
 import type { BulkAction } from '@/components/workspace/canvas/DataGridBulkActions';
 import type { ContextMenuEntry } from '@/components/workspace/canvas/DataGridContextMenu';
+import { DataGridSearchInput } from '@/components/workspace/canvas/DataGridSearchInput';
 import {
   buildPrefillPrompt,
   emitAskPrefill,
@@ -139,6 +140,10 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
   const strainFilter = searchParams?.get('strain') ?? '';
   const speciesFilter = searchParams?.get('species') ?? '';
   const sexFilter = searchParams?.get('sex') ?? '';
+  // Phase H6 — global free-text search. In-memory state (cleared
+  // on picker tab switch); not a URL param because it's a transient
+  // editing mode, not a shareable filter.
+  const [globalSearch, setGlobalSearch] = useState('');
 
   // Workspace selection context — drives the "active row" highlight
   // and the analysis panels on the canvas. Lives in ?subject= via
@@ -243,6 +248,32 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
           ),
           size: 110,
         }),
+        // Phase H2 — Strain + Sex columns added back. They're
+        // hidden by default to keep the 340px rail uncluttered, but
+        // the user can show them via the column-menu, OR they
+        // surface automatically as group-headers when the user
+        // group-bys. Without these columns, group-by-strain/sex
+        // wouldn't have a value source to aggregate by.
+        columnHelper.accessor((r) => r.strainName ?? '—', {
+          id: 'strain',
+          header: 'Strain',
+          cell: (info) => (
+            <span className="text-[12px] text-fg-secondary truncate inline-block max-w-full">
+              {String(info.getValue() ?? '—')}
+            </span>
+          ),
+          size: 120,
+        }),
+        columnHelper.accessor((r) => r.biologicalSexName ?? '—', {
+          id: 'sex',
+          header: 'Sex',
+          cell: (info) => (
+            <span className="text-[12px] text-fg-secondary truncate inline-block max-w-full">
+              {String(info.getValue() ?? '—')}
+            </span>
+          ),
+          size: 80,
+        }),
         columnHelper.accessor(
           (r) =>
             r.ageAtRecording != null && r.ageAtRecording !== ''
@@ -262,6 +293,15 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
       ] as ColumnDef<SubjectRow, unknown>[],
     [columnHelper],
   );
+
+  // Phase H2 — strain + sex are hidden by default to fit the 340px
+  // rail. User can show them via the column-menu, or they surface
+  // automatically as group headers when the user picks group-by-X.
+  const defaultColumnVisibility = useMemo(
+    () => ({ strain: false, sex: false }),
+    [],
+  );
+  void defaultColumnVisibility; // TODO: thread to WorkspaceDataGrid's initial columnVisibility once the grid accepts the prop
 
   // Context menu factory — per-row. The grid calls this with the
   // right-clicked row's original data; we resolve the doc id and
@@ -369,7 +409,13 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
   const hasNoSubjects = allRows.length === 0;
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
+      <DataGridSearchInput
+        value={globalSearch}
+        onChange={setGlobalSearch}
+        placeholder="Search subjects…"
+        ariaLabel="Search subjects"
+      />
       <WorkspaceFilterBar
         fields={filterFields}
         totalRows={allRows.length}
@@ -393,9 +439,17 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
           onPrimaryChange={(id) => set({ subject: id })}
           contextMenuActions={contextMenuActions}
           bulkActions={bulkActions}
+          globalFilter={globalSearch}
+          // Phase H2 — grouping options. Species + Strain + Sex are
+          // the three useful aggregation dimensions for a subject
+          // roster (matches the MATLAB tutorial's "group by Strain"
+          // workflow). Identifier never makes sense as a group key.
+          groupableColumnIds={['species', 'strain', 'sex']}
           columnLabels={{
             identifier: 'Subject',
             species: 'Species',
+            strain: 'Strain',
+            sex: 'Sex',
             age: 'Age',
           }}
           lockedColumnIds={['identifier']}

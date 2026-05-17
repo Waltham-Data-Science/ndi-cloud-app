@@ -45,7 +45,7 @@
  * (per-class context-menu actions would be confusing — class clicks
  * are navigation, not selection writes).
  */
-import { ChevronRight, ChevronLeft, Copy, ExternalLink, Search, Sparkles } from 'lucide-react';
+import { ChevronRight, ChevronLeft, Copy, ExternalLink, Sparkles } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
 import {
   createColumnHelper,
@@ -57,6 +57,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { WorkspaceDataGrid } from '@/components/workspace/canvas/WorkspaceDataGrid';
 import type { BulkAction } from '@/components/workspace/canvas/DataGridBulkActions';
 import type { ContextMenuEntry, ContextMenuItem } from '@/components/workspace/canvas/DataGridContextMenu';
+import { DataGridSearchInput } from '@/components/workspace/canvas/DataGridSearchInput';
 import {
   buildPrefillPrompt,
   emitAskPrefill,
@@ -166,21 +167,12 @@ function ClassList({ datasetId, onPick }: ClassListProps) {
 
   return (
     <div className="space-y-3">
-      <label className="flex items-center gap-1.5">
-        <Search className="h-3.5 w-3.5 text-fg-muted" aria-hidden />
-        <input
-          type="search"
-          value={filter}
-          onChange={(e) => setFilter(e.target.value)}
-          placeholder="Filter class name"
-          className={cn(
-            'flex-1 min-w-0 rounded-md border border-border-subtle bg-bg-surface',
-            'px-2 py-1 text-[12px] text-fg-primary placeholder:text-fg-muted',
-            'focus:outline-none focus:ring-2 focus:ring-brand-500/40',
-          )}
-          aria-label="Filter classes"
-        />
-      </label>
+      <DataGridSearchInput
+        value={filter}
+        onChange={setFilter}
+        placeholder="Search classes…"
+        ariaLabel="Search classes"
+      />
 
       {items.length === 0 ? (
         <div className="rounded-md border border-dashed border-border-subtle bg-bg-surface px-3 py-6 text-center text-[12.5px] text-fg-secondary">
@@ -417,21 +409,12 @@ function DocumentList({ datasetId, docClass, onBack }: DocumentListProps) {
         </span>
       </div>
 
-      <label className="flex items-center gap-1.5">
-        <Search className="h-3.5 w-3.5 text-fg-muted" aria-hidden />
-        <input
-          type="search"
-          value={searchQuery}
-          onChange={(e) => setSearchQuery(e.target.value)}
-          placeholder="Filter by name / id"
-          className={cn(
-            'flex-1 min-w-0 rounded-md border border-border-subtle bg-bg-surface',
-            'px-2 py-1 text-[12px] text-fg-primary placeholder:text-fg-muted',
-            'focus:outline-none focus:ring-2 focus:ring-brand-500/40',
-          )}
-          aria-label="Filter documents"
-        />
-      </label>
+      <DataGridSearchInput
+        value={searchQuery}
+        onChange={setSearchQuery}
+        placeholder="Search documents…"
+        ariaLabel="Search documents"
+      />
 
       {docs.isLoading ? (
         <div className="space-y-2" aria-label="Loading documents">
@@ -460,6 +443,12 @@ function DocumentList({ datasetId, docClass, onBack }: DocumentListProps) {
           onPrimaryChange={() => undefined}
           contextMenuActions={contextMenuActions}
           bulkActions={bulkActions}
+          // Documents picker doesn't pass globalFilter — the
+          // existing searchQuery already filters at the
+          // filteredRows derivation (server-tied keys + class
+          // metadata). Keeping it client-side avoids re-filtering
+          // twice. Other pickers use the grid's globalFilter
+          // because they don't have a pre-filtered derivation.
           columnLabels={{ name: 'Document' }}
           lockedColumnIds={['name']}
           label="Documents"

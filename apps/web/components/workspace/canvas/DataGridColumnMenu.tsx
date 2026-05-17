@@ -51,12 +51,28 @@ export interface ColumnVisibility {
   locked?: boolean;
 }
 
+/**
+ * Phase H2 — group-by entries surfaced under a "Group by" section
+ * of the menu. Optional; pass empty array (or omit) to hide the
+ * section. Click a row to set the group-by; click the active row
+ * to clear (toggle).
+ */
+export interface GroupByEntry {
+  id: string;
+  label: string;
+  active: boolean;
+}
+
 export interface DataGridColumnMenuProps {
   columns: ReadonlyArray<ColumnVisibility>;
   density: GridDensity;
   onDensityChange: (next: GridDensity) => void;
   /** Reset both column visibility and density to defaults. */
   onReset?: () => void;
+  /** Optional group-by section. Phase H2. */
+  groupBy?: ReadonlyArray<GroupByEntry>;
+  /** Set the current group-by column (null to clear). */
+  onGroupByChange?: (columnId: string | null) => void;
 }
 
 export function DataGridColumnMenu({
@@ -64,6 +80,8 @@ export function DataGridColumnMenu({
   density,
   onDensityChange,
   onReset,
+  groupBy,
+  onGroupByChange,
 }: DataGridColumnMenuProps) {
   return (
     <DmRoot>
@@ -96,6 +114,69 @@ export function DataGridColumnMenu({
             'data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
           )}
         >
+          {/* Group by — Phase H2. Only shown when the picker
+              passes groupBy entries. Click a row to set; click the
+              active row to clear (toggle). */}
+          {groupBy && groupBy.length > 0 && (
+            <>
+              <DmLabel
+                className={cn(
+                  'px-2 py-1 text-[10px] font-bold tracking-eyebrow uppercase',
+                  'text-fg-muted select-none',
+                )}
+              >
+                Group by
+              </DmLabel>
+              <DmItem
+                onSelect={(e) => {
+                  e.preventDefault();
+                  onGroupByChange?.(null);
+                }}
+                className={cn(
+                  'group/item relative flex items-center gap-2.5',
+                  'px-2 py-1.5 text-[13px] outline-none cursor-default',
+                  'rounded-sm mx-1 my-px select-none',
+                  'transition-colors duration-(--duration-base) ease-(--ease-out)',
+                  groupBy.every((g) => !g.active)
+                    ? 'text-fg-primary font-medium bg-brand-blue/5'
+                    : 'text-fg-secondary hover:bg-bg-muted focus:bg-bg-muted',
+                )}
+              >
+                <span className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                <span className="flex-1">No grouping</span>
+              </DmItem>
+              {groupBy.map((entry) => (
+                <DmItem
+                  key={entry.id}
+                  onSelect={(e) => {
+                    e.preventDefault();
+                    onGroupByChange?.(entry.active ? null : entry.id);
+                  }}
+                  className={cn(
+                    'group/item relative flex items-center gap-2.5',
+                    'px-2 py-1.5 text-[13px] outline-none cursor-default',
+                    'rounded-sm mx-1 my-px select-none',
+                    'transition-colors duration-(--duration-base) ease-(--ease-out)',
+                    entry.active
+                      ? 'text-fg-primary font-medium bg-brand-blue/5'
+                      : 'text-fg-primary hover:bg-bg-muted focus:bg-bg-muted',
+                  )}
+                >
+                  {entry.active ? (
+                    <Check
+                      className="h-3.5 w-3.5 shrink-0 text-brand-blue"
+                      aria-hidden
+                    />
+                  ) : (
+                    <span className="w-3.5 h-3.5 shrink-0" aria-hidden />
+                  )}
+                  <span className="flex-1 truncate">{entry.label}</span>
+                </DmItem>
+              ))}
+              <DmSeparator className="my-1 h-px bg-border-subtle" />
+            </>
+          )}
+
           {/* Density */}
           <DmLabel
             className={cn(

@@ -143,6 +143,19 @@ describe('<TreatmentTimelinePanel/>', () => {
     expect(screen.getByTestId('treatment-timeline-run')).toHaveTextContent(/Running/i);
   });
 
+  it('does not pulse — dataset-wide panel opts out with empty deps', () => {
+    // H7: TreatmentTimeline has no selection dimension to track so
+    // its pulse hook is wired with [] and should never fire.
+    const { container } = render(
+      <TreatmentTimelinePanel datasetId="ds1" />,
+      { wrapper: withClient() },
+    );
+
+    expect(
+      container.querySelector('section#treatment-timeline')!.getAttribute('data-pulse'),
+    ).toBeNull();
+  });
+
   it('auto-runs on mount with an empty body (backend picks defaults)', async () => {
     mockedApiFetch.mockReset();
     mockedApiFetch.mockResolvedValueOnce(explicitResponse);

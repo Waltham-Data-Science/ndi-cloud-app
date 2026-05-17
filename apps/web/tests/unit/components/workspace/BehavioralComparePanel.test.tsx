@@ -166,6 +166,24 @@ describe('<BehavioralComparePanel/>', () => {
     ).not.toBeInTheDocument();
   });
 
+  it('does not pulse — dataset-wide panel opts out by passing empty deps', () => {
+    // H7: BehavioralCompare reads no selection dimensions so its
+    // pulse hook should never fire. data-pulse should be absent on
+    // mount + after re-renders.
+    const { container, rerender } = render(
+      <BehavioralComparePanel datasetId="ds1" />,
+      { wrapper: withClient() },
+    );
+
+    const section = container.querySelector('section#behavioral-compare')!;
+    expect(section.getAttribute('data-pulse')).toBeNull();
+
+    rerender(<BehavioralComparePanel datasetId="ds1" />);
+    expect(
+      container.querySelector('section#behavioral-compare')!.getAttribute('data-pulse'),
+    ).toBeNull();
+  });
+
   it('shows a validation message when Run is clicked with empty variable name', async () => {
     const user = userEvent.setup();
     render(<BehavioralComparePanel datasetId="ds1" />, {

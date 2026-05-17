@@ -45,14 +45,22 @@
 import {
   flexRender,
   getCoreRowModel,
+  getExpandedRowModel,
+  getFilteredRowModel,
+  getGroupedRowModel,
   getSortedRowModel,
   useReactTable,
   type ColumnDef,
+  type ColumnFiltersState,
+  type ColumnSizingState,
+  type ExpandedState,
+  type GroupingState,
+  type Row,
   type SortingState,
   type VisibilityState,
 } from '@tanstack/react-table';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import type { LucideIcon } from 'lucide-react';
+import { ChevronDown, ChevronRight, type LucideIcon } from 'lucide-react';
 import {
   useCallback,
   useEffect,
@@ -60,6 +68,7 @@ import {
   useRef,
   useState,
   type KeyboardEvent,
+  type MouseEvent as ReactMouseEvent,
   type ReactNode,
 } from 'react';
 
@@ -71,6 +80,11 @@ import {
   type BulkAction,
 } from './DataGridBulkActions';
 import {
+  DataGridColumnFilter,
+  isFilterEmpty,
+  type DataGridColumnFilterValue,
+} from './DataGridColumnFilter';
+import {
   DataGridColumnMenu,
   type ColumnVisibility,
   type GridDensity,
@@ -79,6 +93,7 @@ import {
   DataGridContextMenu,
   type ContextMenuEntry,
 } from './DataGridContextMenu';
+import { DataGridRowKebab } from './DataGridRowKebab';
 import { DataGridSortHeader } from './DataGridSortHeader';
 
 export interface WorkspaceDataGridProps<TRow> {
@@ -122,6 +137,20 @@ export interface WorkspaceDataGridProps<TRow> {
    * sparingly — kept optional so simple tables stay simple.
    */
   rowIcon?: (row: TRow) => LucideIcon | null;
+
+  /**
+   * Global free-text filter (controlled by the picker). Matched
+   * case-insensitively against every visible cell's stringified
+   * value. Empty string disables. Phase H6.
+   */
+  globalFilter?: string;
+
+  /**
+   * Columns that can serve as a group-by key. When the user picks
+   * a group-by column from the column menu, rows collapse into
+   * group headers showing the value + member count. Phase H2.
+   */
+  groupableColumnIds?: ReadonlyArray<string>;
 }
 
 const DEFAULT_ROW_HEIGHTS: Readonly<Record<GridDensity, number>> = {
@@ -147,17 +176,48 @@ export function WorkspaceDataGrid<TRow>({
   columnLabels = {},
   lockedColumnIds = [],
   rowIcon,
+  globalFilter = '',
+  groupableColumnIds = [],
 }: WorkspaceDataGridProps<TRow>) {
   const multi = useTableMultiSelect();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
     {},
   );
+  // Phase H4 — per-column filter values. Tracked locally (parallel
+  // to TanStack's columnFilters state) because the filter primitive
+  // takes a richer shape (substring + whitelist) than TanStack's
+  // default scalar filter value.
+  const [columnFilterMap, setColumnFilterMap] = useState<
+    Record<string, DataGridColumnFilterValue>
+  >({});
+  // Phase H2 — group-by state. A single column id grouped at a
+  // time (consistent with Notion / Hex / Sheets defaults). Phase H3
+  // — multi-column sort already supported by TanStack when the user
+  // Shift+clicks sort headers; no extra state needed.
+  const [grouping, setGrouping] = useState<GroupingState>([]);
+  const [expanded, setExpanded] = useState<ExpandedState>({});
+  // Phase H5 — column-size state. Default sizes come from the
+  // column defs; the user can drag column edges to override.
+  const [columnSizing, setColumnSizing] = useState<ColumnSizingState>({});
   const [density, setDensity] = useState<GridDensity>(DEFAULT_DENSITY);
   // The currently focused row index (for keyboard nav). Independent
   // of selection — focus is a CARET concept, selection is a CHECKED
   // concept.
   const [focusedIndex, setFocusedIndex] = useState<number | null>(null);
+
+  // Build TanStack's ColumnFiltersState from our richer map. We
+  // store the rich value (substring + whitelist) per column under
+  // the same column id and project to TanStack's `{ id, value }`
+  // tuples each render. TanStack hands the value to our custom
+  // `filterFn`, which evaluates the substring + whitelist match.
+  const columnFilters: ColumnFiltersState = useMemo(
+    () =>
+      Object.entries(columnFilterMap)
+        .filter(([, v]) => !isFilterEmpty(v))
+        .map(([id, value]) => ({ id, value })),
+    [columnFilterMap],
+  );
 
   // Build the TanStack Table. We pass column visibility, sorting,
   // and an explicit rowId so multi-select state survives sort/filter.
@@ -165,12 +225,76 @@ export function WorkspaceDataGrid<TRow>({
   const table = useReactTable<TRow>({
     data: data as TRow[],
     columns,
-    state: { sorting, columnVisibility },
+    state: {
+      sorting,
+      columnVisibility,
+      columnFilters,
+      globalFilter,
+      grouping,
+      expanded,
+      columnSizing,
+    },
     getRowId: (row, idx) => rowId(row) || String(idx),
     onSortingChange: setSorting,
     onColumnVisibilityChange: setColumnVisibility,
+    onGroupingChange: setGrouping,
+    onExpandedChange: setExpanded,
+    onColumnSizingChange: setColumnSizing,
+    enableMultiSort: true,
+    enableColumnResizing: true,
+    columnResizeMode: 'onChange',
+    // Global filter: case-insensitive substring across all visible
+    // cells. Each row passes if its concatenated stringified cell
+    // values contain the query.
+    globalFilterFn: (row, _columnId, filterValue: string) => {
+      if (!filterValue || filterValue.trim().length === 0) return true;
+      const q = filterValue.trim().toLowerCase();
+      const cells = row.getVisibleCells();
+      for (const cell of cells) {
+        const v = cell.getValue();
+        if (v == null) continue;
+        if (String(v).toLowerCase().includes(q)) return true;
+      }
+      return false;
+    },
+    // Per-column filter: rich shape from DataGridColumnFilter.
+    // Substring + whitelist combined as documented in the
+    // primitive's `isFilterEmpty` comment.
+    filterFns: {
+      richFilter: (
+        row: Row<TRow>,
+        columnId: string,
+        filterValue: DataGridColumnFilterValue,
+      ) => {
+        if (isFilterEmpty(filterValue)) return true;
+        const raw = row.getValue(columnId);
+        const s = raw == null ? '' : String(raw);
+        const substringOk =
+          filterValue.substring.length === 0 ||
+          s.toLowerCase().includes(filterValue.substring.toLowerCase());
+        const whitelistOk =
+          filterValue.whitelist.size === 0 ||
+          filterValue.whitelist.has(s);
+        return substringOk && whitelistOk;
+      },
+    },
+    defaultColumn: {
+      // Default the per-column filterFn to our rich shape so any
+      // column gets per-column filtering without per-column wiring.
+      filterFn: 'richFilter' as never,
+      // Default sort + resize on. Picker column defs can opt out
+      // by setting `enableSorting: false` / `enableResizing: false`.
+      enableSorting: true,
+      enableResizing: true,
+      minSize: 60,
+      size: 140,
+      maxSize: 600,
+    },
     getCoreRowModel: getCoreRowModel(),
     getSortedRowModel: getSortedRowModel(),
+    getFilteredRowModel: getFilteredRowModel(),
+    getGroupedRowModel: getGroupedRowModel(),
+    getExpandedRowModel: getExpandedRowModel(),
   });
 
   const rows = table.getRowModel().rows;
@@ -297,10 +421,70 @@ export function WorkspaceDataGrid<TRow>({
     [table, columnLabels, lockedColumnIds],
   );
 
+  // Phase H2 — Group-by options for the column menu. Surfaces only
+  // columns the picker marked as `groupableColumnIds`. The menu
+  // shows a "Group by →" submenu (or list) where the user picks
+  // one column to group by (or "None" to clear).
+  const groupByEntries = useMemo(
+    () =>
+      groupableColumnIds
+        .map((id) => ({
+          id,
+          label: columnLabels[id] ?? id,
+          active: grouping[0] === id,
+        }))
+        // Defensive: only surface columns that actually exist on the
+        // table — a picker can pass a stale id without us crashing.
+        .filter((entry) =>
+          table.getAllLeafColumns().some((col) => col.id === entry.id),
+        ),
+    [groupableColumnIds, columnLabels, grouping, table],
+  );
+
+  // Phase H4 — distinct values per visible column, sorted desc by
+  // frequency. Used to populate the column filter popover's
+  // checkbox list. Computed off the UNFILTERED row set so that
+  // unchecking the active filter still shows what else is available.
+  const distinctValuesPerColumn: Record<
+    string,
+    Array<{ value: string; count: number }>
+  > = useMemo(() => {
+    const result: Record<string, Array<{ value: string; count: number }>> = {};
+    const allRows = table.getPreFilteredRowModel().rows;
+    const visibleCols = table.getVisibleLeafColumns();
+    for (const col of visibleCols) {
+      if (col.id === '__select__') continue;
+      const counts = new Map<string, number>();
+      for (const row of allRows) {
+        const v = row.getValue(col.id);
+        if (v == null) continue;
+        const s = String(v);
+        if (s.length === 0) continue;
+        counts.set(s, (counts.get(s) ?? 0) + 1);
+      }
+      const entries = Array.from(counts.entries())
+        .map(([value, count]) => ({ value, count }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 50);
+      result[col.id] = entries;
+    }
+    return result;
+  }, [table, data, columnVisibility]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const resetGridState = useCallback(() => {
     setColumnVisibility({});
     setDensity(DEFAULT_DENSITY);
     setSorting([]);
+    setColumnFilterMap({});
+    setGrouping([]);
+    setExpanded({});
+    setColumnSizing({});
+  }, []);
+
+  // Set / clear the current group-by column. Passing null clears.
+  const setGroupBy = useCallback((columnId: string | null) => {
+    setGrouping(columnId ? [columnId] : []);
+    setExpanded({}); // collapse all on group-by change
   }, []);
 
   // Bulk actions — recomputed when selection changes.
@@ -346,12 +530,19 @@ export function WorkspaceDataGrid<TRow>({
             className="flex-1 table-fixed"
             role="table"
             aria-label={label ?? `${noun}s`}
+            style={{ width: table.getTotalSize() + 32 + 36 }}
           >
             <colgroup>
               <col style={{ width: 32 }} />
               {table.getVisibleLeafColumns().map((col) => (
-                <col key={col.id} />
+                <col
+                  key={col.id}
+                  style={{ width: col.getSize() }}
+                />
               ))}
+              {/* Kebab cell column (Phase H1) — fixed-width slot at
+                  end of every row for the visible row actions menu. */}
+              <col style={{ width: 36 }} />
             </colgroup>
             <thead>
               <tr>
@@ -377,33 +568,118 @@ export function WorkspaceDataGrid<TRow>({
                 </th>
                 {table.getHeaderGroups().map((hg) =>
                   hg.headers.map((header) => {
-                    const sort = header.column.getIsSorted();
-                    const onCycle = header.column.getCanSort()
-                      ? () => header.column.toggleSorting()
+                    const col = header.column;
+                    const sort = col.getIsSorted();
+                    const onCycle = col.getCanSort()
+                      ? (event?: ReactMouseEvent) => {
+                          // Phase H3 — Shift+click stacks sorts.
+                          // TanStack's `toggleSorting(undefined, true)`
+                          // means "additive cycle" — preserves the
+                          // existing sort on other columns. Without
+                          // shift, replace the sort entirely.
+                          const additive = !!event?.shiftKey;
+                          col.toggleSorting(undefined, additive);
+                        }
                       : null;
+                    const sortIndex = col.getSortIndex();
                     const headerContent = flexRender(
-                      header.column.columnDef.header,
+                      col.columnDef.header,
                       header.getContext(),
                     );
+                    const filterValue: DataGridColumnFilterValue =
+                      columnFilterMap[col.id] ?? {
+                        substring: '',
+                        whitelist: new Set<string>(),
+                      };
+                    const canFilter = col.getCanFilter();
+                    const distinct = distinctValuesPerColumn[col.id] ?? [];
                     return (
                       <th
                         key={header.id}
                         scope="col"
-                        className="px-2 py-1.5 text-left align-middle"
+                        className={cn(
+                          'group/datagrid-th relative',
+                          'px-2 py-1.5 text-left align-middle',
+                        )}
                       >
-                        {typeof headerContent === 'string' ? (
-                          <DataGridSortHeader
-                            label={headerContent}
-                            sort={sort}
-                            onCycle={onCycle}
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span className="min-w-0 flex-1">
+                            {typeof headerContent === 'string' ? (
+                              <DataGridSortHeader
+                                label={headerContent}
+                                sort={sort}
+                                onCycle={
+                                  onCycle
+                                    ? (e) => onCycle(e as unknown as ReactMouseEvent)
+                                    : null
+                                }
+                              />
+                            ) : (
+                              headerContent
+                            )}
+                          </span>
+                          {sortIndex >= 0 && sort !== false && (
+                            <span
+                              className="text-[9px] font-mono font-bold text-brand-blue tabular-nums shrink-0"
+                              title={`Sort priority ${sortIndex + 1}`}
+                              aria-label={`Sort priority ${sortIndex + 1}`}
+                            >
+                              {sortIndex + 1}
+                            </span>
+                          )}
+                          {canFilter && distinct.length > 0 && (
+                            <DataGridColumnFilter
+                              label={
+                                columnLabels[col.id] ??
+                                (typeof headerContent === 'string'
+                                  ? headerContent
+                                  : col.id)
+                              }
+                              value={filterValue}
+                              onChange={(next) => {
+                                setColumnFilterMap((prev) => ({
+                                  ...prev,
+                                  [col.id]: next,
+                                }));
+                              }}
+                              distinctValues={distinct}
+                              totalRows={data.length}
+                              filteredRows={
+                                table.getFilteredRowModel().rows.length
+                              }
+                            />
+                          )}
+                        </div>
+                        {/* Phase H5 — column resize handle. Renders
+                            at the right edge of every column.
+                            Translucent unless hovered / dragging. */}
+                        {col.getCanResize() && (
+                          <div
+                            role="separator"
+                            aria-orientation="vertical"
+                            aria-label={`Resize ${columnLabels[col.id] ?? col.id} column`}
+                            onMouseDown={header.getResizeHandler()}
+                            onTouchStart={header.getResizeHandler()}
+                            onClick={(e) => e.stopPropagation()}
+                            className={cn(
+                              'absolute right-0 top-0 h-full w-1 cursor-col-resize select-none',
+                              'bg-border-subtle/0 hover:bg-brand-blue/50',
+                              col.getIsResizing() && 'bg-brand-blue',
+                              'transition-colors duration-(--duration-base) ease-(--ease-out)',
+                            )}
                           />
-                        ) : (
-                          headerContent
                         )}
                       </th>
                     );
                   }),
                 )}
+                {/* Kebab header cell — empty header, just keeps the
+                    column layout consistent. */}
+                <th
+                  scope="col"
+                  className="px-1 py-1.5 align-middle"
+                  aria-label="Row actions"
+                />
               </tr>
             </thead>
           </table>
@@ -412,6 +688,8 @@ export function WorkspaceDataGrid<TRow>({
               columns={columnVisibilityEntries}
               density={density}
               onDensityChange={setDensity}
+              groupBy={groupByEntries}
+              onGroupByChange={setGroupBy}
               onReset={resetGridState}
             />
           </div>
@@ -447,7 +725,71 @@ export function WorkspaceDataGrid<TRow>({
               const isMultiSelected = multi.isSelected(id);
               const isFocused = focusedIndex === virtualRow.index;
               const Icon = rowIcon ? rowIcon(row.original) : null;
+              const visibleCols = table.getVisibleLeafColumns();
 
+              // Phase H2 — group rows render with a chevron + label
+              // + member count. Different shape than data rows. No
+              // checkbox / kebab / primary-selection — group rows
+              // are summary aggregations, not individually
+              // actionable. Click expands/collapses.
+              if (row.getIsGrouped()) {
+                const groupedColumnId = row.groupingColumnId;
+                const groupValue = groupedColumnId
+                  ? row.getValue(groupedColumnId)
+                  : null;
+                const groupLabel =
+                  groupValue == null || String(groupValue).length === 0
+                    ? '(empty)'
+                    : String(groupValue);
+                const memberCount = row.subRows.length;
+                return (
+                  <div
+                    key={virtualRow.key}
+                    role="row"
+                    aria-rowindex={virtualRow.index + 1}
+                    style={{
+                      position: 'absolute',
+                      top: 0,
+                      left: 0,
+                      width: '100%',
+                      height: `${rowHeight}px`,
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                    onClick={() => row.toggleExpanded()}
+                    className={cn(
+                      'flex items-center gap-2',
+                      'px-2 border-b border-border-subtle/70',
+                      'bg-bg-canvas/60 cursor-pointer select-none',
+                      'transition-colors duration-(--duration-base) ease-(--ease-out)',
+                      'hover:bg-bg-canvas',
+                    )}
+                  >
+                    {row.getIsExpanded() ? (
+                      <ChevronDown
+                        className="h-3.5 w-3.5 text-fg-muted shrink-0"
+                        aria-hidden
+                      />
+                    ) : (
+                      <ChevronRight
+                        className="h-3.5 w-3.5 text-fg-muted shrink-0"
+                        aria-hidden
+                      />
+                    )}
+                    <span className="text-[10.5px] font-bold tracking-eyebrow uppercase text-fg-muted shrink-0">
+                      {columnLabels[groupedColumnId ?? ''] ?? groupedColumnId}
+                    </span>
+                    <span className="text-[12.5px] font-medium text-fg-primary truncate">
+                      {groupLabel}
+                    </span>
+                    <span className="text-[11px] text-fg-muted tabular-nums ml-auto shrink-0">
+                      {memberCount.toLocaleString()}{' '}
+                      {memberCount === 1 ? noun : `${noun}s`}
+                    </span>
+                  </div>
+                );
+              }
+
+              // Data row — full chrome.
               return (
                 <DataGridContextMenu
                   key={virtualRow.key}
@@ -493,6 +835,9 @@ export function WorkspaceDataGrid<TRow>({
                         !isPrimary &&
                         !isMultiSelected &&
                         'bg-bg-muted/60',
+                      // Indent member rows when grouped — visual
+                      // affordance for "child of group above"
+                      grouping.length > 0 && 'pl-3',
                     )}
                   >
                     <div className="w-8 shrink-0 flex items-center justify-center">
@@ -505,10 +850,16 @@ export function WorkspaceDataGrid<TRow>({
                         ariaLabel={`Select row`}
                       />
                     </div>
-                    <table className="flex-1 table-fixed">
+                    <table
+                      className="flex-1 table-fixed"
+                      style={{ width: table.getTotalSize() }}
+                    >
                       <colgroup>
-                        {table.getVisibleLeafColumns().map((col) => (
-                          <col key={col.id} />
+                        {visibleCols.map((col) => (
+                          <col
+                            key={col.id}
+                            style={{ width: col.getSize() }}
+                          />
                         ))}
                       </colgroup>
                       <tbody>
@@ -545,6 +896,15 @@ export function WorkspaceDataGrid<TRow>({
                         </tr>
                       </tbody>
                     </table>
+                    {/* Phase H1 — visible row actions kebab. Same
+                        action list as the right-click context menu,
+                        exposed visibly for discoverability. */}
+                    <div className="w-9 shrink-0 flex items-center justify-center">
+                      <DataGridRowKebab
+                        actions={contextMenuActions(row.original)}
+                        rowLabel={noun}
+                      />
+                    </div>
                   </div>
                 </DataGridContextMenu>
               );

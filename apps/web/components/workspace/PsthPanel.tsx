@@ -36,10 +36,12 @@ import { MarketingButton } from '@/components/marketing/Button';
 import { PsthChart } from '@/components/ndi/charts/PsthChart';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ApiError, apiFetch } from '@/lib/api/client';
+import { usePanelChangeIndicator } from '@/lib/workspace/use-panel-change-indicator';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 import type { PsthToolResult } from '@/lib/ndi/tools/psth';
 
 import { PanelCard } from './PanelCard';
+import { PanelEmptyState } from './canvas/PanelEmptyState';
 import { ShowCodeButton } from './ShowCodeButton';
 
 interface PsthPanelProps {
@@ -152,6 +154,13 @@ function buildRequestBody(form: FormState): RequestBody | { error: string } {
 
 export function PsthPanel({ datasetId }: PsthPanelProps) {
   const { selection } = useWorkspaceSelection();
+  // H7 pulse: PSTH cares about both unit + stimulus; either one
+  // changing should ring the card. Empty deps array (unset) doesn't
+  // count as a change after the first render.
+  const pulse = usePanelChangeIndicator([
+    selection.unit,
+    selection.stimulus,
+  ]);
 
   // Initial seed from the selection bar. If neither dimension is set
   // we fall back to the no-selection defaults. The non-id fields
@@ -295,6 +304,19 @@ export function PsthPanel({ datasetId }: PsthPanelProps) {
   const showAutoHint =
     isAutoFilled && !!form.unitDocId && !!form.stimulusDocId;
 
+  // Illustrated empty state: shown when no request is in flight, no
+  // result is back yet, no errors are surfaced, and the user hasn't
+  // typed anything manually into either id field. Once they start
+  // typing the existing validation surface takes over.
+  const showEmptyState =
+    !isRunning &&
+    !networkError &&
+    !errorEnvelope &&
+    !result &&
+    !formError &&
+    form.unitDocId.trim().length === 0 &&
+    form.stimulusDocId.trim().length === 0;
+
   return (
     <PanelCard
       icon={Activity}
@@ -302,6 +324,7 @@ export function PsthPanel({ datasetId }: PsthPanelProps) {
       subtitle="Peri-stimulus time histogram. Aligns spike times to stimulus onsets and bins them — the standard neural-response visualization."
       headingId="panel-psth"
       id="psth"
+      pulse={pulse}
       footer={
         <>
           <MarketingButton
@@ -396,6 +419,14 @@ export function PsthPanel({ datasetId }: PsthPanelProps) {
       )}
 
       <div className="mt-1">
+        {showEmptyState && (
+          <PanelEmptyState
+            illustration="histogram"
+            title="Build a PSTH"
+            hint={<>Pick a unit AND a stimulus.</>}
+            testId="psth-empty"
+          />
+        )}
         {isRunning && <LoadingState />}
         {!isRunning && networkError && (
           <ErrorBlock message={describeNetworkError(networkError)} />

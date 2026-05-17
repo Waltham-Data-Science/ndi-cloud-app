@@ -31,8 +31,12 @@ export interface DataGridSortHeaderProps {
    * caller decides what to pass next (`asc` → `desc` → `false`).
    * Pass `null` here to disable sorting on this column — the
    * header renders as a plain label.
+   *
+   * Phase H3 — the MouseEvent is forwarded so the caller can
+   * detect `event.shiftKey` and stack sorts across multiple
+   * columns. Bare `()` calls still work (the event is optional).
    */
-  onCycle: (() => void) | null;
+  onCycle: ((event?: React.MouseEvent) => void) | null;
   /** Right-align (used for numeric columns). */
   align?: 'left' | 'right';
 }
@@ -68,7 +72,7 @@ export function DataGridSortHeader({
   return (
     <button
       type="button"
-      onClick={onCycle}
+      onClick={(e) => onCycle(e)}
       title={sortLabel}
       aria-label={`${label} — ${sortLabel}`}
       className={cn(

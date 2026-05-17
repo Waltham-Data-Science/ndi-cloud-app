@@ -81,6 +81,26 @@ describe('ElectrodePositionPanel', () => {
     expect(useDocumentsMock).toHaveBeenCalledWith('ds1', 'probe_location', 1, 200);
   });
 
+  it('does not pulse — dataset-wide panel opts out with empty deps', () => {
+    // H7: ElectrodePositions has no selection dimension to track so
+    // its pulse hook is wired with [] and should never fire.
+    useDocumentsMock.mockReturnValue({
+      data: undefined,
+      isLoading: true,
+      isError: false,
+    });
+
+    const { container } = render(
+      <Wrapper>
+        <ElectrodePositionPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+
+    expect(
+      container.querySelector('section#electrode-position')!.getAttribute('data-pulse'),
+    ).toBeNull();
+  });
+
   it('renders the loading skeleton while the documents query is pending', () => {
     useDocumentsMock.mockReturnValue({
       data: undefined,

@@ -50,6 +50,7 @@ import { ShowCodeButton } from '@/components/workspace/ShowCodeButton';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
+import { usePanelChangeIndicator } from '@/lib/workspace/use-panel-change-indicator';
 
 export interface TreatmentTimelinePanelProps {
   datasetId: string;
@@ -88,6 +89,11 @@ const MAX_SUBJECTS_CAP = 100;
 export function TreatmentTimelinePanel({
   datasetId,
 }: TreatmentTimelinePanelProps) {
+  // H7 pulse: dataset-wide panel (treatment timeline reads no
+  // selection dimensions). Call the hook with empty deps for
+  // consistency with the other panels — it never fires a pulse.
+  const pulse = usePanelChangeIndicator([]);
+
   // Stable literal ids — match the convention the other 5 panels
   // use ("panel-signal-viewer" etc.). Phase F smoke (2026-05-16)
   // flagged that the prior `useId()` values like `_r_b_` leaked into
@@ -165,6 +171,7 @@ export function TreatmentTimelinePanel({
       subtitle="Gantt-style view of which subjects received which treatments and when."
       headingId={headingId}
       id="treatment-timeline"
+      pulse={pulse}
       footer={
         <>
           <Button

@@ -132,6 +132,22 @@ describe('SignalViewerPanel', () => {
     expect(screen.queryByTestId('signal-viewer-auto-hint')).not.toBeInTheDocument();
   });
 
+  it('renders the illustrated empty state when no docId is set and no run has happened', () => {
+    render(
+      <Wrapper>
+        <SignalViewerPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+
+    const empty = screen.getByTestId('signal-viewer-empty');
+    expect(empty).toBeInTheDocument();
+    expect(empty).toHaveAttribute('data-illustration', 'line-trace');
+    expect(screen.getByText(/plot a signal trace/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(/pick a session in the left rail/i),
+    ).toBeInTheDocument();
+  });
+
   it('blocks Run with an empty docId and surfaces an inline validation error', async () => {
     const user = userEvent.setup();
     render(
@@ -345,5 +361,33 @@ describe('SignalViewerPanel — selection auto-fill', () => {
     const inputAfter = screen.getByLabelText(/document id/i) as HTMLInputElement;
     expect(inputAfter.value).toBe(VALID_DOC_ID_2);
     expect(screen.getByTestId('signal-viewer-auto-hint')).toBeInTheDocument();
+  });
+
+  it('pulses the PanelCard chrome when selection.session changes', async () => {
+    // Start with one session selected — initial mount, no pulse.
+    selectionStub = { ...selectionStub, session: VALID_DOC_ID };
+    const { rerender, container } = render(
+      <Wrapper>
+        <SignalViewerPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+
+    const section = container.querySelector('section#signal-viewer');
+    expect(section).not.toBeNull();
+    expect(section!.getAttribute('data-pulse')).toBeNull();
+
+    // Swap to a different session → pulse becomes true.
+    selectionStub = { ...selectionStub, session: VALID_DOC_ID_2 };
+    rerender(
+      <Wrapper>
+        <SignalViewerPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+
+    await waitFor(() => {
+      expect(
+        container.querySelector('section#signal-viewer')!.getAttribute('data-pulse'),
+      ).toBe('true');
+    });
   });
 });

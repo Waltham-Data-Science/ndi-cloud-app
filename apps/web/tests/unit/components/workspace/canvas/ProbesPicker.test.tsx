@@ -271,8 +271,11 @@ describe('ProbesPicker — render', () => {
     render(<ProbesPicker datasetId="ds1" />);
 
     expect(screen.getByTestId('grid-row-count')).toHaveTextContent('1');
+    // The cascade hint moved from a "filtered to selected subject"
+    // tooltip line to the picker-rail header in Phase H6. Same
+    // semantics — when subject is set, the table narrows.
     expect(
-      screen.getByText(/filtered to selected subject/i),
+      screen.getByText(/active subject/i),
     ).toBeInTheDocument();
   });
 });

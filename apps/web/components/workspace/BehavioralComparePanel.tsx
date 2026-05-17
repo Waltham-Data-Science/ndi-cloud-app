@@ -20,6 +20,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ApiError, apiFetch } from '@/lib/api/client';
+import { usePanelChangeIndicator } from '@/lib/workspace/use-panel-change-indicator';
 
 export interface BehavioralComparePanelProps {
   datasetId: string;
@@ -129,6 +130,12 @@ async function runTabularQuery(
 export function BehavioralComparePanel({
   datasetId,
 }: BehavioralComparePanelProps) {
+  // H7 pulse: dataset-wide panel — empty deps means no pulse will
+  // fire. Call the hook anyway so the wiring is consistent with the
+  // other panels (cheap, deterministic, makes future selection-aware
+  // expansion a one-line change).
+  const pulse = usePanelChangeIndicator([]);
+
   const [variableNameContains, setVariableNameContains] = useState('');
   const [groupBy, setGroupBy] = useState('');
   const [groupOrderInput, setGroupOrderInput] = useState('');
@@ -204,6 +211,7 @@ export function BehavioralComparePanel({
       subtitle="Compare a measurement across groups (e.g. Saline vs CNO) as a violin chart."
       headingId="behavioral-compare-panel-heading"
       id="behavioral-compare"
+      pulse={pulse}
       footer={
         <>
           <Button type="button" variant="primary" onClick={handleRun} disabled={mutation.isPending} data-testid="behavioral-compare-run">

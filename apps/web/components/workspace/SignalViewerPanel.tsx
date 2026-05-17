@@ -46,9 +46,11 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { SignalChart } from '@/components/ndi/charts/SignalChart';
 import { Field } from '@/components/marketing/AuthForm';
 import { MarketingButton } from '@/components/marketing/Button';
+import { usePanelChangeIndicator } from '@/lib/workspace/use-panel-change-indicator';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 
 import { PanelCard } from './PanelCard';
+import { PanelEmptyState } from './canvas/PanelEmptyState';
 import { ShowCodeButton } from './ShowCodeButton';
 
 interface SignalViewerPanelProps {
@@ -75,6 +77,10 @@ const HEX_24 = /^[0-9a-fA-F]{24}$/;
 
 export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
   const { selection } = useWorkspaceSelection();
+  // H7 pulse: signal viewer's only selection dep is `session`. When
+  // the user picks a different session in the picker rail the card
+  // briefly rings to acknowledge the silent re-fetch.
+  const pulse = usePanelChangeIndicator([selection.session]);
 
   // Seed from the selection bar when present. We DON'T clear the field
   // when selection goes back to null — the user might have typed a
@@ -193,6 +199,16 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
     }
   }
 
+  // Empty-state vs error-state vs result-state branching for the
+  // result area. Empty state shows only when the user hasn't typed
+  // anything manually AND no auto-fill has staged a payload. Once
+  // they've typed something invalid, we let the existing error block
+  // do its job (don't replace a real error message with an
+  // illustration).
+  const docIdTrimmed = docId.trim();
+  const showEmptyState =
+    !payload && !error && docIdTrimmed.length === 0;
+
   return (
     <PanelCard
       icon={Waves}
@@ -200,6 +216,7 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
       subtitle="Plot a downsampled trace from any NDI binary document (voltage, position, multi-channel sweep)."
       headingId="panel-signal-viewer"
       id="signal-viewer"
+      pulse={pulse}
       footer={
         <>
           <MarketingButton
@@ -296,6 +313,20 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
         >
           {error}
         </div>
+      )}
+
+      {showEmptyState && (
+        <PanelEmptyState
+          illustration="line-trace"
+          title="Plot a signal trace"
+          hint={
+            <>
+              Pick a session in the left rail or paste a document ID
+              below.
+            </>
+          }
+          testId="signal-viewer-empty"
+        />
       )}
 
       {payload && (
