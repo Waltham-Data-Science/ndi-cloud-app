@@ -221,13 +221,21 @@ function PanelHeader({
 }: PanelHeaderProps) {
   return (
     <header className="flex items-start justify-between gap-3 px-5 py-3.5 border-b border-border-subtle shrink-0">
-      <div className="flex items-center gap-2 min-w-0">
+      {/* Audit 2026-05-18 (G-verify B1): the left title block was
+          `flex min-w-0` but WITHOUT `flex-1`. Without explicit grow,
+          flex-basis defaulted to content width — a long dataset
+          title pushed the toolbar buttons off-screen on the 419px
+          drawer (verified: header scrollWidth=940 but client=419,
+          close X at x=1752). Adding `flex-1` lets the title block
+          claim the remaining row width; the inner `min-w-0` +
+          `truncate` chain then engages correctly. */}
+      <div className="flex items-center gap-2 min-w-0 flex-1">
         <MessageSquare
           className="h-4 w-4 shrink-0 text-ndi-teal"
           aria-hidden
         />
-        <div className="min-w-0">
-          <h2 className="text-[14px] font-semibold text-fg-primary leading-tight m-0">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[14px] font-semibold text-fg-primary leading-tight m-0 truncate">
             {title}
           </h2>
           {contextLine && (
