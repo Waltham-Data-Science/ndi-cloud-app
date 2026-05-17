@@ -1,7 +1,7 @@
 'use client';
 
 /**
- * AnalysesGrid — the responsive 2-column grid of the 6 analysis
+ * AnalysesGrid — the responsive 2-column grid of the 7 analysis
  * panels rendered on the workspace canvas.
  *
  * Phase F5 of the one-canvas redesign. Each panel auto-fills its
@@ -19,11 +19,12 @@
  * Panels render in the order users most commonly want them in the
  * tutorials we ground on:
  *   1. Signal trace      (Haley, Bhar voltage / position tutorials)
- *   2. PSTH              (Bhar tuning analysis)
- *   3. Spike raster      (Bhar / Haley spike train tutorials)
- *   4. Behavioral compare (Francesconi EPM)
- *   5. Treatment timeline (Francesconi treatment cohort)
- *   6. Electrode positions (Bhar electrode layout)
+ *   2. Behavioral track  (Haley XY trajectory, time-colored)
+ *   3. PSTH              (Bhar tuning analysis)
+ *   4. Spike raster      (Bhar / Haley spike train tutorials)
+ *   5. Behavioral compare (Francesconi EPM)
+ *   6. Treatment timeline (Francesconi treatment cohort)
+ *   7. Electrode positions (Bhar electrode layout)
  *
  * Section anchors (`id="signal-trace"` etc.) are set on each
  * PanelCard, NOT here — see the panel files. Smooth-scroll
@@ -35,7 +36,7 @@ import { cn } from '@/lib/cn';
 
 export interface AnalysesGridProps {
   /**
-   * The 6 panel React nodes in the order they'll render. Parent
+   * The 7 panel React nodes in the order they'll render. Parent
    * (WorkspaceCanvasClient) imports the actual panel components and
    * passes them in — the grid stays dumb about panel identity.
    */

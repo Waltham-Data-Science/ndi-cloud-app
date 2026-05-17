@@ -16,23 +16,25 @@
  *   stimuli   → StimuliPicker    (new in F3)
  *   documents → DocumentsPicker  (new in F3 — replaces StructureBrowser navigate-out)
  *
- * Analyses grid slot resolution: all 7 panels from
+ * Analyses grid slot resolution: all 8 panels from
  * `components/workspace/` (each refactored in F5 to read selection
  * from useWorkspaceSelection).
  *
  * Panel order in the grid (left-to-right, top-to-bottom):
  *   1. Signal viewer       — `session` driven
- *   2. PSTH                — `unit` + `stimulus` driven
- *   3. Spike activity      — `unit` driven
- *   4. Behavioral compare  — dataset-wide
- *   5. Treatment timeline  — dataset-wide
- *   6. Electrode positions — dataset-wide (auto-loads on mount)
- *   7. Video playback      — `session` driven (Bhar B10, Haley H12)
+ *   2. Behavioral track    — `session` driven (XY trajectory, time-colored, Haley H11)
+ *   3. PSTH                — `unit` + `stimulus` driven
+ *   4. Spike activity      — `unit` driven
+ *   5. Behavioral compare  — dataset-wide
+ *   6. Treatment timeline  — dataset-wide
+ *   7. Electrode positions — dataset-wide (auto-loads on mount)
+ *   8. Video playback      — `session` driven (Bhar B10, Haley H12)
  *
  * Dataset structure / class browser is NOT a panel here — it lives
  * inside the Documents picker tab in the rail.
  */
 import { BehavioralComparePanel } from '@/components/workspace/BehavioralComparePanel';
+import { BehavioralTrackPanel } from '@/components/workspace/BehavioralTrackPanel';
 import { ElectrodePositionPanel } from '@/components/workspace/ElectrodePositionPanel';
 import { PsthPanel } from '@/components/workspace/PsthPanel';
 import { SignalViewerPanel } from '@/components/workspace/SignalViewerPanel';
@@ -66,6 +68,7 @@ export function WorkspaceCanvasClient({
 
   const analyses = [
     <SignalViewerPanel key="signal" datasetId={datasetId} />,
+    <BehavioralTrackPanel key="behavioral-track" datasetId={datasetId} />,
     <PsthPanel key="psth" datasetId={datasetId} />,
     <SpikeActivityPanel key="spike" datasetId={datasetId} />,
     <BehavioralComparePanel key="behavior" datasetId={datasetId} />,
