@@ -162,6 +162,16 @@ export interface WorkspaceDataGridProps<TRow> {
    * filter popover.
    */
   onFilteredRowsChange?: (count: number) => void;
+
+  /**
+   * Optional initial visibility map applied on mount. Lets the
+   * outer picker hide its "extra" server-discovered columns by
+   * default while still surfacing them in the column-toggle menu.
+   * Audit 2026-05-18 (data-parity round): without this, the
+   * `buildPickerColumns` helper's hidden-by-default columns showed
+   * up immediately at full width, defeating the rail compactness.
+   */
+  initialColumnVisibility?: VisibilityState;
 }
 
 const DEFAULT_ROW_HEIGHTS: Readonly<Record<GridDensity, number>> = {
@@ -190,11 +200,12 @@ export function WorkspaceDataGrid<TRow>({
   globalFilter = '',
   groupableColumnIds = [],
   onFilteredRowsChange,
+  initialColumnVisibility,
 }: WorkspaceDataGridProps<TRow>) {
   const multi = useTableMultiSelect();
   const [sorting, setSorting] = useState<SortingState>([]);
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(
-    {},
+    () => initialColumnVisibility ?? {},
   );
   // Phase H4 — per-column filter values. Tracked locally (parallel
   // to TanStack's columnFilters state) because the filter primitive

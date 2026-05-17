@@ -30,11 +30,9 @@
  */
 import { Copy, Crosshair, ExternalLink, Sparkles } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
-import {
-  createColumnHelper,
-  type ColumnDef,
-} from '@tanstack/react-table';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
+
+import { buildPickerColumns } from '@/lib/workspace/build-picker-columns';
 
 import { Skeleton } from '@/components/ui/Skeleton';
 import {
@@ -242,86 +240,101 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
     },
   ];
 
-  // TanStack table columns — trimmed for the narrow picker rail.
-  // The grid owns the table instance; we hand it the column defs.
-  const columnHelper = createColumnHelper<SubjectRow>();
-  const columns = useMemo<ColumnDef<SubjectRow, unknown>[]>(
+  // Audit 2026-05-18 (data-parity round): the workspace picker used
+  // to hardcode 5 columns total — identifier / species / strain /
+  // sex / age — while the SAME backend response on the public
+  // `/datasets/[id]/tables/subject` view exposed every enriched
+  // column the `summary_table_service` projection emits (28+ for
+  // Bhar, similar for Haley / Francesconi). Same data source,
+  // different rendered surface area, very confusing for scientists
+  // looking for a column they know exists.
+  //
+  // Now: the same 5 curated columns are still the visible defaults,
+  // but every server-discovered column is appended (hidden-by-default)
+  // and reachable via the column-toggle menu. Logic lives in the
+  // shared `buildPickerColumns` helper so Sessions / Probes / Stimuli
+  // can adopt the same pattern with the same UX.
+  const built = useMemo(
     () =>
-      [
-        columnHelper.accessor((r) => r.subjectLocalIdentifier ?? r.subjectIdentifier ?? '—', {
-          id: 'identifier',
-          header: 'Subject',
-          cell: (info) => (
-            <span className="font-mono text-[12px] text-fg-primary truncate inline-block max-w-full">
-              {String(info.getValue() ?? '—')}
-            </span>
-          ),
-          size: 180,
-        }),
-        columnHelper.accessor((r) => r.speciesName ?? '—', {
-          id: 'species',
-          header: 'Species',
-          cell: (info) => (
-            <span className="text-[12px] text-fg-secondary truncate inline-block max-w-full">
-              {String(info.getValue() ?? '—')}
-            </span>
-          ),
-          size: 110,
-        }),
-        // Phase H2 — Strain + Sex columns added back. They're
-        // hidden by default to keep the 340px rail uncluttered, but
-        // the user can show them via the column-menu, OR they
-        // surface automatically as group-headers when the user
-        // group-bys. Without these columns, group-by-strain/sex
-        // wouldn't have a value source to aggregate by.
-        columnHelper.accessor((r) => r.strainName ?? '—', {
-          id: 'strain',
-          header: 'Strain',
-          cell: (info) => (
-            <span className="text-[12px] text-fg-secondary truncate inline-block max-w-full">
-              {String(info.getValue() ?? '—')}
-            </span>
-          ),
-          size: 120,
-        }),
-        columnHelper.accessor((r) => r.biologicalSexName ?? '—', {
-          id: 'sex',
-          header: 'Sex',
-          cell: (info) => (
-            <span className="text-[12px] text-fg-secondary truncate inline-block max-w-full">
-              {String(info.getValue() ?? '—')}
-            </span>
-          ),
-          size: 80,
-        }),
-        columnHelper.accessor(
-          (r) =>
-            r.ageAtRecording != null && r.ageAtRecording !== ''
-              ? String(r.ageAtRecording)
-              : '—',
+      buildPickerColumns<SubjectRow>({
+        curated: [
+          {
+            id: 'identifier',
+            header: 'Subject',
+            accessor: (r) =>
+              r.subjectLocalIdentifier ?? r.subjectIdentifier ?? '—',
+            cell: (v) => (
+              <span className="font-mono text-[12px] text-fg-primary truncate inline-block max-w-full">
+                {String(v ?? '—')}
+              </span>
+            ),
+            size: 180,
+            locked: true,
+          },
+          {
+            id: 'species',
+            header: 'Species',
+            accessor: (r) => r.speciesName ?? '—',
+            cell: (v) => (
+              <span className="text-[12px] text-fg-secondary truncate inline-block max-w-full">
+                {String(v ?? '—')}
+              </span>
+            ),
+            size: 110,
+          },
+          // Strain + Sex remain in the curated set so group-by-X has
+          // a value source. They start hidden to keep the 340px rail
+          // uncluttered, and become visible when the user picks
+          // group-by-strain/sex via the column menu.
+          {
+            id: 'strain',
+            header: 'Strain',
+            accessor: (r) => r.strainName ?? '—',
+            cell: (v) => (
+              <span className="text-[12px] text-fg-secondary truncate inline-block max-w-full">
+                {String(v ?? '—')}
+              </span>
+            ),
+            size: 120,
+            visible: false,
+          },
+          {
+            id: 'sex',
+            header: 'Sex',
+            accessor: (r) => r.biologicalSexName ?? '—',
+            cell: (v) => (
+              <span className="text-[12px] text-fg-secondary truncate inline-block max-w-full">
+                {String(v ?? '—')}
+              </span>
+            ),
+            size: 80,
+            visible: false,
+          },
           {
             id: 'age',
             header: 'Age',
-            cell: (info) => (
+            accessor: (r) =>
+              r.ageAtRecording != null && r.ageAtRecording !== ''
+                ? String(r.ageAtRecording)
+                : '—',
+            cell: (v) => (
               <span className="text-[12px] text-fg-secondary tabular-nums">
-                {String(info.getValue() ?? '—')}
+                {String(v ?? '—')}
               </span>
             ),
             size: 60,
           },
-        ),
-      ] as ColumnDef<SubjectRow, unknown>[],
-    [columnHelper],
+        ],
+        serverColumns: summary.data?.columns,
+        rows: allRows,
+      }),
+    [summary.data, allRows],
   );
 
-  // Phase H2 — strain + sex are hidden by default to fit the 340px
-  // rail. User can show them via the column-menu, or they surface
-  // automatically as group headers when the user picks group-by-X.
-  const defaultColumnVisibility = useMemo(
-    () => ({ strain: false, sex: false }),
-    [],
-  );
-  void defaultColumnVisibility; // TODO: thread to WorkspaceDataGrid's initial columnVisibility once the grid accepts the prop
+  const columns = built.columns;
+  const initialColumnVisibility = built.initialVisibility;
+  const dynamicColumnLabels = built.columnLabels;
+  const dynamicLockedColumnIds = built.lockedColumnIds;
 
   // Context menu factory — per-row. The grid calls this with the
   // right-clicked row's original data; we resolve the doc id and
@@ -469,14 +482,13 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
           // roster (matches the MATLAB tutorial's "group by Strain"
           // workflow). Identifier never makes sense as a group key.
           groupableColumnIds={['species', 'strain', 'sex']}
-          columnLabels={{
-            identifier: 'Subject',
-            species: 'Species',
-            strain: 'Strain',
-            sex: 'Sex',
-            age: 'Age',
-          }}
-          lockedColumnIds={['identifier']}
+          // Column labels + locked-from-hide ids come from
+          // buildPickerColumns so backend-discovered "extra" columns
+          // show their backend label in the column-toggle menu. The
+          // curated identifier stays locked (can't be hidden).
+          columnLabels={dynamicColumnLabels}
+          lockedColumnIds={dynamicLockedColumnIds}
+          initialColumnVisibility={initialColumnVisibility}
           label="Subjects"
           emptyState={
             <div className="rounded-xl border border-dashed border-border-subtle bg-bg-surface p-8 text-center text-[13.5px] text-fg-secondary">

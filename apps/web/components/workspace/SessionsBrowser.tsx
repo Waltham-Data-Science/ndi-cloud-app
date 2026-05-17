@@ -38,12 +38,9 @@
  */
 import { Copy, Crosshair, ExternalLink, Sparkles, Waves } from 'lucide-react';
 import { useCallback, useMemo, useState } from 'react';
-import {
-  createColumnHelper,
-  type ColumnDef,
-} from '@tanstack/react-table';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 
+import { buildPickerColumns } from '@/lib/workspace/build-picker-columns';
 import { Skeleton } from '@/components/ui/Skeleton';
 import {
   WorkspaceFilterBar,
@@ -235,49 +232,64 @@ export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
     },
   ];
 
-  const columnHelper = createColumnHelper<EpochRow>();
-  const columns = useMemo<ColumnDef<EpochRow, unknown>[]>(
+  // Audit 2026-05-18 (data-parity round): match the SubjectsBrowser
+  // pattern — curated columns first (Epoch + Start + Approach), then
+  // every server-discovered enrichment column appended hidden-by-
+  // default. Same backend response as the public
+  // `/datasets/[id]/tables/element_epoch` view; user can now reach
+  // the full 12+ col set via the column-toggle menu.
+  const built = useMemo(
     () =>
-      [
-        columnHelper.accessor(
-          (r) =>
-            r.epochNumber !== null && r.epochNumber !== undefined
-              ? String(r.epochNumber)
-              : '—',
+      buildPickerColumns<EpochRow>({
+        curated: [
           {
             id: 'epoch',
             header: 'Epoch',
-            cell: (info) => (
+            accessor: (r) =>
+              r.epochNumber !== null && r.epochNumber !== undefined
+                ? String(r.epochNumber)
+                : '—',
+            cell: (v) => (
               <span className="font-mono text-[12px] text-fg-primary truncate inline-block max-w-full">
-                {String(info.getValue() ?? '—')}
+                {String(v ?? '—')}
+              </span>
+            ),
+            size: 130,
+            locked: true,
+          },
+          {
+            id: 'start',
+            header: 'Start',
+            accessor: (r) => formatEpochTime(r.epochStart),
+            cell: (v) => (
+              <span className="font-mono text-[11.5px] text-fg-secondary tabular-nums truncate inline-block max-w-full">
+                {String(v ?? '—')}
               </span>
             ),
             size: 130,
           },
-        ),
-        columnHelper.accessor((r) => formatEpochTime(r.epochStart), {
-          id: 'start',
-          header: 'Start',
-          cell: (info) => (
-            <span className="font-mono text-[11.5px] text-fg-secondary tabular-nums truncate inline-block max-w-full">
-              {String(info.getValue() ?? '—')}
-            </span>
-          ),
-          size: 130,
-        }),
-        columnHelper.accessor((r) => r.approachName ?? '—', {
-          id: 'approach',
-          header: 'Approach',
-          cell: (info) => (
-            <span className="text-[12px] text-fg-secondary truncate inline-block max-w-full">
-              {String(info.getValue() ?? '—')}
-            </span>
-          ),
-          size: 90,
-        }),
-      ] as ColumnDef<EpochRow, unknown>[],
-    [columnHelper],
+          {
+            id: 'approach',
+            header: 'Approach',
+            accessor: (r) => r.approachName ?? '—',
+            cell: (v) => (
+              <span className="text-[12px] text-fg-secondary truncate inline-block max-w-full">
+                {String(v ?? '—')}
+              </span>
+            ),
+            size: 90,
+          },
+        ],
+        serverColumns: summary.data?.columns,
+        rows: allRows,
+      }),
+    [summary.data, allRows],
   );
+
+  const columns = built.columns;
+  const initialColumnVisibility = built.initialVisibility;
+  const dynamicColumnLabels = built.columnLabels;
+  const dynamicLockedColumnIds = built.lockedColumnIds;
 
   // Context menu factory — per-row. "Plot signal trace" sets the
   // session AND scrolls the SignalViewer panel into view; matches
@@ -434,12 +446,9 @@ export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
           // for sessions; Start (date) would be too granular to
           // group by without a date-bin transform.
           groupableColumnIds={['approach']}
-          columnLabels={{
-            epoch: 'Epoch',
-            start: 'Start',
-            approach: 'Approach',
-          }}
-          lockedColumnIds={['epoch']}
+          columnLabels={dynamicColumnLabels}
+          lockedColumnIds={dynamicLockedColumnIds}
+          initialColumnVisibility={initialColumnVisibility}
           label="Sessions"
           emptyState={
             <div className="rounded-xl border border-dashed border-border-subtle bg-bg-surface p-8 text-center text-[13.5px] text-fg-secondary">
