@@ -340,6 +340,7 @@ export function WorkspaceDataGrid<TRow>({
 
   // Virtualization — sticky header + scrollable body.
   const containerRef = useRef<HTMLDivElement | null>(null);
+  const headerTableRef = useRef<HTMLTableElement | null>(null);
   const rowHeight = DEFAULT_ROW_HEIGHTS[density];
   const virtualizer = useVirtualizer({
     count: rows.length,
@@ -353,6 +354,34 @@ export function WorkspaceDataGrid<TRow>({
   useEffect(() => {
     virtualizer.measure();
   }, [density, virtualizer]);
+
+  // 2026-05-19 UI polish: sync header H-scroll with body H-scroll.
+  //
+  // The header `<table>` lives in a separate `<div>` outside the body's
+  // `overflow-auto` container — sticky-positioned vertically inside the
+  // outer `overflow-hidden` wrapper. With 28+ columns the body H-scrolls
+  // (after the prior `minWidth` fix) but the header doesn't move, so
+  // column titles drift out of alignment with their cells. Fix: drive
+  // the header table's `translateX` from the body container's
+  // `scrollLeft`. Vertical sticky behavior is unaffected (transform
+  // doesn't disturb the sticky containment). Passive listener — no
+  // scroll-blocking. The flag `is-syncing-h-scroll` is set on the
+  // outer container so e2e tests can assert the wiring exists without
+  // mocking scroll events that jsdom doesn't fire.
+  useEffect(() => {
+    const container = containerRef.current;
+    const headerTable = headerTableRef.current;
+    if (!container || !headerTable) return undefined;
+    const sync = () => {
+      headerTable.style.transform = `translateX(-${container.scrollLeft}px)`;
+    };
+    container.addEventListener('scroll', sync, { passive: true });
+    // Initial sync in case the container is already scrolled (e.g.,
+    // user navigates back to a workspace where the body scrollLeft was
+    // restored from history).
+    sync();
+    return () => container.removeEventListener('scroll', sync);
+  }, []);
 
   // Keyboard nav on the container — capture focus + arrow keys.
   // Scoped to when the container has focus or when a child has focus.
@@ -568,13 +597,24 @@ export function WorkspaceDataGrid<TRow>({
           'overflow-hidden',
         )}
       >
-        {/* Header: column titles + column-menu trigger */}
-        <div className="flex items-stretch border-b border-border-subtle bg-bg-canvas/50 sticky top-0 z-10">
+        {/* Header: column titles + column-menu trigger.
+
+            `overflow-hidden` on the header wrapper prevents the
+            `<table>`'s native overflow when its declared width exceeds
+            the wrapper. The `<table>` translates horizontally (via the
+            `useEffect` scroll sync above) to track body's scrollLeft so
+            column titles stay aligned with their cells when the body
+            H-scrolls. `data-h-scroll-sync` is a stable hook for tests. */}
+        <div
+          className="flex items-stretch border-b border-border-subtle bg-bg-canvas/50 sticky top-0 z-10 overflow-hidden"
+          data-h-scroll-sync="true"
+        >
           <table
+            ref={headerTableRef}
             className="flex-1 table-fixed"
             role="table"
             aria-label={label ?? `${noun}s`}
-            style={{ width: table.getTotalSize() + 32 + 36 }}
+            style={{ width: table.getTotalSize() + 32 + 36, willChange: 'transform' }}
           >
             <colgroup>
               <col style={{ width: 32 }} />

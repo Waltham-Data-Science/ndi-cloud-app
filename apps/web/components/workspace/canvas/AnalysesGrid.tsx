@@ -80,9 +80,19 @@ export function AnalysesGrid({ panels, className }: AnalysesGridProps) {
           // across browsers. 420px is the minimum readable width
           // for an analysis panel (matches the SignalViewer chart's
           // intrinsic axis labels).
+          //
+          // UI polish 2026-05-19 (mobile sanity): wrapped the 420px
+          // minimum with `min(420px, 100%)` so on viewports narrower
+          // than 420px the cell shrinks to fit instead of overflowing
+          // the page. On a 375px iPhone viewport the previous fixed
+          // 420 caused horizontal page-scroll (panels wider than
+          // viewport). With `min(...)`, the cell tracks the container
+          // and stays inside the page bounds. Above 420px nothing
+          // changes — desktop still gets the readable 420 floor.
         )}
         style={{
-          gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
+          gridTemplateColumns:
+            'repeat(auto-fit, minmax(min(420px, 100%), 1fr))',
         }}
       >
         {panels.map((panel, idx) => (
