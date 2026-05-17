@@ -73,8 +73,16 @@ export function WorkspaceCanvas({
       <div
         className={cn(
           'mx-auto max-w-[1480px]',
-          // Two-column on desktop, stacked on narrow viewports.
-          'lg:grid lg:grid-cols-[340px_1fr] lg:gap-0',
+          // Audit 2026-05-18 (UI sweep): dropped the picker | canvas
+          // split's breakpoint from `lg:` (1024px) to `md:` (768px)
+          // because users on Safari at typical laptop window widths
+          // (~1100px viewport) were getting picker-stacked-on-top
+          // even though Chrome at the same window width rendered
+          // side-by-side. Safari's viewport reads narrower due to
+          // its scrollbar-takes-from-content-area default. At 768px
+          // the layout becomes 340 + ~428 canvas which is tight but
+          // works; below that we still stack.
+          'md:grid md:grid-cols-[340px_1fr] md:gap-0',
         )}
       >
         <PickerRail

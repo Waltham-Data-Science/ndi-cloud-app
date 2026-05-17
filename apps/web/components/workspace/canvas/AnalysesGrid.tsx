@@ -66,12 +66,23 @@ export function AnalysesGrid({ panels, className }: AnalysesGridProps) {
       <div
         className={cn(
           'grid gap-4',
-          // 2 cols on wider canvas, 1 col when the main column is narrow.
-          // The container query (`@container`) would be more precise but
-          // breaks SSR cleanly only with @tailwindcss/container-queries —
-          // a viewport-based breakpoint is fine for v1.
-          'grid-cols-1 [@media(min-width:1200px)]:grid-cols-2',
+          // Audit 2026-05-18 (UI sweep): the previous viewport-based
+          // breakpoint `[@media(min-width:1200px)]:grid-cols-2` had two
+          // problems on Safari — (a) Safari's viewport width reads
+          // smaller than Chrome's at the same window size due to
+          // scrollbar handling, so users on a 1200-px window saw
+          // single-column on Safari and 2-col on Chrome; (b) the
+          // arbitrary-value bracket syntax sometimes failed to
+          // generate the @media rule depending on Tailwind JIT
+          // pass ordering. Switching to `auto-fit + minmax` makes
+          // the layout entirely container-driven and identical
+          // across browsers. 420px is the minimum readable width
+          // for an analysis panel (matches the SignalViewer chart's
+          // intrinsic axis labels).
         )}
+        style={{
+          gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))',
+        }}
       >
         {panels.map((panel, idx) => (
           <div key={idx} className="min-w-0">

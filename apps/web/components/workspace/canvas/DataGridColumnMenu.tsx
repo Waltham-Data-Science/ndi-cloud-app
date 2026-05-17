@@ -105,8 +105,21 @@ export function DataGridColumnMenu({
         <DmContent
           align="end"
           sideOffset={4}
+          // Audit 2026-05-18 (UI sweep): with the dynamic-column fix
+          // datasets like Bhar surface 28+ columns through this menu;
+          // without max-height + scroll the menu overflowed the
+          // viewport and chopped off entries the user couldn't
+          // reach. `collisionPadding` keeps the menu inside the
+          // viewport edge; `avoidCollisions` (Radix default) flips
+          // to a better side when it would overflow. Internal
+          // overflow-y-auto handles the long-list case explicitly.
+          collisionPadding={8}
+          avoidCollisions
           className={cn(
-            'z-50 min-w-[220px] max-w-[280px]',
+            'z-50 min-w-[240px] max-w-[320px]',
+            // Cap the menu height at 60% of the viewport so a 28-col
+            // list scrolls within the popover instead of clipping.
+            'max-h-[60vh] overflow-y-auto',
             'rounded-md border border-border-subtle bg-bg-surface',
             'shadow-lg shadow-black/5 py-1',
             'data-[state=open]:animate-in data-[state=closed]:animate-out',

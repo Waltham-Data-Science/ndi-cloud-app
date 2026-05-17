@@ -84,24 +84,14 @@ const baseNavLinks: NavLink[] = [
   { label: 'Docs', href: 'https://vh-lab.github.io/NDI-matlab/', external: true },
 ];
 
-// 2026-05-11 — experimental "Ask" preview. Hidden behind an env
-// flag so the link only appears when explicitly enabled per
-// environment. The /ask route + /api/ask handler are separately
-// gated by ANTHROPIC_API_KEY; this flag controls just the nav
-// surface. Insertion point is between Platform and About so it
-// reads as a product surface, not a peripheral.
-const ASK_ENABLED = process.env.NEXT_PUBLIC_ASK_ENABLED === '1';
-
-const navLinks: NavLink[] = ASK_ENABLED
-  ? [
-      baseNavLinks[0]!, // Data Commons
-      baseNavLinks[1]!, // LabChat
-      baseNavLinks[2]!, // Platform
-      { label: 'Ask', href: '/ask' },
-      baseNavLinks[3]!, // About
-      baseNavLinks[4]!, // Docs
-    ]
-  : baseNavLinks;
+// 2026-05-18 — "Ask" removed from the top nav per user feedback.
+// The chat lives inside the workspace as the AskPanel (open via
+// the workspace ⌘K or the floating Ask trigger). The standalone
+// `/ask` route was a marketing-side preview that just redirected
+// anonymous users to /login, which is friction without product
+// value. Keep the route alive for any inbound deep-links but drop
+// it from the nav so users find the panel-based chat instead.
+const navLinks: NavLink[] = baseNavLinks;
 
 export function Header() {
   const { user } = useSession();

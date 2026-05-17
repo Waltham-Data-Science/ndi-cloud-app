@@ -127,7 +127,22 @@ function CanvasStatTiles({ datasetId }: CanvasStatTilesProps) {
       />
       <CanvasStatTile
         label="Probes"
-        value={v(counts?.probes)}
+        // Audit 2026-05-18 finding: backend's `counts.probes` counts
+        // the literal `probe` class which doesn't exist as an NDI
+        // document class (probe is a Python runtime alias for
+        // `element`). For datasets like Francesconi the field reads
+        // 0 even though `counts.elements` is 606 and 3 probe types
+        // exist. Fall back to `elements` when probes is 0/missing
+        // AND any probe types are reported (which means the dataset
+        // really does have probes, just under the element class
+        // alias). Filed as backend follow-up F-1c.
+        value={v(
+          (counts?.probes && counts.probes > 0
+            ? counts.probes
+            : (summary.data?.probeTypes?.length ?? 0) > 0
+              ? counts?.elements
+              : counts?.probes) ?? undefined,
+        )}
         subLabel={
           summary.data?.probeTypes && summary.data.probeTypes.length > 0
             ? summary.data.probeTypes.slice(0, 2).join(' · ') +

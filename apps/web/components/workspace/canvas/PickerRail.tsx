@@ -49,12 +49,15 @@ export function PickerRail({ slots, footer, className }: PickerRailProps) {
     <aside
       aria-label="Workspace picker"
       className={cn(
-        'lg:sticky lg:top-[3.25rem] lg:self-start',
+        // Audit 2026-05-18 (UI sweep): breakpoint dropped lg → md to
+        // match WorkspaceCanvas's grid breakpoint. Was stacking on
+        // Safari at typical laptop window widths.
+        'md:sticky md:top-[3.25rem] md:self-start',
         // Picker rail height is the viewport minus hero+selection bar
         // header. On desktop it occupies the full visible scroll
-        // region; on mobile it stacks above the canvas.
-        'lg:h-[calc(100vh-3.25rem)] lg:overflow-hidden',
-        'flex flex-col bg-bg-surface lg:border-r border-border-subtle',
+        // region; below md: it stacks above the canvas.
+        'md:h-[calc(100vh-3.25rem)] md:overflow-hidden',
+        'flex flex-col bg-bg-surface md:border-r border-border-subtle',
         className,
       )}
     >
