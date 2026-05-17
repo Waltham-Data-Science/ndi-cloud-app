@@ -8,17 +8,35 @@
  * Mirrors SpikeActivityPanel's mutation + Skeleton + error envelope
  * shape; the chart is the new PsthChart component. Show-Code emits
  * the `psth` tool snippet for Python and MATLAB.
+ *
+ * Selection wiring (one-canvas redesign 2026-05-16): both the
+ * unitDocId and stimulusDocId form fields are auto-filled from
+ * `useWorkspaceSelection()` — the unit (vmspikesummary id) and the
+ * stimulus (stimulus_presentation id) are first-class dimensions in
+ * the multi-key selection model. When BOTH are set and the form is
+ * still in its auto-filled state, the panel debounces ~400ms and
+ * auto-runs. Manual edits to either field flip the auto-fill flag and
+ * suppress further auto-runs. See
+ * `apps/web/docs/design/2026-05-16-workspace-canvas-redesign.md` for
+ * the selection-keys → panels mapping.
  */
 import { Activity } from 'lucide-react';
-import Link from 'next/link';
 import { useMutation } from '@tanstack/react-query';
-import { useCallback, useMemo, useState, type FormEvent } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  type FormEvent,
+} from 'react';
 
 import { Field } from '@/components/marketing/AuthForm';
 import { MarketingButton } from '@/components/marketing/Button';
 import { PsthChart } from '@/components/ndi/charts/PsthChart';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ApiError, apiFetch } from '@/lib/api/client';
+import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 import type { PsthToolResult } from '@/lib/ndi/tools/psth';
 
 import { PanelCard } from './PanelCard';
@@ -44,7 +62,7 @@ interface RequestBody {
   binSizeMs?: number;
 }
 
-const DEFAULT_FORM: FormState = {
+const DEFAULT_FORM_NO_SELECTION: FormState = {
   unitDocId: '',
   stimulusDocId: '',
   t0: '-0.5',
@@ -133,8 +151,25 @@ function buildRequestBody(form: FormState): RequestBody | { error: string } {
 }
 
 export function PsthPanel({ datasetId }: PsthPanelProps) {
-  const [form, setForm] = useState<FormState>(DEFAULT_FORM);
+  const { selection } = useWorkspaceSelection();
+
+  // Initial seed from the selection bar. If neither dimension is set
+  // we fall back to the no-selection defaults. The non-id fields
+  // (t0/t1/binSizeMs) always start from the no-selection defaults —
+  // they're tuning knobs, not selection-driven.
+  const [form, setForm] = useState<FormState>({
+    ...DEFAULT_FORM_NO_SELECTION,
+    unitDocId: selection.unit ?? '',
+    stimulusDocId: selection.stimulus ?? '',
+  });
   const [formError, setFormError] = useState<string | null>(null);
+
+  // Auto-fill flag: true while BOTH ids in the form came from the
+  // selection bar and haven't been edited. Goes false the moment the
+  // user types over either id field.
+  const [isAutoFilled, setIsAutoFilled] = useState<boolean>(
+    selection.unit !== null && selection.stimulus !== null,
+  );
 
   const mutation = useMutation<EndpointResponse, Error, RequestBody>({
     mutationFn: (body) =>
@@ -144,9 +179,52 @@ export function PsthPanel({ datasetId }: PsthPanelProps) {
       ),
   });
 
+  // Pull updates from the selection bar into the form. Never blanks
+  // a field when selection clears — preserves the user's typed value.
+  //
+  // set-state-in-effect disable: same reasoning as the QueryBuilder
+  // URL/seed-hydration pattern — selection is external React state we
+  // bridge into local form state that the user can also edit. The
+  // recommended alternatives (external store, render-time derivation)
+  // don't fit the dual edit-source contract.
+  /* eslint-disable react-hooks/set-state-in-effect -- selection-bar bridge to local form state */
+  useEffect(() => {
+    if (selection.unit) {
+      setForm((f) =>
+        f.unitDocId === selection.unit ? f : { ...f, unitDocId: selection.unit ?? '' },
+      );
+    }
+  }, [selection.unit]);
+
+  useEffect(() => {
+    if (selection.stimulus) {
+      setForm((f) =>
+        f.stimulusDocId === selection.stimulus
+          ? f
+          : { ...f, stimulusDocId: selection.stimulus ?? '' },
+      );
+    }
+  }, [selection.stimulus]);
+
+  // Re-arm the auto-filled flag whenever the selection completes both
+  // dimensions and the form mirrors that exact pairing. This lets the
+  // panel auto-run on a fresh "select unit, then select stimulus"
+  // cascade without requiring the user to reload.
+  useEffect(() => {
+    if (
+      selection.unit &&
+      selection.stimulus &&
+      form.unitDocId === selection.unit &&
+      form.stimulusDocId === selection.stimulus
+    ) {
+      setIsAutoFilled(true);
+    }
+  }, [selection.unit, selection.stimulus, form.unitDocId, form.stimulusDocId]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
   const handleRun = useCallback(
-    (e: FormEvent) => {
-      e.preventDefault();
+    (e?: FormEvent) => {
+      e?.preventDefault();
       setFormError(null);
       const built = buildRequestBody(form);
       if ('error' in built) {
@@ -159,6 +237,25 @@ export function PsthPanel({ datasetId }: PsthPanelProps) {
   );
   // NB: stale-state reset on dataset change happens at the parent
   // (`workspace-client.tsx` keys the panel stack by `datasetId`).
+
+  // Auto-run when context becomes complete + auto-filled. Debounced
+  // 400ms so a rapid selection cascade settles before firing. Uses a
+  // ref-tracked "last run pair" key so the same pairing doesn't fire
+  // twice even if React re-runs the effect.
+  const lastAutoRunRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isAutoFilled) return;
+    const unit = form.unitDocId.trim();
+    const stim = form.stimulusDocId.trim();
+    if (!HEX_24.test(unit) || !HEX_24.test(stim)) return;
+    const key = `${unit}|${stim}`;
+    if (lastAutoRunRef.current === key) return;
+    const handle = setTimeout(() => {
+      lastAutoRunRef.current = key;
+      handleRun();
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [isAutoFilled, form.unitDocId, form.stimulusDocId, handleRun]);
 
   // Pull the success-shape result out of the mutation envelope.
   const result = useMemo<PsthToolResult | null>(() => {
@@ -180,6 +277,23 @@ export function PsthPanel({ datasetId }: PsthPanelProps) {
     const built = buildRequestBody(form);
     return 'error' in built ? { datasetId } : { datasetId, ...built };
   }, [form, datasetId]);
+
+  // Editing either id field by hand drops auto-fill.
+  function onUnitChange(value: string) {
+    setForm((f) => ({ ...f, unitDocId: value }));
+    if (isAutoFilled && value !== selection.unit) {
+      setIsAutoFilled(false);
+    }
+  }
+  function onStimulusChange(value: string) {
+    setForm((f) => ({ ...f, stimulusDocId: value }));
+    if (isAutoFilled && value !== selection.stimulus) {
+      setIsAutoFilled(false);
+    }
+  }
+
+  const showAutoHint =
+    isAutoFilled && !!form.unitDocId && !!form.stimulusDocId;
 
   return (
     <PanelCard
@@ -204,44 +318,44 @@ export function PsthPanel({ datasetId }: PsthPanelProps) {
             result={result ?? undefined}
             disabled={!hasSuccessRun}
           />
-          <Link
-            href={`/datasets/${datasetId}/documents?class=vmspikesummary`}
-            className="ml-auto text-[12.5px] text-brand-blue hover:underline"
-          >
-            Browse units →
-          </Link>
-          <Link
-            href={`/datasets/${datasetId}/documents?class=stimulus_presentation`}
-            className="text-[12.5px] text-brand-blue hover:underline"
-          >
-            Browse stimuli →
-          </Link>
         </>
       }
     >
+      {showAutoHint && (
+        <span
+          className="inline-block text-[10.5px] tracking-eyebrow uppercase text-brand-blue/80 font-bold"
+          data-testid="psth-auto-hint"
+        >
+          Auto from selection
+        </span>
+      )}
+
       <form onSubmit={handleRun} noValidate className="space-y-3">
-        <Field
-          label="Unit document ID"
-          name="unitDocId"
-          value={form.unitDocId}
-          onChange={(e) =>
-            setForm((f) => ({ ...f, unitDocId: e.target.value }))
-          }
-          placeholder="e.g. 68d6e54703a03f5cfdac8eff"
-          hint="A 24-char hex vmspikesummary document ID (the unit you want to bin)."
-          required
-        />
-        <Field
-          label="Stimulus document ID"
-          name="stimulusDocId"
-          value={form.stimulusDocId}
-          onChange={(e) =>
-            setForm((f) => ({ ...f, stimulusDocId: e.target.value }))
-          }
-          placeholder="e.g. 68d6e54703a03f5cfdac8f00"
-          hint="A 24-char hex stimulus_presentation or stimulus_response document ID."
-          required
-        />
+        <details className="rounded-md border border-border-subtle bg-bg-canvas px-3 py-2">
+          <summary className="cursor-pointer text-[12.5px] font-medium text-fg-secondary">
+            Advanced — manual override
+          </summary>
+          <div className="mt-3 space-y-3">
+            <Field
+              label="Unit document ID"
+              name="unitDocId"
+              value={form.unitDocId}
+              onChange={(e) => onUnitChange(e.target.value)}
+              placeholder="e.g. 68d6e54703a03f5cfdac8eff"
+              hint="A 24-char hex vmspikesummary document ID (the unit you want to bin)."
+              required
+            />
+            <Field
+              label="Stimulus document ID"
+              name="stimulusDocId"
+              value={form.stimulusDocId}
+              onChange={(e) => onStimulusChange(e.target.value)}
+              placeholder="e.g. 68d6e54703a03f5cfdac8f00"
+              hint="A 24-char hex stimulus_presentation or stimulus_response document ID."
+              required
+            />
+          </div>
+        </details>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Field
             label="t0 (seconds)"

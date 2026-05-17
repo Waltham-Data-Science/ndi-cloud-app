@@ -13,9 +13,30 @@
  * (`text-gray-900`, `border-gray-200`, `bg-brand-navy`) and `<h2>`,
  * breaking heading-level outline and visual consistency with the
  * other 6 panels.
+ *
+ * Dataset-wide (no selection wiring): the treatment timeline is
+ * dataset-scoped — there's no subject/session/probe/etc. context to
+ * read from. The one-canvas redesign (2026-05-16) leaves this panel
+ * out of the selection model but ADDS an auto-run-on-mount so the
+ * user lands on a populated chart without needing to click Run.
+ *
+ * Auto-run defaults: the chat-tool input schema (`treatmentTimelineInput`
+ * in `lib/ndi/tools/treatment-timeline.ts`) only takes `title` +
+ * `maxSubjects`. Both are optional — backend picks sensible defaults
+ * for `maxSubjects` (30) and infers `temporal_source` from the
+ * dataset's actual columns. We auto-run with an EMPTY body so the
+ * backend's auto-discovery path takes over; this is the simplest fix
+ * for the "no treatments on Francesconi" complaint without shipping
+ * a `panel-defaults` endpoint (deferred per the design doc).
+ *
+ * TODO(panel-defaults): if the backend gains a
+ * /api/datasets/:id/panel-defaults/treatment-timeline endpoint (see
+ * §"Default form discovery" in the canvas redesign doc), wire it
+ * into the auto-run path so the discovered groupBy / subjectColumn
+ * land in the request body. For v1, empty-body auto-run is enough.
  */
 
-import { useId, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { CalendarRange } from 'lucide-react';
 
@@ -104,6 +125,29 @@ export function TreatmentTimelinePanel({
   }
   // NB: stale-state reset on dataset change happens at the parent
   // (`workspace-client.tsx` keys the panel stack by `datasetId`).
+
+  // Auto-run on mount. Empty body → backend's defaults pick a
+  // sensible groupBy + subjectColumn from the dataset's actual schema.
+  // This is the fix for the Francesconi "no treatments" report — the
+  // panel used to require a click + had a default `maxSubjects=30`
+  // that wasn't the issue; the real win is letting the backend
+  // discover columns automatically on the first call.
+  //
+  // Guarded by a ref so it only fires once per panel mount; further
+  // user-driven Run clicks go through `onRun()` as before. The parent
+  // keys the panel stack by `datasetId` (workspace-client.tsx) so a
+  // dataset change remounts the panel and re-fires the auto-run.
+  const autoRanRef = useRef(false);
+  useEffect(() => {
+    if (autoRanRef.current) return;
+    autoRanRef.current = true;
+    setLastRunArgs({ datasetId });
+    mutation.mutate({});
+    // mutation is intentionally omitted — including it would re-run
+    // the effect on every render because React Query returns a new
+    // mutation object reference each tick.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [datasetId]);
 
   const hasSuccess = mutation.isSuccess && mutation.data !== undefined;
 

@@ -241,12 +241,22 @@ export async function POST(req: Request): Promise<Response> {
     return Response.json({ error: 'invalid_body' }, { status: 400 });
   }
 
+  // Phase F (W7 audit fix) — pull optional workspace context out of
+  // the request body. `AskShell` passes this via
+  // `DefaultChatTransport.body`. Fields are independently optional;
+  // a chat from outside a workspace will carry none of them.
+  const workspaceContext = extractWorkspaceContext(body);
+
   // Request observability — size-only, never message content.
   const lastUserMessage = lastUserText(messages);
   logEvent('ask.request.start', {
     ip,
     messageCount: messages.length,
     mostRecentUserMessage_length: lastUserMessage.length,
+    hasWorkspaceContext: workspaceContext !== null,
+    workspaceContextKeys: workspaceContext
+      ? Object.keys(workspaceContext).length
+      : 0,
   });
 
   // 4. Stream.
@@ -283,6 +293,26 @@ export async function POST(req: Request): Promise<Response> {
       anthropic: { cacheControl: { type: 'ephemeral' } },
     },
   };
+
+  // Phase F (W7 audit fix) — workspace context message. Sits AFTER
+  // the main SYSTEM_PROMPT (so the system-prompt cache is unaffected:
+  // the cache breakpoint is on the static system message; this one
+  // is small and changes per-turn). The model treats it as
+  // additional system guidance — "user is currently looking at X" —
+  // so tool calls like `query_documents` can target the right dataset
+  // without the user having to repeat it.
+  //
+  // Cost: a workspace-context message is typically &lt;150 tokens; the
+  // cost per turn rounds to nothing. We don't cache it because every
+  // selection change invalidates the cache anyway.
+  const contextSystemMessage =
+    workspaceContext !== null
+      ? ({
+          role: 'system',
+          content: buildWorkspaceContextPrompt(workspaceContext),
+        } satisfies ModelMessage)
+      : null;
+
   // v6 (2026-05-15, Stream 6.12): convertToModelMessages is now
   // async — destructure the awaited array into the prompt. The
   // single-line edit the upgrade-inventory doc flagged
@@ -308,7 +338,9 @@ export async function POST(req: Request): Promise<Response> {
   if (authHeaders) ctx.authHeaders = authHeaders;
   const result = streamText({
     model: chatModel(),
-    messages: [systemMessage, ...modelMessages],
+    messages: contextSystemMessage
+      ? [systemMessage, contextSystemMessage, ...modelMessages]
+      : [systemMessage, ...modelMessages],
     tools: makeTools(ctx),
     // Cap output + tool loops to bound cost. See spec §Cost.
     //
@@ -471,4 +503,92 @@ function extractMessages(body: unknown): UIMessage[] | null {
   // Trust the AI SDK to validate further at convertToModelMessages —
   // we just need the array shape OK to forward.
   return m as UIMessage[];
+}
+
+/**
+ * Phase F (W7 audit fix) — workspace context shape the chat client
+ * sends via `DefaultChatTransport.body.context`. All fields are
+ * independently optional; absent fields are simply omitted from the
+ * resulting system prompt.
+ *
+ * `selectedXId` keys carry NDI document ids which can be 24-char hex
+ * ObjectIds, 32-char compound ids, or local NDI identifiers (e.g.
+ * "NSUBJ-005-PR811") — no shape validation here. The model uses
+ * these directly as `query_documents` / `walk_provenance` arguments.
+ */
+interface WorkspaceContext {
+  datasetId?: string;
+  datasetName?: string;
+  selectedSubjectId?: string;
+  selectedSessionId?: string;
+  selectedProbeId?: string;
+  selectedStimulusId?: string;
+  selectedUnitId?: string;
+}
+
+function extractWorkspaceContext(body: unknown): WorkspaceContext | null {
+  if (!body || typeof body !== 'object') return null;
+  const raw = (body as { context?: unknown }).context;
+  if (!raw || typeof raw !== 'object') return null;
+  const ctx = raw as Record<string, unknown>;
+
+  const result: WorkspaceContext = {};
+  const stringKey = (k: keyof WorkspaceContext) => {
+    const v = ctx[k];
+    if (typeof v === 'string' && v.length > 0 && v.length <= 256) {
+      result[k] = v;
+    }
+  };
+  stringKey('datasetId');
+  stringKey('datasetName');
+  stringKey('selectedSubjectId');
+  stringKey('selectedSessionId');
+  stringKey('selectedProbeId');
+  stringKey('selectedStimulusId');
+  stringKey('selectedUnitId');
+
+  return Object.keys(result).length > 0 ? result : null;
+}
+
+/**
+ * Render the workspace context as a system-message prompt block.
+ * Kept short — the model already has the full SYSTEM_PROMPT cached;
+ * this is just situational orientation for the current turn.
+ *
+ * The instruction is FRAMED as guidance, not a hard constraint
+ * ("the user is asking from this context") — leaves the model free
+ * to redirect when the user actually wants to ask about a different
+ * dataset.
+ */
+function buildWorkspaceContextPrompt(ctx: WorkspaceContext): string {
+  const lines: string[] = ['Workspace context for this turn:'];
+  if (ctx.datasetName) {
+    lines.push(
+      `- Dataset: ${ctx.datasetName}${
+        ctx.datasetId ? ` (id: ${ctx.datasetId})` : ''
+      }`,
+    );
+  } else if (ctx.datasetId) {
+    lines.push(`- Dataset id: ${ctx.datasetId}`);
+  }
+  if (ctx.selectedSubjectId) {
+    lines.push(`- Selected subject: ${ctx.selectedSubjectId}`);
+  }
+  if (ctx.selectedSessionId) {
+    lines.push(`- Selected session / epoch: ${ctx.selectedSessionId}`);
+  }
+  if (ctx.selectedProbeId) {
+    lines.push(`- Selected probe: ${ctx.selectedProbeId}`);
+  }
+  if (ctx.selectedStimulusId) {
+    lines.push(`- Selected stimulus: ${ctx.selectedStimulusId}`);
+  }
+  if (ctx.selectedUnitId) {
+    lines.push(`- Selected unit (vmspikesummary): ${ctx.selectedUnitId}`);
+  }
+  lines.push('');
+  lines.push(
+    'Treat this as default scope: when the user asks "this dataset" / "this subject" / "the current session", they mean the values above. If they explicitly name a different dataset/subject/etc., the explicit reference wins.',
+  );
+  return lines.join('\n');
 }

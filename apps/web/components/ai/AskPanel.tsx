@@ -45,14 +45,48 @@ import { useEffect, useRef } from 'react';
 
 import { AskShell, type AskShellContext } from '@/components/ai/AskShell';
 import { cn } from '@/lib/cn';
+import { useMemo } from 'react';
 import { useAskPanelState } from '@/lib/ai/use-ask-panel-state';
+import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 
 export interface AskPanelProps {
+  /**
+   * Baseline context from the workspace layout (datasetId,
+   * datasetName). AskPanel enriches it with live selection state
+   * read from `useWorkspaceSelection` — when the user picks a
+   * subject/session/etc., subsequent chat turns carry that selection
+   * automatically.
+   *
+   * Phase F (W7 audit fix). Pre-fix, context was theatre only; the
+   * AskPanel header read "Asking about: &lt;dataset&gt;" with zero
+   * API impact. Post-fix, the selection IS forwarded to /api/ask.
+   */
   context?: AskShellContext;
 }
 
 export function AskPanel({ context }: AskPanelProps) {
   const { open, mode, expand, contract, close } = useAskPanelState();
+  const { selection } = useWorkspaceSelection();
+
+  // Merge selection into the baseline context. AskShell stringifies
+  // this to detect transport rebuilds, so we don't include null /
+  // undefined keys — they'd flap the JSON stable-ish.
+  const enrichedContext: AskShellContext | undefined = useMemo(() => {
+    const base: AskShellContext = { ...context };
+    if (selection.subject) base.selectedSubjectId = selection.subject;
+    if (selection.session) base.selectedSessionId = selection.session;
+    if (selection.probe) base.selectedProbeId = selection.probe;
+    if (selection.stimulus) base.selectedStimulusId = selection.stimulus;
+    if (selection.unit) base.selectedUnitId = selection.unit;
+    return Object.keys(base).length > 0 ? base : undefined;
+  }, [
+    context,
+    selection.subject,
+    selection.session,
+    selection.probe,
+    selection.stimulus,
+    selection.unit,
+  ]);
 
   // Focus close button when the panel opens — keyboard users should
   // land inside the dialog, not behind it.
@@ -93,7 +127,7 @@ export function AskPanel({ context }: AskPanelProps) {
       <FullscreenPanel
         title={title}
         contextLine={contextLine}
-        context={context}
+        context={enrichedContext}
         canContract={canContract}
         onContract={contract}
         onClose={close}
@@ -107,7 +141,7 @@ export function AskPanel({ context }: AskPanelProps) {
       <SidebarPanel
         title={title}
         contextLine={contextLine}
-        context={context}
+        context={enrichedContext}
         canExpand={canExpand}
         canContract={canContract}
         onExpand={expand}
@@ -123,7 +157,7 @@ export function AskPanel({ context }: AskPanelProps) {
     <DrawerPanel
       title={title}
       contextLine={contextLine}
-      context={context}
+      context={enrichedContext}
       canExpand={canExpand}
       onExpand={expand}
       onClose={close}

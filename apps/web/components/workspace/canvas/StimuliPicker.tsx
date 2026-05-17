@@ -1,0 +1,339 @@
+'use client';
+
+/**
+ * StimuliPicker — picker-rail body for the Stimuli tab of the
+ * workspace canvas.
+ *
+ * Phase F3 of the one-canvas redesign (design doc:
+ * `apps/web/docs/design/2026-05-16-workspace-canvas-redesign.md`).
+ * Sits in the ~340px left rail; clicking a row sets the workspace's
+ * `stimulus` selection dimension via `useWorkspaceSelection.set()`.
+ * The PSTH panel (the main consumer of `selection.stimulus`) reads
+ * the bar and auto-aligns when both `unit` and `stimulus` are set.
+ *
+ * Data source: NDI carries stimulus information across TWO classes
+ *   - `stimulus_presentation` — per-presentation parameters + event
+ *     timestamps (`time_started` / `time_stopped`)
+ *   - `stimulus_response` — per-trial response measurements
+ * The `tables` endpoint only exposes a handful of canonical classes
+ * (subject / probe / element / element_epoch / treatment / etc.);
+ * neither stimulus class is on the supported list, so we fall back
+ * to `useDocuments(datasetId, <class>, 1, 500)` for both and merge
+ * the results.
+ *
+ * Columns of interest in the rail (constrained to ~300px width):
+ *   - stimulus type (best-effort: parsed from the doc's `data` field
+ *     — `stimulus_presentation.stim_type`, `name`, or class fallback)
+ *   - presentation count (number of presentations / responses on the
+ *     doc — derived from `data.stimulus_presentation.presentations[]`
+ *     or `data.stimulus_response.responses[]`)
+ *   - short-id (first 8 chars of the doc id)
+ *
+ * The shape of stimulus docs varies dataset-to-dataset; when we
+ * can't derive `type` or `count` we fall back to "—" rather than
+ * crash. Per the design-doc principle: never crash on partial data.
+ */
+import { useMemo, useState } from 'react';
+import {
+  createColumnHelper,
+  flexRender,
+  getCoreRowModel,
+  useReactTable,
+  type ColumnDef,
+} from '@tanstack/react-table';
+
+import { Skeleton } from '@/components/ui/Skeleton';
+import { VirtualizedTable } from '@/components/ui/VirtualizedTable';
+import { useDocuments, type DocumentSummary } from '@/lib/api/documents';
+import { cn } from '@/lib/cn';
+import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
+
+interface StimuliPickerProps {
+  datasetId: string;
+}
+
+/**
+ * Normalised stimulus row — what the table actually renders. We
+ * project the raw `DocumentSummary` into this shape once so the
+ * column accessors can stay simple.
+ */
+export interface StimulusRow {
+  docId: string;
+  /** Source class: `stimulus_presentation` or `stimulus_response`. */
+  className: string;
+  /** Human-readable stimulus type — best-effort. */
+  stimulusType: string;
+  /** Number of presentations / responses on the doc; null when unknown. */
+  presentationCount: number | null;
+}
+
+/**
+ * Project a raw document into a `StimulusRow`. Pure for testability —
+ * exported so the test can pin the type-derivation + count-derivation
+ * paths across the multiple known stimulus doc shapes.
+ *
+ * Type derivation order (best-effort):
+ *   1. `data.<className>.stim_type` or `.stimulus_type`
+ *   2. `data.<className>.name`
+ *   3. `doc.name`
+ *   4. class fallback ("Presentation" / "Response")
+ *
+ * Count derivation:
+ *   - `stimulus_presentation`: `data.stimulus_presentation.presentations[].length`
+ *   - `stimulus_response`: `data.stimulus_response.responses[].length`
+ *   - null when neither array is present (older / atypical schemas)
+ */
+export function projectStimulusRow(
+  doc: DocumentSummary,
+  className: string,
+): StimulusRow | null {
+  const docId = doc.id ?? doc.ndiId;
+  if (typeof docId !== 'string' || docId.length === 0) return null;
+
+  const data = (doc.data ?? {}) as Record<string, unknown>;
+  const inner = (data[className] ?? {}) as Record<string, unknown>;
+
+  // Type derivation
+  let stimulusType = '—';
+  const innerStimType = inner.stim_type ?? inner.stimulus_type;
+  if (typeof innerStimType === 'string' && innerStimType.length > 0) {
+    stimulusType = innerStimType;
+  } else if (typeof inner.name === 'string' && inner.name.length > 0) {
+    stimulusType = inner.name;
+  } else if (typeof doc.name === 'string' && doc.name.length > 0) {
+    stimulusType = doc.name;
+  } else {
+    stimulusType =
+      className === 'stimulus_presentation' ? 'Presentation' : 'Response';
+  }
+
+  // Count derivation
+  let presentationCount: number | null = null;
+  if (className === 'stimulus_presentation') {
+    const arr = inner.presentations;
+    if (Array.isArray(arr)) presentationCount = arr.length;
+  } else if (className === 'stimulus_response') {
+    const arr = inner.responses;
+    if (Array.isArray(arr)) presentationCount = arr.length;
+  }
+
+  return {
+    docId,
+    className,
+    stimulusType,
+    presentationCount,
+  };
+}
+
+/**
+ * Filter stimulus rows by free-text "type contains" matching against
+ * either `stimulusType` or `className`. Pure for testability.
+ */
+export function filterStimuli(
+  rows: StimulusRow[],
+  typeQuery: string,
+): StimulusRow[] {
+  const q = typeQuery.trim().toLowerCase();
+  if (!q) return rows;
+  return rows.filter(
+    (row) =>
+      row.stimulusType.toLowerCase().includes(q) ||
+      row.className.toLowerCase().includes(q),
+  );
+}
+
+export function StimuliPicker({ datasetId }: StimuliPickerProps) {
+  const { selection, set } = useWorkspaceSelection();
+  const [typeQuery, setTypeQuery] = useState('');
+
+  // Two parallel doc fetches — useDocuments returns a TanStack Query
+  // result, so React-Query handles dedup + caching. Both queries run
+  // concurrently; the table renders when both have resolved (we treat
+  // a 404 on either as "no docs of this class" — that's a NORMAL
+  // shape for datasets that only carry one variant).
+  const presentationQuery = useDocuments(
+    datasetId,
+    'stimulus_presentation',
+    1,
+    500,
+  );
+  const responseQuery = useDocuments(datasetId, 'stimulus_response', 1, 500);
+
+  const isLoading = presentationQuery.isLoading || responseQuery.isLoading;
+  // Both 404-ing simultaneously is a real "no stimuli" signal — but
+  // one erroring with the other succeeding should still surface the
+  // good half. The empty-state branch below covers the all-empty case.
+  const allFailed = presentationQuery.isError && responseQuery.isError;
+
+  const allRows: StimulusRow[] = useMemo(() => {
+    const result: StimulusRow[] = [];
+    const pres = presentationQuery.data?.documents ?? [];
+    for (const doc of pres) {
+      const row = projectStimulusRow(doc, 'stimulus_presentation');
+      if (row) result.push(row);
+    }
+    const resp = responseQuery.data?.documents ?? [];
+    for (const doc of resp) {
+      const row = projectStimulusRow(doc, 'stimulus_response');
+      if (row) result.push(row);
+    }
+    return result;
+  }, [presentationQuery.data, responseQuery.data]);
+
+  const filteredRows = useMemo(
+    () => filterStimuli(allRows, typeQuery),
+    [allRows, typeQuery],
+  );
+
+  const columnHelper = createColumnHelper<StimulusRow>();
+  const columns = useMemo<ColumnDef<StimulusRow, unknown>[]>(
+    () =>
+      [
+        columnHelper.accessor((r) => r.stimulusType, {
+          id: 'type',
+          header: 'Type',
+          cell: (info) => (
+            <span className="text-[12px] text-fg-primary truncate inline-block max-w-full">
+              {String(info.getValue() ?? '—')}
+            </span>
+          ),
+          size: 150,
+        }),
+        columnHelper.accessor(
+          (r) =>
+            r.presentationCount === null
+              ? '—'
+              : r.presentationCount.toLocaleString(),
+          {
+            id: 'count',
+            header: '#',
+            cell: (info) => (
+              <span className="text-[12px] text-fg-secondary tabular-nums">
+                {String(info.getValue() ?? '—')}
+              </span>
+            ),
+            size: 60,
+          },
+        ),
+        columnHelper.accessor((r) => `${r.docId.slice(0, 8)}…`, {
+          id: 'shortid',
+          header: 'ID',
+          cell: (info) => (
+            <span className="font-mono text-[11px] text-fg-muted">
+              {String(info.getValue() ?? '—')}
+            </span>
+          ),
+          size: 80,
+        }),
+      ] as ColumnDef<StimulusRow, unknown>[],
+    [columnHelper],
+  );
+
+  // React Compiler skips memoization for useReactTable consumers.
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const table = useReactTable({
+    data: filteredRows,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+  });
+
+  if (isLoading) {
+    return (
+      <div className="space-y-3" aria-label="Loading stimuli">
+        <Skeleton className="h-8 w-full rounded-md" />
+        <Skeleton className="h-[280px] w-full rounded-md" />
+      </div>
+    );
+  }
+
+  if (allFailed || allRows.length === 0) {
+    return (
+      <div
+        role="status"
+        className="rounded-md border border-dashed border-border-subtle bg-bg-surface px-3 py-6 text-[12.5px] text-fg-secondary leading-relaxed"
+      >
+        No stimulus documents in this dataset.
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <input
+          type="search"
+          value={typeQuery}
+          onChange={(e) => setTypeQuery(e.target.value)}
+          placeholder="Type contains…"
+          className={cn(
+            'flex-1 min-w-0 rounded-md border border-border-subtle bg-bg-surface',
+            'px-2 py-1 text-[12px] text-fg-primary placeholder:text-fg-muted',
+            'focus:outline-none focus:ring-2 focus:ring-brand-500/40',
+          )}
+          aria-label="Filter stimuli by type"
+        />
+      </div>
+
+      <div className="text-[11px] text-fg-muted tabular-nums">
+        Showing{' '}
+        <span className="font-semibold text-fg-secondary">
+          {filteredRows.length.toLocaleString()}
+        </span>{' '}
+        of {allRows.length.toLocaleString()} stimulus document
+        {allRows.length === 1 ? '' : 's'}
+      </div>
+
+      {filteredRows.length === 0 ? (
+        <div className="rounded-md border border-dashed border-border-subtle bg-bg-surface px-3 py-6 text-center text-[12.5px] text-fg-secondary">
+          No stimuli match the current filter.
+        </div>
+      ) : (
+        <VirtualizedTable
+          table={table}
+          estimateSize={32}
+          className="rounded-md border border-border-subtle overflow-auto max-h-[calc(100vh-280px)] min-h-[240px]"
+          onRowClick={(row) => {
+            set({ stimulus: row.docId });
+          }}
+          getRowClassName={(row) => {
+            return row.original.docId === selection.stimulus
+              ? 'bg-brand-blue/5 border-l-2 border-l-brand-blue'
+              : undefined;
+          }}
+          renderHeaderCell={(header) => (
+            <th
+              key={header.id}
+              colSpan={header.colSpan}
+              className={cn(
+                'px-2 py-1.5 text-left text-[10px] font-bold tracking-eyebrow uppercase text-fg-muted',
+                'border-b border-border-subtle bg-bg-muted/40 sticky top-0',
+              )}
+              style={{ width: header.getSize() }}
+            >
+              {header.isPlaceholder
+                ? null
+                : flexRender(
+                    header.column.columnDef.header,
+                    header.getContext(),
+                  )}
+            </th>
+          )}
+          renderCell={(cell) => (
+            <td
+              key={cell.id}
+              className="px-2 py-1.5 align-top truncate"
+              style={{ width: cell.column.getSize() }}
+            >
+              {flexRender(cell.column.columnDef.cell, cell.getContext())}
+            </td>
+          )}
+          emptyState={
+            <div className="text-center text-[12.5px] text-fg-secondary py-6">
+              No stimuli match the current filter.
+            </div>
+          }
+        />
+      )}
+    </div>
+  );
+}

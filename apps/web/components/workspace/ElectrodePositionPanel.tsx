@@ -20,12 +20,13 @@
  *
  * Empty-state copy is intentionally educational: it explains WHAT
  * the panel needs (probe_location docs with coordinate fields) rather
- * than just saying "no data", and links to the Document Explorer so
- * users can verify what's actually in the dataset.
+ * than just saying "no data". The single consolidated Document
+ * Explorer escape now lives in the picker rail footer (per the
+ * one-canvas redesign 2026-05-16) — per-panel outbound links were
+ * removed to keep the workspace contextual.
  */
 
 import { MapPin } from 'lucide-react';
-import Link from 'next/link';
 import { useMemo } from 'react';
 
 import {
@@ -223,31 +224,18 @@ export function ElectrodePositionPanel({ datasetId }: ElectrodePositionPanelProp
           "this dataset has no probe_location class" — the user reached
           this workspace by being signed in and on a valid dataset id,
           so "dataset may not exist or you may not have access" was
-          alarming + misleading. Surface the empty-state copy instead,
-          which links to the Document Explorer so the curator can
-          confirm what's actually present. The original red-alert
-          message is preserved as a fallback for genuine network
-          failures (5xx); the empty-state covers 404s and empty 200s. */}
-      {isError && !isLoading && (
-        <EmptyState
-          datasetId={datasetId}
-          reason="no-docs"
-        />
-      )}
+          alarming + misleading. Surface the empty-state copy instead.
+          The original red-alert message is preserved as a fallback for
+          genuine network failures (5xx); the empty-state covers 404s
+          and empty 200s. */}
+      {isError && !isLoading && <EmptyState reason="no-docs" />}
 
       {!isLoading && !isError && totalDocs === 0 && (
-        <EmptyState
-          datasetId={datasetId}
-          reason="no-docs"
-        />
+        <EmptyState reason="no-docs" />
       )}
 
       {!isLoading && !isError && hasDocsButNoCoords && (
-        <EmptyState
-          datasetId={datasetId}
-          reason="no-coords"
-          docCount={totalDocs}
-        />
+        <EmptyState reason="no-coords" docCount={totalDocs} />
       )}
 
       {showChart && (
@@ -262,7 +250,6 @@ export function ElectrodePositionPanel({ datasetId }: ElectrodePositionPanelProp
 }
 
 interface EmptyStateProps {
-  datasetId: string;
   reason: 'no-docs' | 'no-coords';
   docCount?: number;
 }
@@ -274,12 +261,14 @@ interface EmptyStateProps {
  *   - no-coords → docs exist but extract_point() returned null for all
  *                 of them (coordinates missing or in an unknown shape)
  *
- * Both variants explain WHAT is needed and link to the Document
- * Explorer so users can verify what's in the dataset themselves —
- * "no data" without context is the most common UX complaint on the
- * v2 surface.
+ * Both variants explain WHAT is needed — the educational copy is the
+ * load-bearing part since the workspace's single Document Explorer
+ * escape now lives in the picker rail footer (one-canvas redesign
+ * 2026-05-16). Per-panel "Open Document Explorer →" buttons were
+ * removed to stop the user being dumped out of the workspace
+ * contextually.
  */
-function EmptyState({ datasetId, reason, docCount }: EmptyStateProps) {
+function EmptyState({ reason, docCount }: EmptyStateProps) {
   return (
     <div
       role="status"
@@ -309,16 +298,7 @@ function EmptyState({ datasetId, reason, docCount }: EmptyStateProps) {
             <code className="font-mono text-[12px]">y</code>/
             <code className="font-mono text-[12px]">z</code>.
           </>
-        )}{' '}
-        The Document Explorer link below shows what classes ARE present.
-      </p>
-      <p className="mt-2">
-        <Link
-          href={`/datasets/${datasetId}/documents`}
-          className="text-brand-blue hover:underline"
-        >
-          Open Document Explorer →
-        </Link>
+        )}
       </p>
     </div>
   );

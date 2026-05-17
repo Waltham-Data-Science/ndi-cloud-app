@@ -1,29 +1,36 @@
 'use client';
 
 /**
- * SessionsBrowser — session/epoch browser for the Sessions tab.
+ * SessionsBrowser — the picker-rail body for the Sessions picker tab.
  *
- * Phase C of the workspace redesign. The session-grain counterpart
- * to SubjectsBrowser — same filter-and-drill flow, different
- * underlying class (`element_epoch` instead of `subject`) and
- * different filters that match the tutorial's epoch workflow:
+ * Phase F3 of the one-canvas redesign. Session-grain counterpart to
+ * SubjectsBrowser — same filter-and-drill flow, different underlying
+ * class (`element_epoch` instead of `subject`).
  *
- *   - **Subject ID** — filter epochs to one subject (tutorial:
- *     drill to subject 360, then look at that subject's 6 epochs).
- *   - **Time window** — substring match against epochStart's
- *     globalTime / devTime (tutorial: `global_t0 contains Jun-2023`
- *     → 99 epochs).
- *   - **Probe ID** — filter to epochs from one probe/element.
+ * Selection contract: row click writes `selection.session` via
+ * `useWorkspaceSelection.set({ session })`. Toggle-off by clicking
+ * the active row again. There are NO outbound View Actions in this
+ * body — the analysis panels on the canvas read `selection.session`
+ * directly.
  *
- * Selection key: `epochDocumentIdentifier`. View actions: Signal
- * trace, PSTH, Electrode position, View document. All route to
- * /analyses with `?epoch=<id>` so the panels can pre-fill (Phase D
- * follow-up wires the panel reads).
+ * Reactive cascade: when `selection.subject` is set, the table
+ * pre-filters client-side to only that subject's epochs. The
+ * `element_epoch` summary table includes `subjectDocumentIdentifier`
+ * per row, so we can compare against `selection.subject` directly
+ * without a backend round-trip. This matches the design doc's "Hex /
+ * Neurosift reactive cascade" pattern — pick a subject, see only its
+ * sessions.
  *
- * Same data plumbing as Subjects: client-side filter + virtualised
- * table on top of the existing `useSummaryTable` hook. Reuses the
- * same primitives (WorkspaceFilterBar, ViewActionsRail) for visual
- * consistency.
+ * Filter UI: kept the time-window text filter (the tutorial's
+ * `global_t0 contains Jun-2023` pattern). Dropped the old free-text
+ * Subject + Probe filters — those URL params now collide with the
+ * workspace selection keys, and the cascade-from-selection covers the
+ * Subject case. Probes get their own picker tab.
+ *
+ * Layout adapted for the ~340px-wide picker rail. Columns trimmed
+ * from 5 → 3 (Epoch / Start / Approach); the Stop column + Subject
+ * column are dropped (Subject is the cascade source, Stop is
+ * available in the Document Explorer drill).
  */
 import { useMemo } from 'react';
 import {
@@ -34,7 +41,6 @@ import {
   type ColumnDef,
 } from '@tanstack/react-table';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { Activity, BarChart3, FlaskConical, MapPin } from 'lucide-react';
 
 import { Skeleton } from '@/components/ui/Skeleton';
 import { VirtualizedTable } from '@/components/ui/VirtualizedTable';
@@ -42,12 +48,9 @@ import {
   WorkspaceFilterBar,
   type FilterField,
 } from '@/components/workspace/WorkspaceFilterBar';
-import {
-  ViewActionsRail,
-  type ViewAction,
-} from '@/components/workspace/ViewActionsRail';
 import { useSummaryTable } from '@/lib/api/tables';
 import { cn } from '@/lib/cn';
+import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 
 interface SessionsBrowserProps {
   datasetId: string;
@@ -88,7 +91,13 @@ export function formatEpochTime(
 }
 
 /**
- * Pure filter algorithm — exported for unit testing.
+ * Pure filter algorithm — exported for unit testing. The `subject`
+ * key is now the cascade source (an exact-equality match on
+ * `subjectDocumentIdentifier`), not a free-text substring. The
+ * `window` key remains a substring match against the t0/t1 display
+ * strings. The `probe` key is preserved for backward compatibility
+ * with the existing test suite but is not wired to any UI control
+ * (probes get their own picker tab in the one-canvas layout).
  */
 export function filterEpochs(
   rows: EpochRow[],
@@ -127,11 +136,19 @@ export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
   const router = useRouter();
   const pathname = usePathname() ?? '';
   const searchParams = useSearchParams();
+  const { selection, set } = useWorkspaceSelection();
 
-  const subjectFilter = searchParams?.get('subject') ?? '';
+  // Local picker state — only the time-window text filter remains.
+  // The old Subject + Probe text filters were removed (their URL
+  // params collide with the workspace selection keys, and the
+  // subject cascade below covers the most common case).
   const windowFilter = searchParams?.get('window') ?? '';
-  const probeFilter = searchParams?.get('probe') ?? '';
-  const selectedDocId = searchParams?.get('select') ?? '';
+
+  // Workspace selection — the cascade source (selection.subject
+  // pre-filters this table client-side) and the active row marker
+  // (selection.session is the picked epoch's doc id).
+  const subjectCascadeId = selection.subject;
+  const selectedDocId = selection.session;
 
   const updateSearch = (mutate: (p: URLSearchParams) => void): void => {
     const params = new URLSearchParams(searchParams?.toString() ?? '');
@@ -149,14 +166,8 @@ export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
 
   const clearFilters = (): void => {
     updateSearch((p) => {
-      p.delete('subject');
       p.delete('window');
-      p.delete('probe');
     });
-  };
-
-  const clearSelection = (): void => {
-    setParam('select', '');
   };
 
   // Fetch the element_epoch summary table. Same hook + endpoint
@@ -169,35 +180,30 @@ export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
     [summary.data],
   );
 
-  const filteredRows = useMemo(
-    () =>
-      filterEpochs(allRows, {
-        subject: subjectFilter,
-        window: windowFilter,
-        probe: probeFilter,
-      }),
-    [allRows, subjectFilter, windowFilter, probeFilter],
-  );
-
-  const selectedRow = useMemo(
-    () =>
-      selectedDocId
-        ? filteredRows.find(
-            (r) => r.epochDocumentIdentifier === selectedDocId,
-          ) ?? null
-        : null,
-    [filteredRows, selectedDocId],
-  );
+  // Apply the subject cascade FIRST (an exact-equality match on the
+  // subjectDocumentIdentifier), then the local filter (currently
+  // just the time window).
+  //
+  // Defensive client-side filter: the FastAPI summary-table endpoint
+  // doesn't currently accept a subject filter, so we fetch the full
+  // epoch set and narrow in-memory. For Bhar (~4,887 epochs) that's
+  // ~150 KB and the filter is instant. If the backend grows a
+  // subject-filter knob later, the cascade can move server-side
+  // transparently — this component just looks at `subjectCascadeId`.
+  const filteredRows = useMemo(() => {
+    const base = subjectCascadeId
+      ? allRows.filter(
+          (r) => r.subjectDocumentIdentifier === subjectCascadeId,
+        )
+      : allRows;
+    return filterEpochs(base, {
+      subject: '',
+      window: windowFilter,
+      probe: '',
+    });
+  }, [allRows, subjectCascadeId, windowFilter]);
 
   const filterFields: FilterField[] = [
-    {
-      kind: 'text',
-      key: 'subject',
-      label: 'Subject',
-      value: subjectFilter,
-      placeholder: 'contains subject id',
-      onChange: (v) => setParam('subject', v),
-    },
     {
       kind: 'text',
       key: 'window',
@@ -206,44 +212,7 @@ export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
       placeholder: 'contains Jun-2023',
       onChange: (v) => setParam('window', v),
     },
-    {
-      kind: 'text',
-      key: 'probe',
-      label: 'Probe / element',
-      value: probeFilter,
-      placeholder: 'contains probe id',
-      onChange: (v) => setParam('probe', v),
-    },
   ];
-
-  const buildActions = (docId: string): ViewAction[] => {
-    const base = `/my/workspace/${datasetId}/analyses?epoch=${encodeURIComponent(docId)}`;
-    return [
-      {
-        label: 'Signal trace',
-        href: `${base}#signal-viewer`,
-        icon: Activity,
-        hint: 'signal',
-      },
-      {
-        label: 'PSTH',
-        href: `${base}#psth`,
-        icon: BarChart3,
-        hint: 'psth',
-      },
-      {
-        label: 'Electrode position',
-        href: `${base}#electrode-position`,
-        icon: MapPin,
-        hint: 'scatter',
-      },
-      {
-        label: 'View document',
-        href: `/datasets/${datasetId}/documents/${encodeURIComponent(docId)}`,
-        icon: FlaskConical,
-      },
-    ];
-  };
 
   const columnHelper = createColumnHelper<EpochRow>();
   const columns = useMemo<ColumnDef<EpochRow, unknown>[]>(
@@ -258,64 +227,32 @@ export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
             id: 'epoch',
             header: 'Epoch',
             cell: (info) => (
-              <span className="font-mono text-[12.5px] text-fg-primary">
+              <span className="font-mono text-[12px] text-fg-primary truncate inline-block max-w-full">
                 {String(info.getValue() ?? '—')}
               </span>
             ),
-            size: 200,
-          },
-        ),
-        columnHelper.accessor(
-          (r) =>
-            (r.subjectDocumentIdentifier ?? '—').toString().slice(0, 16),
-          {
-            id: 'subject',
-            header: 'Subject',
-            cell: (info) => (
-              <span
-                className="font-mono text-[12px] text-fg-secondary"
-                title={
-                  typeof info.row.original.subjectDocumentIdentifier ===
-                  'string'
-                    ? info.row.original.subjectDocumentIdentifier
-                    : undefined
-                }
-              >
-                {String(info.getValue() ?? '—')}
-              </span>
-            ),
-            size: 180,
+            size: 130,
           },
         ),
         columnHelper.accessor((r) => formatEpochTime(r.epochStart), {
           id: 'start',
           header: 'Start',
           cell: (info) => (
-            <span className="font-mono text-[12px] text-fg-secondary tabular-nums">
+            <span className="font-mono text-[11.5px] text-fg-secondary tabular-nums truncate inline-block max-w-full">
               {String(info.getValue() ?? '—')}
             </span>
           ),
-          size: 180,
-        }),
-        columnHelper.accessor((r) => formatEpochTime(r.epochStop), {
-          id: 'stop',
-          header: 'Stop',
-          cell: (info) => (
-            <span className="font-mono text-[12px] text-fg-secondary tabular-nums">
-              {String(info.getValue() ?? '—')}
-            </span>
-          ),
-          size: 180,
+          size: 130,
         }),
         columnHelper.accessor((r) => r.approachName ?? '—', {
           id: 'approach',
           header: 'Approach',
           cell: (info) => (
-            <span className="text-[12.5px] text-fg-secondary">
+            <span className="text-[12px] text-fg-secondary truncate inline-block max-w-full">
               {String(info.getValue() ?? '—')}
             </span>
           ),
-          size: 160,
+          size: 90,
         }),
       ] as ColumnDef<EpochRow, unknown>[],
     [columnHelper],
@@ -359,31 +296,56 @@ export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
   const hasNoEpochs = allRows.length === 0;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <WorkspaceFilterBar
         fields={filterFields}
-        totalRows={allRows.length}
+        totalRows={subjectCascadeId ? filteredRows.length : allRows.length}
         filteredRows={filteredRows.length}
         noun="epoch"
         onClear={clearFilters}
       />
 
+      {subjectCascadeId && (
+        // Cascade indicator — explains why the table is narrowed.
+        // Without this the user might wonder where all the other
+        // epochs went. The bar above also reflects the count, but
+        // this line names the cause.
+        <p
+          data-testid="sessions-cascade-hint"
+          className="text-[11.5px] text-fg-secondary"
+        >
+          Filtered to the active subject. Clear the subject chip in
+          the selection bar to see all epochs.
+        </p>
+      )}
+
+      {selectedDocId && (
+        // Selection-active hint — mirrors SubjectsBrowser's pattern.
+        <p
+          data-testid="sessions-selection-active-hint"
+          className="text-[11.5px] text-fg-secondary"
+        >
+          Active session — analysis cards on the right will update.
+        </p>
+      )}
+
       {hasNoEpochs ? (
         <div className="rounded-xl border border-dashed border-border-subtle bg-bg-surface p-8 text-center text-[13.5px] text-fg-secondary">
           This dataset doesn&rsquo;t have any element_epoch documents yet.
-          The Structure tab lists every class with rows.
+          The Documents picker lists every class with rows.
         </div>
       ) : filteredRows.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border-subtle bg-bg-surface p-8 text-center text-[13.5px] text-fg-secondary">
-          No epochs match the current filters.{' '}
+          {subjectCascadeId
+            ? "No epochs for the active subject match the current filters."
+            : 'No epochs match the current filters.'}{' '}
           <button
             type="button"
             onClick={clearFilters}
             className="text-ndi-teal hover:underline font-semibold"
           >
             Clear filters
-          </button>{' '}
-          to see all {allRows.length.toLocaleString()} epochs.
+          </button>
         </div>
       ) : (
         <VirtualizedTable
@@ -391,8 +353,12 @@ export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
           estimateSize={36}
           onRowClick={(row) => {
             const docId = row.epochDocumentIdentifier;
-            if (typeof docId === 'string' && docId.length > 0) {
-              setParam('select', docId);
+            if (typeof docId !== 'string' || docId.length === 0) return;
+            // Toggle: clicking the active row again clears it.
+            if (docId === selectedDocId) {
+              set({ session: null });
+            } else {
+              set({ session: docId });
             }
           }}
           getRowClassName={(row) => {
@@ -428,27 +394,6 @@ export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
               {flexRender(cell.column.columnDef.cell, cell.getContext())}
             </td>
           )}
-        />
-      )}
-
-      {selectedRow && (
-        <ViewActionsRail
-          selection={{
-            label:
-              selectedRow.epochNumber !== null &&
-              selectedRow.epochNumber !== undefined
-                ? `Epoch ${String(selectedRow.epochNumber)}`
-                : selectedDocId,
-            sublabel: [
-              selectedRow.subjectDocumentIdentifier &&
-                `subject ${String(selectedRow.subjectDocumentIdentifier).slice(0, 12)}…`,
-              selectedRow.approachName,
-            ]
-              .filter(Boolean)
-              .join(' · ') || undefined,
-          }}
-          actions={buildActions(selectedDocId)}
-          onClear={clearSelection}
         />
       )}
     </div>

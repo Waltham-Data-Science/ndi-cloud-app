@@ -1,39 +1,43 @@
 'use client';
 
 /**
- * StructureBrowser — class browser for the Structure tab.
+ * StructureBrowser — class browser for the workspace canvas.
  *
- * Phase B of the workspace redesign. Lists every NDI document class
- * in the dataset with per-class counts + drill links to the
- * Document Explorer (filtered to the class). Sort + filter live
+ * Phase F3 of the one-canvas redesign. Lists every NDI document class
+ * in the dataset with per-class counts. Sort + filter live
  * client-side; the underlying data is cached by `useClassCounts`.
  *
- * Each row routes to `/datasets/[id]/documents?class=<className>` —
- * the existing Document Explorer surface. This is the v1 escalation
- * path; once Phase C's Subjects / Sessions tabs are live, certain
- * classes (subject, element_epoch) will reroute into the workspace
- * tabs instead. Other classes (imageStack, ontologyTableRow, generic_file,
- * …) stay routed to Document Explorer because the workspace has no
- * dedicated tab for them.
+ * Behaviour change vs. Phase B: clicking a class row NO LONGER
+ * navigates out to `/datasets/{id}/documents?class=...`. Instead it
+ * **switches the picker to the Documents tab and pre-filters that
+ * tab to the chosen class** by writing `?docClass=<className>` to
+ * the URL. The DocumentsBrowser (built in parallel) reads that
+ * param and narrows its table.
  *
- * Visual chrome: unified container with internal row dividers,
- * matching the StarterViewsSection + marketing BridgeRow pattern.
- * Hover tints the row to bg-muted (same as BridgeRow hover state).
+ * This is the fix for the user's #1 complaint — the workspace used
+ * to dump them into the Document Explorer on every drill, breaking
+ * context. Now the drill stays inside the workspace: same canvas,
+ * same selection bar, same analysis cards on the right; only the
+ * picker body swaps.
+ *
+ * The single remaining Document Explorer escape lives at the bottom
+ * of the PickerRail (DocumentExplorerEscape). Class rows here never
+ * navigate out.
  */
-import {
-  ChevronRight,
-  ListOrdered,
-  Search,
-  SortAsc,
-  SortDesc,
-} from 'lucide-react';
+import { ListOrdered, Search, SortAsc, SortDesc } from 'lucide-react';
 import Link from 'next/link';
+import {
+  usePathname,
+  useRouter,
+  useSearchParams,
+} from 'next/navigation';
 import { useMemo, useState } from 'react';
 
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useClassCounts } from '@/lib/api/datasets';
 import { cn } from '@/lib/cn';
 import { formatNumber } from '@/lib/format';
+import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 
 interface StructureBrowserProps {
   datasetId: string;
@@ -81,6 +85,32 @@ export function StructureBrowser({ datasetId }: StructureBrowserProps) {
   const [sort, setSort] = useState<SortKey>('count-desc');
   const [filter, setFilter] = useState('');
 
+  const router = useRouter();
+  const pathname = usePathname() ?? '';
+  const searchParams = useSearchParams();
+  const { setPickerTab } = useWorkspaceSelection();
+
+  // Click handler — switches the picker to Documents and writes
+  // `?docClass=<className>` for the DocumentsBrowser to consume.
+  // We write picker tab + docClass in ONE URL replace so the user
+  // doesn't see a flash where Documents is open with no filter.
+  //
+  // `setPickerTab` and the docClass write race the router otherwise
+  // — combining them into a single URLSearchParams mutation avoids
+  // that. This mirrors how `useWorkspaceSelection.set` builds patches
+  // atomically.
+  const handleClassClick = (className: string): void => {
+    const params = new URLSearchParams(searchParams?.toString() ?? '');
+    params.set('pick', 'documents');
+    params.set('docClass', className);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname);
+    // Fallback in case the parent isn't reading from useSearchParams
+    // for the picker tab (defensive — the hook's reader is the
+    // canonical path, this just hedges).
+    setPickerTab('documents');
+  };
+
   const items = useMemo(() => {
     if (!classCounts.data) return [];
     return deriveClassList(classCounts.data.classCounts, sort, filter);
@@ -97,11 +127,10 @@ export function StructureBrowser({ datasetId }: StructureBrowserProps) {
         {Array.from({ length: 6 }).map((_, i) => (
           <div
             key={i}
-            className="grid grid-cols-[1fr_auto_24px] gap-4 items-center px-6 py-4 border-t first:border-t-0 border-border-subtle"
+            className="grid grid-cols-[1fr_auto] gap-3 items-center px-4 py-3 border-t first:border-t-0 border-border-subtle"
           >
-            <Skeleton className="h-4 w-1/3" />
-            <Skeleton className="h-4 w-16" />
-            <Skeleton className="h-4 w-4" />
+            <Skeleton className="h-4 w-2/3" />
+            <Skeleton className="h-4 w-12" />
           </div>
         ))}
       </div>
@@ -125,11 +154,13 @@ export function StructureBrowser({ datasetId }: StructureBrowserProps) {
   }
 
   return (
-    <>
-      {/* ── Controls bar (sort + filter + totals) ──────────────── */}
-      <div className="mb-5 flex flex-wrap items-end justify-between gap-4">
-        <div className="flex items-center gap-2 text-[13px] text-fg-secondary">
-          <ListOrdered className="h-4 w-4 text-fg-muted" aria-hidden />
+    <div className="space-y-4">
+      {/* Controls bar (sort + filter + totals). Compact layout for
+          the ~316px-wide picker rail — totals on top, controls below
+          (the prior single-row layout overflowed). */}
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 text-[12.5px] text-fg-secondary">
+          <ListOrdered className="h-3.5 w-3.5 text-fg-muted" aria-hidden />
           <span>
             <span className="font-semibold text-fg-primary">
               {formatNumber(totalClasses)}
@@ -138,7 +169,7 @@ export function StructureBrowser({ datasetId }: StructureBrowserProps) {
             <span className="font-semibold text-fg-primary">
               {formatNumber(totalDocuments)}
             </span>{' '}
-            document{totalDocuments === 1 ? '' : 's'} total
+            doc{totalDocuments === 1 ? '' : 's'}
           </span>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
@@ -157,7 +188,7 @@ export function StructureBrowser({ datasetId }: StructureBrowserProps) {
             <select
               value={sort}
               onChange={(e) => setSort(e.target.value as SortKey)}
-              className="rounded-md border border-border-subtle bg-bg-surface px-2 py-1 text-[12.5px] text-fg-primary focus:outline-none focus:ring-2 focus:ring-brand-500/40"
+              className="rounded-md border border-border-subtle bg-bg-surface px-2 py-1 text-[12px] text-fg-primary focus:outline-none focus:ring-2 focus:ring-brand-500/40"
               aria-label="Sort classes"
             >
               {SORT_OPTIONS.map((opt) => (
@@ -167,9 +198,9 @@ export function StructureBrowser({ datasetId }: StructureBrowserProps) {
               ))}
             </select>
           </label>
-          <label className="inline-flex items-center gap-1.5">
+          <label className="inline-flex items-center gap-1.5 flex-1 min-w-[140px]">
             <Search
-              className="h-3.5 w-3.5 text-fg-muted"
+              className="h-3.5 w-3.5 text-fg-muted shrink-0"
               aria-hidden
             />
             <input
@@ -177,16 +208,18 @@ export function StructureBrowser({ datasetId }: StructureBrowserProps) {
               value={filter}
               onChange={(e) => setFilter(e.target.value)}
               placeholder="Filter class name"
-              className="rounded-md border border-border-subtle bg-bg-surface px-2 py-1 text-[12.5px] text-fg-primary placeholder:text-fg-muted focus:outline-none focus:ring-2 focus:ring-brand-500/40 w-44"
+              className="rounded-md border border-border-subtle bg-bg-surface px-2 py-1 text-[12px] text-fg-primary placeholder:text-fg-muted focus:outline-none focus:ring-2 focus:ring-brand-500/40 w-full min-w-0"
               aria-label="Filter class names"
             />
           </label>
         </div>
       </div>
 
-      {/* ── Class list ──────────────────────────────────────────── */}
+      {/* Class list — buttons (NOT links). Clicking switches the
+          picker tab to Documents and writes ?docClass=...; we never
+          leave the workspace. */}
       {items.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border-subtle bg-bg-surface px-6 py-8 text-center text-[13.5px] text-fg-secondary">
+        <div className="rounded-xl border border-dashed border-border-subtle bg-bg-surface px-4 py-6 text-center text-[13px] text-fg-secondary">
           No classes match &ldquo;{filter}&rdquo;.{' '}
           <button
             type="button"
@@ -199,30 +232,27 @@ export function StructureBrowser({ datasetId }: StructureBrowserProps) {
       ) : (
         <div className="rounded-xl border border-border-subtle bg-bg-surface overflow-hidden shadow-sm">
           {items.map(({ className, count }) => (
-            <Link
+            <button
               key={className}
-              href={`/datasets/${datasetId}/documents?class=${encodeURIComponent(className)}`}
+              type="button"
+              onClick={() => handleClassClick(className)}
               className={cn(
-                'no-underline grid grid-cols-[1fr_auto_24px] gap-4 items-center',
-                'px-6 py-4 border-t first:border-t-0 border-border-subtle',
+                'grid grid-cols-[1fr_auto] gap-3 items-center w-full text-left',
+                'px-4 py-3 border-t first:border-t-0 border-border-subtle',
                 'bg-transparent transition-colors duration-(--duration-base) ease-(--ease-out) hover:bg-bg-muted',
                 'focus:outline-none focus-visible:ring-2 focus-visible:ring-ndi-teal/40 focus-visible:bg-bg-muted',
               )}
             >
-              <span className="font-mono text-[13.5px] text-fg-primary">
+              <span className="font-mono text-[12.5px] text-fg-primary truncate">
                 {className}
               </span>
-              <span className="text-[13.5px] tabular-nums font-semibold text-fg-secondary">
+              <span className="text-[12.5px] tabular-nums font-semibold text-fg-secondary">
                 {formatNumber(count)}
               </span>
-              <ChevronRight
-                className="h-4 w-4 text-fg-muted"
-                aria-hidden
-              />
-            </Link>
+            </button>
           ))}
         </div>
       )}
-    </>
+    </div>
   );
 }

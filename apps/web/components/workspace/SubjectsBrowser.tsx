@@ -1,37 +1,32 @@
 'use client';
 
 /**
- * SubjectsBrowser — the workhorse browser for the Subjects tab.
+ * SubjectsBrowser — the picker-rail body for the Subjects picker tab.
  *
- * Phase C of the workspace redesign (design doc:
- * `apps/web/docs/design/2026-05-16-workspace-redesign.md`). Subjects
- * are the universal NDI grain — every recording has a subject — so
- * this tab is where ~80% of scientific filter-and-drill workflow
- * lands per the MATLAB tutorial analysis. The mental model is the
- * tutorial's: filter the roster (`StrainName contains PR811` → 76
- * rows), drill into one, launch an analysis scoped to that subject.
+ * Phase F3 of the one-canvas redesign (design doc:
+ * `apps/web/docs/design/2026-05-16-workspace-canvas-redesign.md`).
+ * Replaces the prior Phase C full-page browser. Subjects are still
+ * the universal NDI grain — every recording has a subject — so this
+ * picker is where most filter-and-drill workflow lands. The mental
+ * model is the tutorial's: filter the roster
+ * (`StrainName contains PR811` → 76 rows), drill into one, **the
+ * analysis cards on the right side of the canvas auto-update.**
  *
- * Data shape: pulls from `useSummaryTable` (the existing
- * `/api/datasets/[id]/tables/subject` summary-tables endpoint). The
- * subject row shape carries 15+ columns (subjectIdentifier,
- * speciesName, strainName, biologicalSexName, age, etc.) projected
- * by the backend's `summary_table_service`. We render a focused
- * subset of the most useful columns and reserve the full set for
- * the Document Explorer drill.
+ * Selection contract: row click writes through `useWorkspaceSelection`'s
+ * `set({ subject })`. Toggle-off by clicking the active row again.
+ * There are NO outbound View Actions in this body — the analysis
+ * panels on the canvas read `selection.subject` directly. The single
+ * remaining Document Explorer escape lives at the bottom of the
+ * PickerRail (see `DocumentExplorerEscape`).
  *
- * URL state (lives in `?strain=`, `?species=`, `?sex=`, `?select=`):
- *   - Filters persist across refresh + share.
- *   - Selection is the doc id of the active row, displayed in the
- *     ViewActionsRail below the table.
+ * Filter state (?strain=, ?species=, ?sex=) stays in URL params as
+ * before — those are LOCAL picker state, not workspace selection
+ * context. They survive refresh + share but never leave the picker.
  *
- * Table: TanStack Table on top of `VirtualizedTable` so a 5,314-row
- * roster (Bhar) renders smoothly with no virtualization stutter.
- *
- * Note on filtering: filtering is client-side after the full row
- * set is fetched. For the largest Bhar dataset that's ~6 MB once
- * over the wire and then instant on every keystroke. Server-side
- * filtering would require a tables-endpoint extension; deferred to
- * a Phase E follow-up.
+ * Layout adapted for the ~340px-wide picker rail (~316px of usable
+ * space after padding). Columns trimmed from 5 → 3 (Subject / Species
+ * / Age); strain + sex remain in the filter chips above the table.
+ * The filter cascade logic + filter UI is otherwise intact.
  */
 import { useMemo } from 'react';
 import {
@@ -42,7 +37,6 @@ import {
   type ColumnDef,
 } from '@tanstack/react-table';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
-import { BarChart3, FlaskConical, Layers, Microscope, Workflow } from 'lucide-react';
 
 import { Skeleton } from '@/components/ui/Skeleton';
 import { VirtualizedTable } from '@/components/ui/VirtualizedTable';
@@ -50,12 +44,9 @@ import {
   WorkspaceFilterBar,
   type FilterField,
 } from '@/components/workspace/WorkspaceFilterBar';
-import {
-  ViewActionsRail,
-  type ViewAction,
-} from '@/components/workspace/ViewActionsRail';
 import { useSummaryTable } from '@/lib/api/tables';
 import { cn } from '@/lib/cn';
+import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 
 interface SubjectsBrowserProps {
   datasetId: string;
@@ -126,12 +117,19 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
   const router = useRouter();
   const pathname = usePathname() ?? '';
   const searchParams = useSearchParams();
+  const { selection, set } = useWorkspaceSelection();
 
-  // URL-state-driven filter + selection values.
+  // Local picker state — these are URL params (?strain=, ?species=,
+  // ?sex=) so they survive refresh + share. They have NOTHING to do
+  // with the workspace selection context; they're filter chips.
   const strainFilter = searchParams?.get('strain') ?? '';
   const speciesFilter = searchParams?.get('species') ?? '';
   const sexFilter = searchParams?.get('sex') ?? '';
-  const selectedDocId = searchParams?.get('select') ?? '';
+
+  // Workspace selection context — drives the "active row" highlight
+  // and the analysis panels on the canvas. Lives in ?subject= via
+  // useWorkspaceSelection (single source of truth across the canvas).
+  const selectedDocId = selection.subject;
 
   const updateSearch = (mutate: (p: URLSearchParams) => void): void => {
     const params = new URLSearchParams(searchParams?.toString() ?? '');
@@ -152,13 +150,9 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
       p.delete('strain');
       p.delete('species');
       p.delete('sex');
-      // Keep `select` so a deselect doesn't fire as a side effect of
-      // clearing filters. Selection is a separate UI concept.
+      // We do NOT clear the workspace selection here — that's a
+      // separate concept owned by useWorkspaceSelection.
     });
-  };
-
-  const clearSelection = (): void => {
-    setParam('select', '');
   };
 
   // Backend fetch — full subject table. Pages this hook returns are
@@ -178,18 +172,6 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
         sex: sexFilter,
       }),
     [allRows, strainFilter, speciesFilter, sexFilter],
-  );
-
-  // Identify the selected row (if any). Selection key is the
-  // subject document id — same id the tutorial drills into.
-  const selectedRow = useMemo(
-    () =>
-      selectedDocId
-        ? filteredRows.find(
-            (r) => r.subjectDocumentIdentifier === selectedDocId,
-          ) ?? null
-        : null,
-    [filteredRows, selectedDocId],
   );
 
   const sexOptions = useMemo(() => deriveSexOptions(allRows), [allRows]);
@@ -221,48 +203,9 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
     },
   ];
 
-  // Action set for a selected subject — links to the analysis tabs
-  // with the subject id pre-filled. Phase D will add anchor hashes
-  // once each panel carries a matching headingId; for Phase C we
-  // route to /analyses and the user scrolls to the relevant panel.
-  const buildActions = (docId: string): ViewAction[] => {
-    const base = `/my/workspace/${datasetId}/analyses?subject=${encodeURIComponent(docId)}`;
-    return [
-      {
-        label: 'Signal trace',
-        href: `${base}#signal-viewer`,
-        icon: Workflow,
-        hint: 'signal',
-      },
-      {
-        label: 'Treatment timeline',
-        href: `${base}#treatment-timeline`,
-        icon: Layers,
-        hint: 'gantt',
-      },
-      {
-        label: 'Spike raster',
-        href: `${base}#spike-activity`,
-        icon: BarChart3,
-        hint: 'raster',
-      },
-      {
-        label: 'Behavioural compare',
-        href: `${base}#behavioral-compare`,
-        icon: Microscope,
-        hint: 'violin',
-      },
-      {
-        label: 'View document',
-        href: `/datasets/${datasetId}/documents/${encodeURIComponent(docId)}`,
-        icon: FlaskConical,
-      },
-    ];
-  };
-
-  // TanStack table — columns curated to fit the desktop view; the
-  // full 15-column subject projection lives in the Summary Tables
-  // surface (one click away via the action rail).
+  // TanStack table — columns trimmed for the narrow picker rail.
+  // Strain + Sex are filter-only (they live in the filter chips above
+  // the table); the table shows Subject identifier, Species, and Age.
   const columnHelper = createColumnHelper<SubjectRow>();
   const columns = useMemo<ColumnDef<SubjectRow, unknown>[]>(
     () =>
@@ -271,37 +214,17 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
           id: 'identifier',
           header: 'Subject',
           cell: (info) => (
-            <span className="font-mono text-[12.5px] text-fg-primary truncate inline-block max-w-full">
+            <span className="font-mono text-[12px] text-fg-primary truncate inline-block max-w-full">
               {String(info.getValue() ?? '—')}
             </span>
           ),
-          size: 280,
+          size: 180,
         }),
         columnHelper.accessor((r) => r.speciesName ?? '—', {
           id: 'species',
           header: 'Species',
           cell: (info) => (
-            <span className="text-[12.5px] text-fg-secondary">
-              {String(info.getValue() ?? '—')}
-            </span>
-          ),
-          size: 160,
-        }),
-        columnHelper.accessor((r) => r.strainName ?? '—', {
-          id: 'strain',
-          header: 'Strain',
-          cell: (info) => (
-            <span className="text-[12.5px] text-fg-secondary">
-              {String(info.getValue() ?? '—')}
-            </span>
-          ),
-          size: 140,
-        }),
-        columnHelper.accessor((r) => r.biologicalSexName ?? '—', {
-          id: 'sex',
-          header: 'Sex',
-          cell: (info) => (
-            <span className="text-[12.5px] text-fg-secondary">
+            <span className="text-[12px] text-fg-secondary truncate inline-block max-w-full">
               {String(info.getValue() ?? '—')}
             </span>
           ),
@@ -316,11 +239,11 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
             id: 'age',
             header: 'Age',
             cell: (info) => (
-              <span className="text-[12.5px] text-fg-secondary tabular-nums">
+              <span className="text-[12px] text-fg-secondary tabular-nums">
                 {String(info.getValue() ?? '—')}
               </span>
             ),
-            size: 100,
+            size: 60,
           },
         ),
       ] as ColumnDef<SubjectRow, unknown>[],
@@ -367,7 +290,7 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
   const hasNoSubjects = allRows.length === 0;
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-4">
       <WorkspaceFilterBar
         fields={filterFields}
         totalRows={allRows.length}
@@ -376,10 +299,23 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
         onClear={clearFilters}
       />
 
+      {selectedDocId && (
+        // Selection-active hint — confirms the user that their row
+        // click took effect AND that the canvas panels will react.
+        // Hidden when nothing is selected so we don't add chrome to
+        // the cold-start state.
+        <p
+          data-testid="subjects-selection-active-hint"
+          className="text-[11.5px] text-fg-secondary"
+        >
+          Active subject — analysis cards on the right will update.
+        </p>
+      )}
+
       {hasNoSubjects ? (
         <div className="rounded-xl border border-dashed border-border-subtle bg-bg-surface p-8 text-center text-[13.5px] text-fg-secondary">
           This dataset doesn&rsquo;t have any subject documents yet. The
-          structure tab lists every class with rows.
+          Documents picker lists every class with rows.
         </div>
       ) : filteredRows.length === 0 ? (
         <div className="rounded-xl border border-dashed border-border-subtle bg-bg-surface p-8 text-center text-[13.5px] text-fg-secondary">
@@ -399,8 +335,13 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
           estimateSize={36}
           onRowClick={(row) => {
             const docId = row.subjectDocumentIdentifier;
-            if (typeof docId === 'string' && docId.length > 0) {
-              setParam('select', docId);
+            if (typeof docId !== 'string' || docId.length === 0) return;
+            // Toggle: clicking the active row again clears it.
+            // Otherwise activate this row as the selection context.
+            if (docId === selectedDocId) {
+              set({ subject: null });
+            } else {
+              set({ subject: docId });
             }
           }}
           getRowClassName={(row) => {
@@ -441,27 +382,6 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
               No subjects match the current filters.
             </div>
           }
-        />
-      )}
-
-      {selectedRow && (
-        <ViewActionsRail
-          selection={{
-            label: String(
-              selectedRow.subjectLocalIdentifier ??
-                selectedRow.subjectIdentifier ??
-                selectedDocId,
-            ),
-            sublabel: [
-              selectedRow.speciesName,
-              selectedRow.strainName,
-              selectedRow.biologicalSexName,
-            ]
-              .filter((v) => v && String(v).trim() !== '' && v !== '—')
-              .join(' · ') || undefined,
-          }}
-          actions={buildActions(selectedDocId)}
-          onClear={clearSelection}
         />
       )}
     </div>

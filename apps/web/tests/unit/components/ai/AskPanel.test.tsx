@@ -31,10 +31,48 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/my/workspace/ds-test/overview',
 }));
 
-// Stub AskShell — we test panel chrome, not the chat surface.
+// Stub AskShell — we test panel chrome, not the chat surface. The
+// mock captures the `context` prop so the F7 enrichment tests can
+// assert what AskPanel forwarded.
+const askShellPropsLog: Array<{ context: unknown }> = [];
 vi.mock('@/components/ai/AskShell', () => ({
-  AskShell: () => <div data-testid="ask-shell-mock">Ask shell</div>,
+  AskShell: (props: { context?: unknown }) => {
+    askShellPropsLog.push({ context: props.context });
+    return <div data-testid="ask-shell-mock">Ask shell</div>;
+  },
 }));
+
+// Phase F (W7 fix): AskPanel now calls useWorkspaceSelection to
+// enrich context with the live selection. The hook is mocked so the
+// panel tests stay focused on chrome + forwarding (the hook has its
+// own unit test).
+let workspaceSelectionStub = {
+  subject: null as string | null,
+  session: null as string | null,
+  probe: null as string | null,
+  stimulus: null as string | null,
+  unit: null as string | null,
+};
+
+vi.mock('@/lib/workspace/use-workspace-selection', async () => {
+  const actual = await vi.importActual<
+    typeof import('@/lib/workspace/use-workspace-selection')
+  >('@/lib/workspace/use-workspace-selection');
+  return {
+    ...actual,
+    useWorkspaceSelection: () => ({
+      selection: workspaceSelectionStub,
+      hasAnySelection: Object.values(workspaceSelectionStub).some(
+        (v) => v !== null,
+      ),
+      pickerTab: 'subjects' as const,
+      set: vi.fn(),
+      clear: vi.fn(),
+      clearOne: vi.fn(),
+      setPickerTab: vi.fn(),
+    }),
+  };
+});
 
 import { AskPanel } from '@/components/ai/AskPanel';
 
@@ -47,6 +85,14 @@ function setMode(mode: string | null) {
 beforeEach(() => {
   replaceMock.mockReset();
   searchParamsStub = new URLSearchParams();
+  askShellPropsLog.length = 0;
+  workspaceSelectionStub = {
+    subject: null,
+    session: null,
+    probe: null,
+    stimulus: null,
+    unit: null,
+  };
 });
 
 afterEach(() => {
@@ -165,5 +211,104 @@ describe('AskPanel — close interactions', () => {
     render(<AskPanel />);
     fireEvent.keyDown(document, { key: 'Escape' });
     expect(replaceMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('AskPanel — F7 context enrichment from workspace selection', () => {
+  // The point of these tests: AskPanel reads useWorkspaceSelection
+  // and merges live selection into the context it passes to AskShell.
+  // The forwarded context is what `DefaultChatTransport.body.context`
+  // posts to /api/ask. Pre-fix (W7 audit), AskShell underscored its
+  // context prop — these tests prevent regression.
+
+  it('forwards no selection context when nothing is picked', () => {
+    setMode('drawer');
+    render(
+      <AskPanel
+        context={{ datasetId: 'abc', datasetName: 'Test dataset' }}
+      />,
+    );
+    const last = askShellPropsLog[askShellPropsLog.length - 1]!;
+    expect(last.context).toMatchObject({
+      datasetId: 'abc',
+      datasetName: 'Test dataset',
+    });
+    expect(last.context).not.toHaveProperty('selectedSubjectId');
+    expect(last.context).not.toHaveProperty('selectedSessionId');
+  });
+
+  it('forwards selectedSubjectId when subject is picked', () => {
+    workspaceSelectionStub = {
+      ...workspaceSelectionStub,
+      subject: '4126945ae99b0be0_40c293809848f24d',
+    };
+    setMode('drawer');
+    render(
+      <AskPanel
+        context={{ datasetId: 'abc', datasetName: 'Test dataset' }}
+      />,
+    );
+    const last = askShellPropsLog[askShellPropsLog.length - 1]!;
+    expect(last.context).toMatchObject({
+      selectedSubjectId: '4126945ae99b0be0_40c293809848f24d',
+    });
+  });
+
+  it('forwards all selection keys when all are set', () => {
+    workspaceSelectionStub = {
+      subject: 'sub-1',
+      session: 'sess-1',
+      probe: 'probe-1',
+      stimulus: 'stim-1',
+      unit: 'unit-1',
+    };
+    setMode('drawer');
+    render(<AskPanel context={{ datasetId: 'abc' }} />);
+    const last = askShellPropsLog[askShellPropsLog.length - 1]!;
+    expect(last.context).toMatchObject({
+      datasetId: 'abc',
+      selectedSubjectId: 'sub-1',
+      selectedSessionId: 'sess-1',
+      selectedProbeId: 'probe-1',
+      selectedStimulusId: 'stim-1',
+      selectedUnitId: 'unit-1',
+    });
+  });
+
+  it('preserves the baseline context when no selection is set', () => {
+    setMode('drawer');
+    render(
+      <AskPanel context={{ datasetId: 'abc', datasetName: 'Hello' }} />,
+    );
+    const last = askShellPropsLog[askShellPropsLog.length - 1]!;
+    expect(last.context).toMatchObject({
+      datasetId: 'abc',
+      datasetName: 'Hello',
+    });
+  });
+
+  it('omits keys whose selection is null (no undefined leaking through)', () => {
+    workspaceSelectionStub = {
+      ...workspaceSelectionStub,
+      subject: 'sub-1',
+      // session/probe/stimulus/unit remain null
+    };
+    setMode('drawer');
+    render(<AskPanel context={{ datasetId: 'abc' }} />);
+    const last = askShellPropsLog[askShellPropsLog.length - 1]! as {
+      context: Record<string, unknown>;
+    };
+    expect(last.context.selectedSubjectId).toBe('sub-1');
+    expect('selectedSessionId' in last.context).toBe(false);
+    expect('selectedProbeId' in last.context).toBe(false);
+    expect('selectedStimulusId' in last.context).toBe(false);
+    expect('selectedUnitId' in last.context).toBe(false);
+  });
+
+  it('returns undefined context when no baseline and no selection', () => {
+    setMode('drawer');
+    render(<AskPanel />);
+    const last = askShellPropsLog[askShellPropsLog.length - 1]!;
+    expect(last.context).toBeUndefined();
   });
 });

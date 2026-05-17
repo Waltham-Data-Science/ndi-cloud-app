@@ -1,16 +1,26 @@
 /**
  * SignalViewerPanel — form-driven embed of SignalChart.
  *
- * Pinned behaviors:
+ * Pinned behaviors (pre-canvas-redesign):
  *   - Form renders, no auto-fetch, SignalChart NOT mounted before Run
  *   - Run with empty docId → inline validation error, SignalChart NOT mounted
  *   - Run with malformed docId → inline validation error, no mount
  *   - Run with valid inputs → SignalChart mounts with the right payload
  *   - Re-Run with different docId → SignalChart remounts (key changes)
  *   - Show Code is hidden before first run, visible after
+ *
+ * Selection wiring (one-canvas redesign 2026-05-16):
+ *   - Mounts with selection.session pre-fills the docId field
+ *   - "Auto from selection" hint shows while pre-filled
+ *   - Auto-runs after ~400ms debounce when context is set
+ *   - Manual edit hides the hint + suppresses further auto-runs
+ *
+ * `useWorkspaceSelection` is mocked module-wide so each test can swap
+ * the selection state; the default stub returns all-null (no
+ * selection). The hook's shape mirrors WorkspaceSelectionState.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
@@ -45,6 +55,38 @@ vi.mock('@/components/ai/CodeExportButton', () => ({
   ),
 }));
 
+// Mockable selection — let each test override before render(). Default
+// = all-null so the panel renders like the pre-canvas form.
+const setMock = vi.fn();
+const clearMock = vi.fn();
+const clearOneMock = vi.fn();
+const setPickerTabMock = vi.fn();
+let selectionStub: {
+  subject: string | null;
+  session: string | null;
+  probe: string | null;
+  stimulus: string | null;
+  unit: string | null;
+} = {
+  subject: null,
+  session: null,
+  probe: null,
+  stimulus: null,
+  unit: null,
+};
+
+vi.mock('@/lib/workspace/use-workspace-selection', () => ({
+  useWorkspaceSelection: () => ({
+    selection: selectionStub,
+    set: setMock,
+    clear: clearMock,
+    clearOne: clearOneMock,
+    pickerTab: 'subjects',
+    setPickerTab: setPickerTabMock,
+    hasAnySelection: Object.values(selectionStub).some((v) => v !== null),
+  }),
+}));
+
 import { SignalViewerPanel } from '@/components/workspace/SignalViewerPanel';
 
 function Wrapper({ children }: { children: ReactNode }) {
@@ -55,13 +97,23 @@ function Wrapper({ children }: { children: ReactNode }) {
 }
 
 const VALID_DOC_ID = '68d6e54703a03f5cfdac8eff';
+const VALID_DOC_ID_2 = '68d6e54703a03f5cfdac8f00';
 
 beforeEach(() => {
   vi.clearAllMocks();
+  vi.useRealTimers();
+  selectionStub = {
+    subject: null,
+    session: null,
+    probe: null,
+    stimulus: null,
+    unit: null,
+  };
 });
 
 afterEach(() => {
   vi.clearAllMocks();
+  vi.useRealTimers();
 });
 
 describe('SignalViewerPanel', () => {
@@ -76,6 +128,8 @@ describe('SignalViewerPanel', () => {
     expect(screen.getByLabelText(/downsample/i)).toBeInTheDocument();
     expect(screen.queryByTestId('signal-chart-mock')).not.toBeInTheDocument();
     expect(screen.queryByTestId('code-export-mock')).not.toBeInTheDocument();
+    // Empty selection → no auto-fill hint
+    expect(screen.queryByTestId('signal-viewer-auto-hint')).not.toBeInTheDocument();
   });
 
   it('blocks Run with an empty docId and surfaces an inline validation error', async () => {
@@ -166,5 +220,130 @@ describe('SignalViewerPanel', () => {
     const exportBtn = screen.getByTestId('code-export-mock');
     expect(exportBtn).toHaveAttribute('data-tool', 'fetch_signal');
     expect(exportBtn).toHaveAttribute('data-docid', VALID_DOC_ID);
+  });
+});
+
+describe('SignalViewerPanel — selection auto-fill', () => {
+  it('pre-fills the docId from selection.session on mount', () => {
+    selectionStub = { ...selectionStub, session: VALID_DOC_ID };
+
+    render(
+      <Wrapper>
+        <SignalViewerPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+
+    const input = screen.getByLabelText(/document id/i) as HTMLInputElement;
+    expect(input.value).toBe(VALID_DOC_ID);
+    expect(screen.getByTestId('signal-viewer-auto-hint')).toBeInTheDocument();
+  });
+
+  it('auto-runs after the debounce when selection.session is set', async () => {
+    // Real timers — keeps fake-timer interactions out of jsdom +
+    // react-query mutation microtask paths. 400ms is fast enough to
+    // wait through with a generous slack.
+    selectionStub = { ...selectionStub, session: VALID_DOC_ID };
+
+    render(
+      <Wrapper>
+        <SignalViewerPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+
+    // Pre-debounce: chart not mounted.
+    expect(screen.queryByTestId('signal-chart-mock')).not.toBeInTheDocument();
+
+    await waitFor(
+      () => {
+        expect(screen.getByTestId('signal-chart-mock')).toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
+    const chart = screen.getByTestId('signal-chart-mock');
+    expect(chart).toHaveAttribute('data-doc', VALID_DOC_ID);
+  });
+
+  it('hides the auto-fill hint as soon as the user edits the docId', async () => {
+    const user = userEvent.setup();
+    selectionStub = { ...selectionStub, session: VALID_DOC_ID };
+
+    render(
+      <Wrapper>
+        <SignalViewerPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+
+    expect(screen.getByTestId('signal-viewer-auto-hint')).toBeInTheDocument();
+
+    // Edit the field — a single keystroke flips the auto-fill flag off.
+    await user.type(screen.getByLabelText(/document id/i), 'x');
+
+    expect(screen.queryByTestId('signal-viewer-auto-hint')).not.toBeInTheDocument();
+  });
+
+  it('does not re-run when the user manually edits after auto-fill', async () => {
+    // Start with no selection so the panel mounts without auto-running.
+    render(
+      <Wrapper>
+        <SignalViewerPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+
+    // User types a non-hex value — this flips the auto-fill flag off
+    // and (because the value isn't a valid 24-char hex) blocks any
+    // auto-run path even if the flag were on.
+    const user = userEvent.setup();
+    await user.type(screen.getByLabelText(/document id/i), 'short');
+
+    // No selection was ever set, so the chart must not have mounted.
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    expect(screen.queryByTestId('signal-chart-mock')).not.toBeInTheDocument();
+  });
+
+  it('preserves a manually-typed value when selection later goes to null', () => {
+    selectionStub = { ...selectionStub, session: VALID_DOC_ID };
+
+    const { rerender } = render(
+      <Wrapper>
+        <SignalViewerPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+
+    const input = screen.getByLabelText(/document id/i) as HTMLInputElement;
+    expect(input.value).toBe(VALID_DOC_ID);
+
+    // Selection clears — the input must retain its value (no blank).
+    selectionStub = { ...selectionStub, session: null };
+    rerender(
+      <Wrapper>
+        <SignalViewerPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+
+    const inputAfter = screen.getByLabelText(/document id/i) as HTMLInputElement;
+    expect(inputAfter.value).toBe(VALID_DOC_ID);
+  });
+
+  it('seeds a fresh selection.session value into the form when it arrives later', () => {
+    const { rerender } = render(
+      <Wrapper>
+        <SignalViewerPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+
+    const inputBefore = screen.getByLabelText(/document id/i) as HTMLInputElement;
+    expect(inputBefore.value).toBe('');
+
+    selectionStub = { ...selectionStub, session: VALID_DOC_ID_2 };
+
+    rerender(
+      <Wrapper>
+        <SignalViewerPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+
+    const inputAfter = screen.getByLabelText(/document id/i) as HTMLInputElement;
+    expect(inputAfter.value).toBe(VALID_DOC_ID_2);
+    expect(screen.getByTestId('signal-viewer-auto-hint')).toBeInTheDocument();
   });
 });

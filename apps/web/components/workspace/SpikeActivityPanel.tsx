@@ -14,9 +14,24 @@
  * `<h3>`) and a raw `<button>` styled with literal Tailwind class
  * strings, breaking heading-level outline and visual consistency
  * with the other 6 panels.
+ *
+ * Selection wiring (one-canvas redesign 2026-05-16): the unitDocId
+ * form field is auto-filled from `useWorkspaceSelection().unit`. When
+ * the unit dimension is set and the form is in its auto-filled state,
+ * the panel debounces ~400ms and auto-runs. Manual edits to the unit
+ * field drop the auto-fill flag and suppress further auto-runs. The
+ * other fields (time window, max units, kind radio) are tuning knobs
+ * and don't influence auto-fill state.
  */
 import { useMutation } from '@tanstack/react-query';
-import { useCallback, useId, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Activity } from 'lucide-react';
 
 import { IsiHistogram } from '@/components/ndi/charts/IsiHistogram';
@@ -27,6 +42,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ApiError, apiFetch } from '@/lib/api/client';
+import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 import type {
   FetchSpikeSummaryToolResult,
   IsiHistogramChartPayload,
@@ -56,8 +72,7 @@ interface RequestBody {
   maxUnits?: number;
 }
 
-const DEFAULT_FORM: FormState = {
-  unitDocId: '',
+const DEFAULT_FORM_BASE: Omit<FormState, 'unitDocId'> = {
   unitNameMatch: '',
   t0: '',
   t1: '',
@@ -66,6 +81,7 @@ const DEFAULT_FORM: FormState = {
 };
 
 const MAX_UNITS_HARD = 50;
+const HEX_24 = /^[0-9a-fA-F]{24}$/;
 
 // Tool-result envelope OR error envelope — the workspace endpoint
 // returns both shapes under a 200 response. `ToolError` shape is
@@ -130,8 +146,16 @@ function buildRequestBody(form: FormState): RequestBody | { error: string } {
 }
 
 export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
-  const [form, setForm] = useState<FormState>(DEFAULT_FORM);
+  const { selection } = useWorkspaceSelection();
+
+  const [form, setForm] = useState<FormState>({
+    ...DEFAULT_FORM_BASE,
+    unitDocId: selection.unit ?? '',
+  });
   const [formError, setFormError] = useState<string | null>(null);
+  const [isAutoFilled, setIsAutoFilled] = useState<boolean>(
+    selection.unit !== null,
+  );
   const headingId = useId();
 
   const mutation = useMutation<EndpointResponse, Error, RequestBody>({
@@ -141,6 +165,24 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
         { method: 'POST', body },
       ),
   });
+
+  // Selection-bar wiring: pull updates into the form when a unit gets
+  // selected. Never blanks the field on a selection clear — preserves
+  // any manually-typed value.
+  //
+  // set-state-in-effect disable: selection is external React state we
+  // bridge into local form state the user can also edit. Same pattern
+  // as the QueryBuilder URL/seed-hydration carve-out.
+  /* eslint-disable react-hooks/set-state-in-effect -- selection-bar bridge to local form state */
+  useEffect(() => {
+    if (selection.unit) {
+      setForm((f) =>
+        f.unitDocId === selection.unit ? f : { ...f, unitDocId: selection.unit ?? '' },
+      );
+      setIsAutoFilled(true);
+    }
+  }, [selection.unit]);
+  /* eslint-enable react-hooks/set-state-in-effect */
 
   const handleRun = useCallback(() => {
     setFormError(null);
@@ -153,6 +195,29 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
   }, [form, mutation]);
   // NB: stale-state reset on dataset change happens at the parent
   // (`workspace-client.tsx` keys the panel stack by `datasetId`).
+
+  // Auto-run when the unit is auto-filled + valid. Debounced 400ms.
+  // Uses a ref-tracked "last id" so we don't fire twice for the same
+  // selection — important under React 19 effect re-runs.
+  const lastAutoRunRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isAutoFilled) return;
+    const unit = form.unitDocId.trim();
+    if (!HEX_24.test(unit)) return;
+    if (lastAutoRunRef.current === unit) return;
+    const handle = setTimeout(() => {
+      lastAutoRunRef.current = unit;
+      handleRun();
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [isAutoFilled, form.unitDocId, handleRun]);
+
+  function onUnitChange(value: string) {
+    setForm((f) => ({ ...f, unitDocId: value }));
+    if (isAutoFilled && value !== selection.unit) {
+      setIsAutoFilled(false);
+    }
+  }
 
   // Pull the two chart payloads out of the latest response. The
   // backend returns `chart_payloads: SpikeChartPayload[]` with 0, 1,
@@ -185,6 +250,7 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
   const isRunning = mutation.isPending;
   const hasSuccessRun =
     !!mutation.data && !isErrorEnvelope(mutation.data) && !mutation.isPending;
+  const showAutoHint = isAutoFilled && !!form.unitDocId;
 
   return (
     <PanelCard
@@ -218,8 +284,18 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
         </>
       }
     >
+      {showAutoHint && (
+        <span
+          className="inline-block text-[10.5px] tracking-eyebrow uppercase text-brand-blue/80 font-bold"
+          data-testid="spike-activity-auto-hint"
+        >
+          Auto from selection
+        </span>
+      )}
+
       <ParameterForm
         form={form}
+        onUnitChange={onUnitChange}
         onChange={setForm}
         disabled={isRunning}
         formError={formError}
@@ -254,6 +330,7 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
 
 interface ParameterFormProps {
   form: FormState;
+  onUnitChange: (value: string) => void;
   onChange: (next: FormState) => void;
   disabled: boolean;
   formError: string | null;
@@ -262,6 +339,7 @@ interface ParameterFormProps {
 
 function ParameterForm({
   form,
+  onUnitChange,
   onChange,
   disabled,
   formError,
@@ -285,21 +363,33 @@ function ParameterForm({
       <fieldset className="space-y-3" disabled={disabled}>
         <legend className="sr-only">Spike-summary parameters</legend>
 
-        <TextField
-          label="Unit document ID"
-          hint="24-character hex id — fetches a single vmspikesummary document."
-          value={form.unitDocId}
-          onChange={(v) => set('unitDocId', v)}
-          placeholder="optional"
-        />
+        {/* The unit document ID lives under "Advanced — manual override"
+            because the primary intake is the selection-bar auto-fill.
+            Keep accessible (debugging, power users) but don't dominate
+            the primary attention. The other tuning knobs (window,
+            max units, kind) remain prominent. */}
+        <details className="rounded-md border border-border-subtle bg-bg-canvas px-3 py-2">
+          <summary className="cursor-pointer text-[12.5px] font-medium text-fg-secondary">
+            Advanced — manual override
+          </summary>
+          <div className="mt-3 space-y-3">
+            <TextField
+              label="Unit document ID"
+              hint="24-character hex id — fetches a single vmspikesummary document."
+              value={form.unitDocId}
+              onChange={onUnitChange}
+              placeholder="optional"
+            />
 
-        <TextField
-          label="Unit name match"
-          hint='Case-insensitive substring on unit names (e.g. "Saline", "BNST").'
-          value={form.unitNameMatch}
-          onChange={(v) => set('unitNameMatch', v)}
-          placeholder="optional"
-        />
+            <TextField
+              label="Unit name match"
+              hint='Case-insensitive substring on unit names (e.g. "Saline", "BNST").'
+              value={form.unitNameMatch}
+              onChange={(v) => set('unitNameMatch', v)}
+              placeholder="optional"
+            />
+          </div>
+        </details>
 
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <TextField

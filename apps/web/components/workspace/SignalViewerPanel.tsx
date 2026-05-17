@@ -26,18 +26,27 @@
  *   - Same auth-scoped apiFetch (works for both private + public datasets)
  *   - Zero net new chart code; only the parameter form is new
  *
- * Future enhancement: replace the freeform docId text input with a
- * dropdown populated from `query_documents(class=element_epoch)` or
- * `daqreader_*_epochdata_ingested`. For V1 the freeform input + a
- * "Browse documents →" deeplink to the Document Explorer is enough.
+ * Selection wiring (one-canvas redesign 2026-05-16): the docId form
+ * field is auto-filled from `useWorkspaceSelection().session` because
+ * the signal trace consumes element_epoch / epochdata documents —
+ * those live under the "session" dimension in the multi-key selection
+ * model (see `apps/web/docs/design/2026-05-16-workspace-canvas-redesign.md`).
+ * When the form is in its auto-filled state and the selection becomes
+ * complete, we debounce ~400ms and auto-run. Manual edits flip the
+ * `isAutoFilled` flag and suppress further auto-runs so the user's
+ * typed value isn't clobbered.
+ *
+ * The freeform manual docId/file/title inputs live under a collapsed
+ * `<details>` block — they remain accessible for power users + debugging
+ * but no longer dominate the panel's primary attention.
  */
 import { Waves } from 'lucide-react';
-import Link from 'next/link';
-import { useState, type FormEvent } from 'react';
+import { useEffect, useRef, useState, type FormEvent } from 'react';
 
 import { SignalChart } from '@/components/ndi/charts/SignalChart';
 import { Field } from '@/components/marketing/AuthForm';
 import { MarketingButton } from '@/components/marketing/Button';
+import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 
 import { PanelCard } from './PanelCard';
 import { ShowCodeButton } from './ShowCodeButton';
@@ -62,8 +71,16 @@ function parseFloatOrUndefined(v: string): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
+const HEX_24 = /^[0-9a-fA-F]{24}$/;
+
 export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
-  const [docId, setDocId] = useState('');
+  const { selection } = useWorkspaceSelection();
+
+  // Seed from the selection bar when present. We DON'T clear the field
+  // when selection goes back to null — the user might have typed a
+  // value manually and shouldn't lose it just because the selection
+  // bar got cleared elsewhere.
+  const [docId, setDocId] = useState<string>(selection.session ?? '');
   const [downsample, setDownsample] = useState('2000');
   const [t0, setT0] = useState('');
   const [t1, setT1] = useState('');
@@ -71,11 +88,69 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
   const [title, setTitle] = useState('');
   const [error, setError] = useState<string | null>(null);
 
+  // Tracks whether the docId currently in the form came from the
+  // selection bar (true) vs. typed by the user (false). The hint pill
+  // and the auto-run debouncer both gate on this — when the user has
+  // edited the field we never auto-run or claim "auto from selection."
+  const [isAutoFilled, setIsAutoFilled] = useState<boolean>(
+    selection.session !== null,
+  );
+
   // The CURRENTLY-RENDERED chart payload. When the user clicks "Run",
   // we stage form values into this state, which re-keys SignalChart
   // and triggers its own apiFetch. Decoupling form state from chart
   // payload means partial-typed values don't re-fetch on every keystroke.
   const [payload, setPayload] = useState<ChartPayload | null>(null);
+
+  // Selection-change effect: when a new session id arrives from the
+  // selection bar (e.g. user clicked a row in the picker rail), pre-fill
+  // the docId and mark the form as auto-filled. Never blank the field —
+  // preserving the user's manual value is part of the contract.
+  //
+  // The set-state-in-effect rule's recommended alternatives (external
+  // store, render-time derivation) don't fit here — the selection bar
+  // is external React state shared via a hook, and we need to bridge it
+  // into local form state that the user can also edit independently.
+  // Matches the QueryBuilder URL/seed-hydration pattern in this repo.
+  /* eslint-disable react-hooks/set-state-in-effect -- selection-bar bridge to local form state */
+  useEffect(() => {
+    if (selection.session) {
+      setDocId(selection.session);
+      setIsAutoFilled(true);
+    }
+  }, [selection.session]);
+  /* eslint-enable react-hooks/set-state-in-effect */
+
+  // Auto-run debouncer. Triggers Run when the docId is auto-filled and
+  // valid. 400ms is enough to suppress rapid re-fires during a cascade
+  // of selection writes (e.g. when the user clicks through several
+  // rows quickly) but short enough to feel instant on a settle.
+  //
+  // Uses a ref to track the last-run id so we don't fire twice for the
+  // same auto-fill — important because React 19 may re-run the effect
+  // for non-functional reasons.
+  const lastAutoRunRef = useRef<string | null>(null);
+  useEffect(() => {
+    if (!isAutoFilled) return;
+    const id = docId.trim();
+    if (!HEX_24.test(id)) return;
+    if (lastAutoRunRef.current === id) return;
+    const ds = parseFloatOrUndefined(downsample) ?? 2000;
+    const handle = setTimeout(() => {
+      lastAutoRunRef.current = id;
+      setError(null);
+      setPayload({
+        datasetId,
+        docId: id,
+        downsample: ds,
+        t0: parseFloatOrUndefined(t0),
+        t1: parseFloatOrUndefined(t1),
+        file: file.trim() || undefined,
+        title: title.trim() || undefined,
+      });
+    }, 400);
+    return () => clearTimeout(handle);
+  }, [isAutoFilled, docId, downsample, t0, t1, file, title, datasetId]);
 
   function handleRun(e: FormEvent) {
     e.preventDefault();
@@ -85,7 +160,7 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
       setError('Document ID is required. Paste a 24-char hex ID from the Document Explorer.');
       return;
     }
-    if (!/^[0-9a-fA-F]{24}$/.test(id)) {
+    if (!HEX_24.test(id)) {
       setError('Document ID must be a 24-char hex string.');
       return;
     }
@@ -94,6 +169,9 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
       setError('Downsample must be between 100 and 5000 points per channel.');
       return;
     }
+    // Manual Run from the form button counts as the user committing
+    // to the value — suppress further auto-runs against the same id.
+    lastAutoRunRef.current = id;
     setPayload({
       datasetId,
       docId: id,
@@ -103,6 +181,16 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
       file: file.trim() || undefined,
       title: title.trim() || undefined,
     });
+  }
+
+  // Editing the docId by hand flips the auto-fill flag off — the hint
+  // pill disappears and we stop auto-running. Other fields don't gate
+  // auto-run, so editing them doesn't flip the flag.
+  function onDocIdChange(value: string) {
+    setDocId(value);
+    if (isAutoFilled && value !== selection.session) {
+      setIsAutoFilled(false);
+    }
   }
 
   return (
@@ -127,25 +215,52 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
             args={payload ?? { datasetId }}
             disabled={payload === null}
           />
-          <Link
-            href={`/datasets/${datasetId}/documents?class=element_epoch`}
-            className="ml-auto text-[12.5px] text-brand-blue hover:underline"
-          >
-            Browse documents to find an ID →
-          </Link>
         </>
       }
     >
+      {isAutoFilled && docId && (
+        <span
+          className="inline-block text-[10.5px] tracking-eyebrow uppercase text-brand-blue/80 font-bold"
+          data-testid="signal-viewer-auto-hint"
+        >
+          Auto from selection
+        </span>
+      )}
+
       <form onSubmit={handleRun} noValidate className="space-y-3">
-        <Field
-          label="Document ID"
-          name="docId"
-          value={docId}
-          onChange={(e) => setDocId(e.target.value)}
-          placeholder="e.g. 68d6e54703a03f5cfdac8eff"
-          hint="A 24-char hex NDI document ID. Common classes: element_epoch, daqreader_*_epochdata_ingested."
-          required
-        />
+        <details className="rounded-md border border-border-subtle bg-bg-canvas px-3 py-2">
+          <summary className="cursor-pointer text-[12.5px] font-medium text-fg-secondary">
+            Advanced — manual override
+          </summary>
+          <div className="mt-3 space-y-3">
+            <Field
+              label="Document ID"
+              name="docId"
+              value={docId}
+              onChange={(e) => onDocIdChange(e.target.value)}
+              placeholder="e.g. 68d6e54703a03f5cfdac8eff"
+              hint="A 24-char hex NDI document ID. Common classes: element_epoch, daqreader_*_epochdata_ingested."
+              required
+            />
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <Field
+                label="File (optional)"
+                name="file"
+                value={file}
+                onChange={(e) => setFile(e.target.value)}
+                placeholder="e.g. ai_group1_seg.nbf_1"
+                hint="For multi-file binary documents only."
+              />
+              <Field
+                label="Chart title (optional)"
+                name="title"
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                placeholder="e.g. Patch-Vm sweep 5"
+              />
+            </div>
+          </div>
+        </details>
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Field
             label="Downsample"
@@ -170,23 +285,6 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
             value={t1}
             onChange={(e) => setT1(e.target.value)}
             hint="Window end. Leave blank for epoch end."
-          />
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <Field
-            label="File (optional)"
-            name="file"
-            value={file}
-            onChange={(e) => setFile(e.target.value)}
-            placeholder="e.g. ai_group1_seg.nbf_1"
-            hint="For multi-file binary documents only."
-          />
-          <Field
-            label="Chart title (optional)"
-            name="title"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            placeholder="e.g. Patch-Vm sweep 5"
           />
         </div>
       </form>

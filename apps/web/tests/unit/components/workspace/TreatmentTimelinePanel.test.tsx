@@ -4,6 +4,11 @@
  * ordinal), the empty-hint branch, the inline error branch, and the
  * Show-Code button's appearance after a successful Run.
  *
+ * One-canvas redesign (2026-05-16): the panel now AUTO-RUNS on mount
+ * with an empty body (backend picks defaults). Tests that need to
+ * isolate manual-Run behavior assert against the SECOND call, not the
+ * first.
+ *
  * Both GanttChart and CodeExportButton are mocked so this test stays
  * focused on the panel's orchestration — those components carry their
  * own dedicated test suites (GanttChart isn't directly unit tested today
@@ -121,6 +126,9 @@ const emptyResponse = {
 describe('<TreatmentTimelinePanel/>', () => {
   beforeEach(() => {
     mockedApiFetch.mockReset();
+    // Default to a non-resolving mock so the auto-run-on-mount sits
+    // pending and doesn't interfere with tests that don't care about it.
+    mockedApiFetch.mockImplementation(() => new Promise(() => {}));
   });
 
   afterEach(() => {
@@ -132,22 +140,46 @@ describe('<TreatmentTimelinePanel/>', () => {
     expect(screen.getByText(/Treatment timeline/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Title/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/Max subjects/i)).toBeInTheDocument();
-    expect(screen.getByTestId('treatment-timeline-run')).toHaveTextContent(/Run/i);
+    expect(screen.getByTestId('treatment-timeline-run')).toHaveTextContent(/Running/i);
+  });
+
+  it('auto-runs on mount with an empty body (backend picks defaults)', async () => {
+    mockedApiFetch.mockReset();
+    mockedApiFetch.mockResolvedValueOnce(explicitResponse);
+    render(<TreatmentTimelinePanel datasetId="ds1" />, { wrapper: withClient() });
+
+    await waitFor(() => {
+      expect(mockedApiFetch).toHaveBeenCalledTimes(1);
+    });
+    expect(mockedApiFetch).toHaveBeenCalledWith(
+      '/api/datasets/ds1/treatment-timeline',
+      expect.objectContaining({
+        method: 'POST',
+        body: {},
+      }),
+    );
   });
 
   it('Run calls apiFetch with the right URL + body', async () => {
+    // First call is the auto-run on mount; second call is the manual Run.
+    mockedApiFetch.mockReset();
+    mockedApiFetch.mockResolvedValueOnce(explicitResponse);
     mockedApiFetch.mockResolvedValueOnce(explicitResponse);
     const user = userEvent.setup();
     render(<TreatmentTimelinePanel datasetId="ds1" />, { wrapper: withClient() });
+
+    await waitFor(() => {
+      expect(mockedApiFetch).toHaveBeenCalledTimes(1);
+    });
 
     await user.type(screen.getByLabelText(/Title/i), 'My chart');
     await user.type(screen.getByLabelText(/Max subjects/i), '10');
     await user.click(screen.getByTestId('treatment-timeline-run'));
 
     await waitFor(() => {
-      expect(mockedApiFetch).toHaveBeenCalledTimes(1);
+      expect(mockedApiFetch).toHaveBeenCalledTimes(2);
     });
-    expect(mockedApiFetch).toHaveBeenCalledWith(
+    expect(mockedApiFetch).toHaveBeenLastCalledWith(
       '/api/datasets/ds1/treatment-timeline',
       expect.objectContaining({
         method: 'POST',
@@ -157,10 +189,9 @@ describe('<TreatmentTimelinePanel/>', () => {
   });
 
   it('explicit timing: renders GanttChart with no warning text', async () => {
+    mockedApiFetch.mockReset();
     mockedApiFetch.mockResolvedValueOnce(explicitResponse);
-    const user = userEvent.setup();
     render(<TreatmentTimelinePanel datasetId="ds1" />, { wrapper: withClient() });
-    await user.click(screen.getByTestId('treatment-timeline-run'));
 
     await waitFor(() =>
       expect(screen.getByTestId('gantt-chart-mock')).toBeInTheDocument(),
@@ -176,10 +207,9 @@ describe('<TreatmentTimelinePanel/>', () => {
   });
 
   it('ordinal timing: renders GanttChart AND the order-not-time warning', async () => {
+    mockedApiFetch.mockReset();
     mockedApiFetch.mockResolvedValueOnce(ordinalResponse);
-    const user = userEvent.setup();
     render(<TreatmentTimelinePanel datasetId="ds1" />, { wrapper: withClient() });
-    await user.click(screen.getByTestId('treatment-timeline-run'));
 
     await waitFor(() =>
       expect(screen.getByTestId('gantt-chart-mock')).toBeInTheDocument(),
@@ -193,10 +223,9 @@ describe('<TreatmentTimelinePanel/>', () => {
   });
 
   it('empty items + empty_hint: surfaces the hint plainly, no chart', async () => {
+    mockedApiFetch.mockReset();
     mockedApiFetch.mockResolvedValueOnce(emptyResponse);
-    const user = userEvent.setup();
     render(<TreatmentTimelinePanel datasetId="ds1" />, { wrapper: withClient() });
-    await user.click(screen.getByTestId('treatment-timeline-run'));
 
     await waitFor(() =>
       expect(screen.getByTestId('treatment-timeline-empty')).toBeInTheDocument(),
@@ -209,10 +238,9 @@ describe('<TreatmentTimelinePanel/>', () => {
   });
 
   it('error: renders the inline error message', async () => {
+    mockedApiFetch.mockReset();
     mockedApiFetch.mockRejectedValueOnce(new Error('Dataset not found'));
-    const user = userEvent.setup();
     render(<TreatmentTimelinePanel datasetId="ds1" />, { wrapper: withClient() });
-    await user.click(screen.getByTestId('treatment-timeline-run'));
 
     await waitFor(() =>
       expect(screen.getByTestId('treatment-timeline-error')).toBeInTheDocument(),
@@ -223,14 +251,10 @@ describe('<TreatmentTimelinePanel/>', () => {
   });
 
   it('Show Code button appears after a successful Run', async () => {
+    mockedApiFetch.mockReset();
     mockedApiFetch.mockResolvedValueOnce(explicitResponse);
-    const user = userEvent.setup();
     render(<TreatmentTimelinePanel datasetId="ds1" />, { wrapper: withClient() });
 
-    // Before any Run, the Show-Code mock is absent.
-    expect(screen.queryByTestId('code-export-button-mock')).toBeNull();
-
-    await user.click(screen.getByTestId('treatment-timeline-run'));
     await waitFor(() =>
       expect(screen.getByTestId('code-export-button-mock')).toBeInTheDocument(),
     );

@@ -27,13 +27,15 @@
  * # Context prop
  *
  * Optional `context` carries workspace selection state (datasetId,
- * datasetName, selectedSubjectId, selectedSessionId). In v1 it is
- * ACCEPTED but NOT forwarded to `/api/ask` — the API endpoint already
- * receives dataset context from the chat tool responses themselves.
- * Wiring context-injection into the system prompt requires a matching
- * route change (and ideally a backend feature flag); deferred to a
- * Phase E follow-up. The prop is here so AskPanel can pass it without
- * a future signature change.
+ * datasetName, selection.subject / session / probe / stimulus / unit).
+ *
+ * Phase F (W7 fix from the 2026-05-16 audit): the context now IS
+ * forwarded to `/api/ask` via `DefaultChatTransport.body`. The route
+ * reads `body.context` and prepends a workspace-context system
+ * message so the model knows "the user is currently in dataset X
+ * looking at subject Y." Pre-fix, the prop was plumbed but
+ * underscored as unused — the AskPanel header line "Asking about:
+ * &lt;dataset name&gt;" was visual theater with zero API impact.
  *
  * # State management (unchanged from the pre-move version)
  *
@@ -58,15 +60,27 @@ import { useConversation } from '@/lib/ai/use-conversation';
 export interface AskShellContext {
   datasetId?: string;
   datasetName?: string;
+  /**
+   * The full 5-key selection from the workspace canvas, optional.
+   * Forwarded to `/api/ask` so the model knows which subject /
+   * session / probe / stimulus / unit the user is currently looking
+   * at when they ask a question. Absent → the chat falls back to
+   * dataset-only context.
+   */
   selectedSubjectId?: string;
   selectedSessionId?: string;
+  selectedProbeId?: string;
+  selectedStimulusId?: string;
+  selectedUnitId?: string;
 }
 
 export interface AskShellProps {
   /**
-   * Workspace context — accepted in v1 but not yet forwarded to the
-   * API. The prop is here so AskPanel can pass it through without a
-   * future signature change once backend context-injection lands.
+   * Workspace context. Forwarded to /api/ask via
+   * `DefaultChatTransport.body` so the server can prepend a
+   * workspace-context system message ("the user is in dataset X
+   * looking at subject Y"). Phase F (W7 fix) flips this from
+   * theater to wiring.
    */
   context?: AskShellContext;
   /**
@@ -90,7 +104,7 @@ export interface AskShellProps {
  *     with `messages: []`.
  */
 export function AskShell({
-  context: _context,
+  context,
   compact = false,
 }: AskShellProps = {}) {
   const {
@@ -133,6 +147,7 @@ export function AskShell({
       onNewConversation={startNewConversation}
       shareUrl={shareUrl}
       compact={compact}
+      context={context}
     />
   );
 }
@@ -144,6 +159,7 @@ type AskChatProps = {
   onNewConversation: () => void;
   shareUrl: string | null;
   compact: boolean;
+  context: AskShellContext | undefined;
 };
 
 function AskChat({
@@ -153,16 +169,31 @@ function AskChat({
   onNewConversation,
   shareUrl,
   compact,
+  context,
 }: AskChatProps) {
   const [input, setInput] = useState('');
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
   const [retryAt, setRetryAt] = useState<number | null>(null);
 
-  // Transport built once — DefaultChatTransport posts UIMessages to
-  // /api/ask and reads the AI SDK UI message stream back.
+  // Stringify context once per change so the transport rebuilds only
+  // when the user actually picks a different subject/session/etc.
+  // (URL state writes can fire several times per click; we don't want
+  // to thrash the transport.)
+  const contextKey = useMemo(() => JSON.stringify(context ?? null), [context]);
+
+  // Transport built per-context — DefaultChatTransport's `body`
+  // option is merged into every POST to /api/ask. The server reads
+  // `body.context` and prepends a workspace-context system message
+  // so the model knows what selection the user is asking from.
+  // Phase F (W7 audit fix): pre-fix, context was theatre only.
   const transport = useMemo(
-    () => new DefaultChatTransport({ api: '/api/ask' }),
-    [],
+    () =>
+      new DefaultChatTransport({
+        api: '/api/ask',
+        body: context ? { context } : undefined,
+      }),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [contextKey],
   );
 
   const { messages, sendMessage, status, stop } = useChat({

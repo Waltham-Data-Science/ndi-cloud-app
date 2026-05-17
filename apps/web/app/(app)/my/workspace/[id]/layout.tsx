@@ -1,34 +1,26 @@
 /**
- * Workspace layout — chrome for `/my/workspace/[id]/*` (Phase A).
+ * Workspace layout — chrome for `/my/workspace/[id]` (Phase F redesign).
  *
- * Mirrors `/datasets/[id]/layout.tsx`: thin server component, no
- * blocking awaits, wraps the children with a server-rendered hero +
- * client-rendered tab bar + client-side auth gate. The `loading.tsx`
- * Suspense fallback for each tab page paints the moment that page
- * starts to suspend, since the layout itself doesn't await any data.
+ * Pre-redesign this layout wrapped a 5-tab IA (Overview / Structure /
+ * Subjects / Sessions / Analyses). The Phase F redesign collapses
+ * the tabs into a single canvas (rendered by `page.tsx`), so this
+ * layout is now thinner — just the hero, the auth gate, and the
+ * AskPanel + keyboard shortcuts.
  *
- * Why the auth gate wraps only `children` (not hero + tabbar):
- *   - The hero pulls public dataset metadata via `safeFetchDataset` —
- *     the same data `/datasets/[id]` already exposes publicly, so
- *     showing it briefly to an unauthenticated visitor is fine.
- *   - The tab bar is just navigation chrome; no protected data.
- *   - Wrapping just the children means the hero + tabs stay paintable
- *     during auth resolve (no flash-to-skeleton-then-back).
+ * Why the auth gate wraps only `children` (not hero / AskPanel):
+ *   - The hero pulls public dataset metadata (`safeFetchDataset`),
+ *     the same data `/datasets/[id]` already serves anonymously.
+ *     Showing it briefly to an unauthenticated visitor is fine.
+ *   - The AskPanel is also workspace-level chrome that survives auth
+ *     resolve — its empty state handles the not-yet-signed-in case.
+ *   - The canvas (children) holds the workspace tables + analyses,
+ *     which need auth; the gate sits over those alone.
  *
- * Why `<div key={id}>` around the gate-wrapped children:
- *   - Some tabs (Analyses) host the 7 chart panels, each with its own
- *     form / mutation state. When the user navigates from
- *     `/my/workspace/A/analyses` to `/my/workspace/B/analyses` the
- *     URL params change but the layout (and therefore the page
- *     subtree) doesn't unmount by default — stale mutation state
- *     from dataset A would leak under dataset B's hero. Keying the
- *     wrapper by `id` forces a full subtree remount on cross-dataset
- *     navigation. Same pattern the pre-redesign `workspace-client.tsx`
- *     used; preserved here so the existing remount invariant holds.
- *
- * Hero is wrapped in `<Suspense>` so the tab bar + page can stream
- * independently — the hero awaits `safeFetchDataset` server-side but
- * doesn't block the rest of the layout.
+ * Why `<div key={id}>` around the gate-wrapped children: the canvas
+ * holds 6 panels each with its own form/mutation state. When the
+ * user navigates from `/my/workspace/A` → `/my/workspace/B` we want
+ * a full subtree remount so stale mutation state from A doesn't
+ * leak under B's hero. Keying the wrapper by `id` forces it.
  */
 import { Suspense } from 'react';
 
@@ -40,7 +32,6 @@ import {
   WorkspaceShell,
   WorkspaceShellSkeleton,
 } from '@/components/workspace/WorkspaceShell';
-import { WorkspaceTabs } from '@/components/workspace/WorkspaceTabs';
 import { safeFetchDataset } from '@/lib/api/datasets-server';
 import { cleanDatasetName } from '@/lib/format';
 
@@ -55,8 +46,8 @@ export default async function WorkspaceLayout({
 }: LayoutProps) {
   const { id } = await params;
 
-  // Pre-fetch the dataset name so AskPanel's context line ("Asking
-  // about: <name>") renders correctly on first paint. The same fetch
+  // Pre-fetch dataset name so AskPanel's context line ("Asking
+  // about: <name>") renders correctly on first paint. Same fetch
   // is cached for WorkspaceShell's render below (same RSC request).
   const datasetForContext = await safeFetchDataset(id).catch(() => null);
   const datasetName = datasetForContext
@@ -68,23 +59,22 @@ export default async function WorkspaceLayout({
       <Suspense fallback={<WorkspaceShellSkeleton />}>
         <WorkspaceShell datasetId={id} />
       </Suspense>
-      <WorkspaceTabs datasetId={id} />
       <div key={id}>
         <WorkspaceAuthGate datasetId={id}>{children}</WorkspaceAuthGate>
       </div>
 
       {/*
         AskPanel + Trigger + KeyboardShortcuts — workspace-level chat
-        affordance (Phase D). All three call `useSearchParams()` via
+        affordance. All three call `useSearchParams()` via
         `useAskPanelState`, so they MUST live inside a `<Suspense>`
-        boundary per the App Router's CSR-bailout rule for that hook.
-        Rendering them in a single shared Suspense keeps them out of
-        any potential bailout that would force the whole layout into
-        client-side rendering.
+        per the App Router's CSR-bailout rule for that hook. The
+        single shared Suspense keeps them out of any potential
+        bailout that would force the whole layout into client-side
+        rendering.
 
-        The Ask infra is mounted ONCE per workspace navigation (not
-        per tab). The panel's open/mode state lives in URL params so
-        navigating between tabs preserves the panel.
+        Phase F (W7 fix): AskPanel's `context` now carries selection
+        bar state in addition to dataset id/name — see the AskShell
+        refactor for how the chat request body picks this up.
       */}
       <Suspense fallback={null}>
         <AskPanel

@@ -147,7 +147,10 @@ describe('ElectrodePositionPanel', () => {
     // `probe_location` appears in multiple <code> spans, so assert
     // via getAllByText.
     expect(screen.getAllByText(/probe_location/).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Open Document Explorer/i)).toBeInTheDocument();
+    // Outbound Document Explorer link removed in the one-canvas
+    // redesign (2026-05-16) — the single escape lives in the picker
+    // rail footer now. Assert it's GONE.
+    expect(screen.queryByText(/Open Document Explorer/i)).not.toBeInTheDocument();
     expect(screen.queryByTestId('electrode-map-mock')).not.toBeInTheDocument();
     // Show Code button is hidden when there's nothing to export.
     expect(screen.queryByTestId('code-export-mock')).not.toBeInTheDocument();

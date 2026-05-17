@@ -4,6 +4,12 @@
  * and the Show-Code affordance. The chart components + the
  * CodeExportButton are mocked so the test exercises panel logic
  * (state, validation, mutation wiring) rather than chart internals.
+ *
+ * Selection wiring (one-canvas redesign 2026-05-16):
+ *   - unitDocId pre-fills from selection.unit on mount
+ *   - "Auto from selection" hint shows while pre-filled
+ *   - Auto-runs after ~400ms debounce when unit is set
+ *   - Manual edit of unit hides the hint + suppresses further auto-runs
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -67,8 +73,42 @@ vi.mock('@/components/ai/CodeExportButton', () => ({
   },
 }));
 
+// Mockable selection — default = all-null. Tests reassign to inject
+// unit context for the auto-fill suite.
+const setMock = vi.fn();
+const clearMock = vi.fn();
+const clearOneMock = vi.fn();
+const setPickerTabMock = vi.fn();
+let selectionStub: {
+  subject: string | null;
+  session: string | null;
+  probe: string | null;
+  stimulus: string | null;
+  unit: string | null;
+} = {
+  subject: null,
+  session: null,
+  probe: null,
+  stimulus: null,
+  unit: null,
+};
+
+vi.mock('@/lib/workspace/use-workspace-selection', () => ({
+  useWorkspaceSelection: () => ({
+    selection: selectionStub,
+    set: setMock,
+    clear: clearMock,
+    clearOne: clearOneMock,
+    pickerTab: 'subjects',
+    setPickerTab: setPickerTabMock,
+    hasAnySelection: Object.values(selectionStub).some((v) => v !== null),
+  }),
+}));
+
 import { SpikeActivityPanel } from '@/components/workspace/SpikeActivityPanel';
 import type { FetchSpikeSummaryToolResult } from '@/lib/ndi/tools/fetch-spike-summary';
+
+const VALID_UNIT_ID = 'b'.repeat(24);
 
 function renderPanel(datasetId = 'dataset123') {
   const client = new QueryClient({
@@ -150,10 +190,19 @@ describe('SpikeActivityPanel', () => {
     spikeRasterCalls.length = 0;
     isiHistogramCalls.length = 0;
     codeExportCalls.length = 0;
+    vi.useRealTimers();
+    selectionStub = {
+      subject: null,
+      session: null,
+      probe: null,
+      stimulus: null,
+      unit: null,
+    };
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   it('renders the parameter form on mount without auto-fetching', () => {
@@ -180,6 +229,8 @@ describe('SpikeActivityPanel', () => {
     expect(
       screen.queryByTestId('code-export-button-mock'),
     ).not.toBeInTheDocument();
+    // No selection → no auto-fill hint.
+    expect(screen.queryByTestId('spike-activity-auto-hint')).not.toBeInTheDocument();
   });
 
   it('Run button is enabled by default with the kind radio set, and submits with default values', async () => {
@@ -368,5 +419,70 @@ describe('SpikeActivityPanel', () => {
         }),
       ],
     });
+  });
+});
+
+describe('SpikeActivityPanel — selection auto-fill', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    spikeRasterCalls.length = 0;
+    isiHistogramCalls.length = 0;
+    codeExportCalls.length = 0;
+    vi.useRealTimers();
+    selectionStub = {
+      subject: null,
+      session: null,
+      probe: null,
+      stimulus: null,
+      unit: null,
+    };
+  });
+
+  it('pre-fills unitDocId from selection.unit on mount', () => {
+    selectionStub = { ...selectionStub, unit: VALID_UNIT_ID };
+
+    renderPanel();
+
+    const input = screen.getByLabelText('Unit document ID') as HTMLInputElement;
+    expect(input.value).toBe(VALID_UNIT_ID);
+    expect(screen.getByTestId('spike-activity-auto-hint')).toBeInTheDocument();
+  });
+
+  it('auto-runs after the debounce when selection.unit is set', async () => {
+    // Real timers (not fake) — see PsthPanel test note on react-query
+    // microtask interaction. 400ms debounce is short enough to wait.
+    apiFetchMock.mockResolvedValueOnce(makeBothResult());
+    selectionStub = { ...selectionStub, unit: VALID_UNIT_ID };
+
+    renderPanel('ds-auto');
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
+
+    await waitFor(
+      () => {
+        expect(apiFetchMock).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 2000 },
+    );
+    const [url, init] = apiFetchMock.mock.calls[0]!;
+    expect(url).toBe('/api/datasets/ds-auto/spike-summary');
+    expect(init).toMatchObject({
+      method: 'POST',
+      body: expect.objectContaining({ unitDocId: VALID_UNIT_ID }),
+    });
+  });
+
+  it('hides the auto-fill hint when the user edits the unit field', () => {
+    selectionStub = { ...selectionStub, unit: VALID_UNIT_ID };
+
+    renderPanel();
+
+    expect(screen.getByTestId('spike-activity-auto-hint')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText('Unit document ID'), {
+      target: { value: 'x' + VALID_UNIT_ID },
+    });
+
+    expect(screen.queryByTestId('spike-activity-auto-hint')).not.toBeInTheDocument();
   });
 });

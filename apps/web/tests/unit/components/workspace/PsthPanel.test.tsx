@@ -4,6 +4,13 @@
  * chart mounting, the error-kind surface, and Show-Code wiring.
  * PsthChart + CodeExportButton are mocked so the test exercises
  * panel logic rather than chart internals.
+ *
+ * Selection wiring (one-canvas redesign 2026-05-16):
+ *   - unitDocId pre-fills from selection.unit
+ *   - stimulusDocId pre-fills from selection.stimulus
+ *   - Auto-runs when BOTH dimensions are set + form is auto-filled
+ *   - "Auto from selection" hint is gated on both ids being auto-filled
+ *   - Manual edit to either id hides the hint
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
@@ -53,6 +60,38 @@ vi.mock('@/components/ai/CodeExportButton', () => ({
       </button>
     );
   },
+}));
+
+// Mockable selection — default = all-null. Tests reassign to inject
+// unit/stimulus context.
+const setMock = vi.fn();
+const clearMock = vi.fn();
+const clearOneMock = vi.fn();
+const setPickerTabMock = vi.fn();
+let selectionStub: {
+  subject: string | null;
+  session: string | null;
+  probe: string | null;
+  stimulus: string | null;
+  unit: string | null;
+} = {
+  subject: null,
+  session: null,
+  probe: null,
+  stimulus: null,
+  unit: null,
+};
+
+vi.mock('@/lib/workspace/use-workspace-selection', () => ({
+  useWorkspaceSelection: () => ({
+    selection: selectionStub,
+    set: setMock,
+    clear: clearMock,
+    clearOne: clearOneMock,
+    pickerTab: 'subjects',
+    setPickerTab: setPickerTabMock,
+    hasAnySelection: Object.values(selectionStub).some((v) => v !== null),
+  }),
 }));
 
 import { PsthPanel } from '@/components/workspace/PsthPanel';
@@ -123,10 +162,19 @@ describe('PsthPanel', () => {
     apiFetchMock.mockReset();
     psthChartCalls.length = 0;
     codeExportCalls.length = 0;
+    vi.useRealTimers();
+    selectionStub = {
+      subject: null,
+      session: null,
+      probe: null,
+      stimulus: null,
+      unit: null,
+    };
   });
 
   afterEach(() => {
     vi.clearAllMocks();
+    vi.useRealTimers();
   });
 
   it('renders the parameter form on mount without auto-fetching', () => {
@@ -144,6 +192,8 @@ describe('PsthPanel', () => {
     expect(
       screen.queryByTestId('code-export-button-mock'),
     ).not.toBeInTheDocument();
+    // No selection → no auto-fill hint.
+    expect(screen.queryByTestId('psth-auto-hint')).not.toBeInTheDocument();
   });
 
   it('blocks Run with empty unitDocId and surfaces an inline error', () => {
@@ -348,5 +398,106 @@ describe('PsthPanel', () => {
         }),
       ],
     });
+  });
+});
+
+describe('PsthPanel — selection auto-fill', () => {
+  beforeEach(() => {
+    apiFetchMock.mockReset();
+    psthChartCalls.length = 0;
+    codeExportCalls.length = 0;
+    vi.useRealTimers();
+    selectionStub = {
+      subject: null,
+      session: null,
+      probe: null,
+      stimulus: null,
+      unit: null,
+    };
+  });
+
+  it('pre-fills both ids from selection.unit + selection.stimulus on mount', () => {
+    selectionStub = {
+      ...selectionStub,
+      unit: VALID_UNIT_ID,
+      stimulus: VALID_STIM_ID,
+    };
+
+    renderPanel();
+
+    const unitInput = screen.getByLabelText(
+      /unit document id/i,
+    ) as HTMLInputElement;
+    const stimInput = screen.getByLabelText(
+      /stimulus document id/i,
+    ) as HTMLInputElement;
+    expect(unitInput.value).toBe(VALID_UNIT_ID);
+    expect(stimInput.value).toBe(VALID_STIM_ID);
+    expect(screen.getByTestId('psth-auto-hint')).toBeInTheDocument();
+  });
+
+  it('auto-runs after the debounce when BOTH dimensions are set', async () => {
+    // Real timers + a short sleep — fake timers interact badly with
+    // react-query's mutation chain (it queues microtasks the timer
+    // advance can't reach). The 400ms debounce is fast enough to
+    // wait through.
+    apiFetchMock.mockResolvedValueOnce(makeSuccessResult());
+    selectionStub = {
+      ...selectionStub,
+      unit: VALID_UNIT_ID,
+      stimulus: VALID_STIM_ID,
+    };
+
+    renderPanel('ds-auto');
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
+
+    await waitFor(
+      () => {
+        expect(apiFetchMock).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 2000 },
+    );
+    const [url, init] = apiFetchMock.mock.calls[0]!;
+    expect(url).toBe('/api/datasets/ds-auto/psth');
+    expect(init).toMatchObject({
+      method: 'POST',
+      body: expect.objectContaining({
+        unitDocId: VALID_UNIT_ID,
+        stimulusDocId: VALID_STIM_ID,
+      }),
+    });
+  });
+
+  it('does NOT auto-run when only ONE dimension is set', async () => {
+    selectionStub = { ...selectionStub, unit: VALID_UNIT_ID };
+
+    renderPanel();
+
+    // Wait twice the debounce + a generous slack to confirm no call
+    // ever happens. If the implementation regressed and started
+    // auto-running on a half-context, the apiFetch call would land
+    // by the 800ms mark.
+    await new Promise((resolve) => setTimeout(resolve, 800));
+
+    expect(apiFetchMock).not.toHaveBeenCalled();
+  });
+
+  it('hides the auto-fill hint when the user edits the unit field', () => {
+    selectionStub = {
+      ...selectionStub,
+      unit: VALID_UNIT_ID,
+      stimulus: VALID_STIM_ID,
+    };
+
+    renderPanel();
+
+    expect(screen.getByTestId('psth-auto-hint')).toBeInTheDocument();
+
+    fireEvent.change(screen.getByLabelText(/unit document id/i), {
+      target: { value: 'x' + VALID_UNIT_ID },
+    });
+
+    expect(screen.queryByTestId('psth-auto-hint')).not.toBeInTheDocument();
   });
 });
