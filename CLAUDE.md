@@ -65,18 +65,26 @@ If you ever find yourself about to operate on `main` or on production Vercel/Rai
 
 ### Where to read next (pick up cold)
 
-**🚨 IF YOU ARE THE POST-COMPACTION SESSION FROM 2026-05-17:** read this FIRST, before anything else:
+**🚨 IF YOU ARE THE POST-COMPACTION SESSION FROM 2026-05-18:** read this FIRST, before anything else:
 
-**`apps/web/docs/reviews/2026-05-18-post-compaction-audit-plan.md`**
+**`apps/web/docs/reviews/2026-05-19-session-handoff.md`**
 
-That doc captures the comprehensive NDI audit the previous session prepped but did not execute. It enumerates 7 audit dimensions, names every ground-truth path (14 NDI-family repos pulled to HEAD on 2026-05-17), points at the upstream Cloud API swagger spec saved at `/Users/audribhowmick/Documents/ndi-projects/_audit-deps/NDI-cloud-api-swagger.md`, and gives you a 7-step methodology with parallel agent dispatch. Execute it.
+That doc is the single source-of-truth for everything that landed in the comprehensive audit + UI sweep session. It captures: today's 7 commits + what each did, the critical Vercel-rewrite bug that was bypassing every workspace POST handler (root cause + fix), the full audit findings table (33 items with dispositions), G-verify live results (3 of 4 tutorial tasks PASS including the flagship Saline-vs-CNO violin matching MATLAB to 2 decimal places), what's deferred (G2 Bhar + G3 Haley couldn't run due to test-account rate-limit), and the comprehensive "what's left" list grouped by owner (11 backend tickets, 4 SDK asks, 7 new cloud-app capability gaps, 4 polish items).
+
+**Critical operational caveat:** the test account `audri+test@walthamdatascience.com` was rate-limited at session end. Wait ~1 hour after the last login attempt OR request fresh creds from the user before re-dispatching G2/G3 (or any Playwright agent that logs in).
 
 For ongoing context (older but still relevant):
 
-1. **`apps/web/docs/specs/2026-05-16-pre-compact-handoff.md`** — older single source-of-truth status doc.
-2. **`apps/web/docs/reviews/2026-05-17-carryability-and-architecture.md`** — review from this session with 5 known followups (F1/F2/F3/F4 + B3) and the architecture grade.
-3. `apps/web/docs/specs/2026-05-15-master-execution-plan.md` — the canonical plan.
-4. `apps/web/docs/specs/2026-05-15-remaining-backend-work.md` — S4.9/S5.3/S5.8 deferred specs.
+1. **`apps/web/docs/reviews/2026-05-18-comprehensive-audit-findings.md`** — detailed audit synthesis from earlier in the arc (first pass; this handoff supersedes for current state).
+2. **`apps/web/docs/specs/2026-05-18-backend-followups.md`** — the 11 backend tickets (F-1 → F-1e + F-2 → F-8) + 4 SDK asks.
+3. **`apps/web/docs/operations/workspace-tutorial.md`** — the user-facing tutorial; use it to drive G2/G3 + manual smoke.
+4. **`apps/web/docs/specs/2026-05-16-pre-compact-handoff.md`** — older session source-of-truth.
+5. `apps/web/docs/reviews/2026-05-17-carryability-and-architecture.md` — earlier carryability review.
+6. `apps/web/docs/specs/2026-05-15-master-execution-plan.md` — the canonical plan.
+7. `apps/web/docs/specs/2026-05-15-remaining-backend-work.md` — S4.9/S5.3/S5.8 deferred specs.
+
+Audit artifacts (gitignored, on-disk only — DO NOT try to commit them):
+- `audit/2026-05-18-parity-and-tutorials/` — agent reports (E/F/G/G-verify/G2-stub/DB-DD-verify), screenshots from every Playwright session.
 
 ---
 
