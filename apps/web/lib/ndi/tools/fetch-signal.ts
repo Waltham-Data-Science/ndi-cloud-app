@@ -64,6 +64,19 @@ export const fetchSignalInput = z.object({
    * file to pass for known-good demo docs.
    */
   file: z.string().min(1).optional(),
+  /**
+   * Optional per-point continuous coloring mode for the rendered
+   * trace(s). The handler echoes this back in `chart_payload.colorBy`
+   * so the chat-side fence parser hands it to SignalChart.
+   *
+   *   - `'time'` — color each point by its time progression
+   *   - `'index'` — color by sample index
+   *   - `'value'` — color by amplitude
+   *
+   * Omit for the default flat single-color rendering. See
+   * MultiTraceChart's `ColorByMode` for full semantics.
+   */
+  colorBy: z.enum(['time', 'index', 'value']).optional(),
 });
 
 interface BackendSignalSource {
@@ -146,6 +159,12 @@ export interface FetchSignalResult {
     file?: string;
     title: string;
     colorbar?: ChartPayloadColorbar;
+    /**
+     * Per-point continuous coloring mode echoed back from the input.
+     * Omitted when the caller didn't request one (default flat
+     * single-color rendering).
+     */
+    colorBy?: 'time' | 'index' | 'value';
   };
   references: Reference[];
 }
@@ -233,6 +252,7 @@ export async function fetchSignalHandler(
       ...(parsed.data.t0 !== undefined && { t0: parsed.data.t0 }),
       ...(parsed.data.t1 !== undefined && { t1: parsed.data.t1 }),
       ...(parsed.data.file !== undefined && { file: parsed.data.file }),
+      ...(parsed.data.colorBy !== undefined && { colorBy: parsed.data.colorBy }),
       title,
     },
     references: [reference],
