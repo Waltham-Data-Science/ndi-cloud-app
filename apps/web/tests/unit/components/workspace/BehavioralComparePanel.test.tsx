@@ -338,6 +338,91 @@ describe('<BehavioralComparePanel/>', () => {
     expect(screen.getByText(/Network down/)).toBeInTheDocument();
   });
 
+  it('lets the user add a derived column and renders the computed values', async () => {
+    mockedApiFetch.mockResolvedValueOnce(successResponse);
+    const user = userEvent.setup();
+    render(<BehavioralComparePanel datasetId="ds1" />, {
+      wrapper: withClient(),
+    });
+    await user.type(
+      screen.getByTestId('behavioral-compare-variable-input'),
+      'ElevatedPlusMaze',
+    );
+    await user.click(screen.getByTestId('behavioral-compare-run'));
+    await waitFor(() =>
+      expect(screen.getByTestId('violin-chart')).toBeInTheDocument(),
+    );
+
+    // Add a CV = std / mean derived column.
+    await user.click(screen.getByTestId('derived-column-add-button'));
+    await user.type(screen.getByTestId('derived-column-label-input'), 'CV');
+    await user.type(
+      screen.getByTestId('derived-column-formula-input'),
+      'std / mean',
+    );
+    await user.click(screen.getByTestId('derived-column-submit'));
+
+    // Header for the new column appears on the summary table.
+    const headers = screen.getAllByTestId(
+      'behavioral-compare-derived-header',
+    );
+    expect(headers).toHaveLength(1);
+    expect(headers[0]).toHaveTextContent('CV');
+
+    // Cells render with the formatted ratio. Saline: 1.1/5.2 ≈ 0.212;
+    // CNO: 1.4/8.3 ≈ 0.169. formatDerivedCell renders three decimals.
+    const cells = screen.getAllByTestId('behavioral-compare-derived-cell');
+    expect(cells).toHaveLength(2);
+    expect(cells[0]!.textContent).toBe((1.1 / 5.2).toFixed(3));
+    expect(cells[1]!.textContent).toBe((1.4 / 8.3).toFixed(3));
+
+    // Remove the column via the chip's × button.
+    await user.click(screen.getByTestId('derived-column-remove'));
+    expect(
+      screen.queryByTestId('behavioral-compare-derived-header'),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByTestId('behavioral-compare-derived-cell'),
+    ).not.toBeInTheDocument();
+  });
+
+  it('renders em-dash for derived cells when a referenced source value is missing', async () => {
+    // Response with a NaN std value (e.g. n=1 cohort) exercises the
+    // null-propagation path: evaluate() → null → formatDerivedCell → "—".
+    const sparseResponse = {
+      ...successResponse,
+      groups_summary: [
+        { ...successResponse.groups_summary[0] },
+        { ...successResponse.groups_summary[1], std: NaN },
+      ],
+    };
+    mockedApiFetch.mockResolvedValueOnce(sparseResponse);
+    const user = userEvent.setup();
+    render(<BehavioralComparePanel datasetId="ds1" />, {
+      wrapper: withClient(),
+    });
+    await user.type(
+      screen.getByTestId('behavioral-compare-variable-input'),
+      'ElevatedPlusMaze',
+    );
+    await user.click(screen.getByTestId('behavioral-compare-run'));
+    await waitFor(() =>
+      expect(screen.getByTestId('violin-chart')).toBeInTheDocument(),
+    );
+
+    await user.click(screen.getByTestId('derived-column-add-button'));
+    await user.type(screen.getByTestId('derived-column-label-input'), 'CV');
+    await user.type(
+      screen.getByTestId('derived-column-formula-input'),
+      'std / mean',
+    );
+    await user.click(screen.getByTestId('derived-column-submit'));
+
+    const cells = screen.getAllByTestId('behavioral-compare-derived-cell');
+    expect(cells[0]!.textContent).toBe((1.1 / 5.2).toFixed(3));
+    expect(cells[1]!.textContent).toBe('—');
+  });
+
   it('renders the Show code button after a successful run', async () => {
     mockedApiFetch.mockResolvedValueOnce(successResponse);
     const user = userEvent.setup();

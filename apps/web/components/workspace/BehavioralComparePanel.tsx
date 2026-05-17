@@ -16,10 +16,18 @@ import { BarChart3 } from 'lucide-react';
 import { ViolinChart } from '@/components/ndi/charts/ViolinChart';
 import { PanelCard } from '@/components/workspace/PanelCard';
 import { ShowCodeButton } from '@/components/workspace/ShowCodeButton';
+import {
+  DerivedColumnControls,
+  useDerivedColumns,
+} from '@/components/workspace/canvas/DerivedColumnControls';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ApiError, apiFetch } from '@/lib/api/client';
+import {
+  formatDerivedCell,
+  type DerivedColumn,
+} from '@/lib/workspace/derived-columns';
 import { usePanelChangeIndicator } from '@/lib/workspace/use-panel-change-indicator';
 
 export interface BehavioralComparePanelProps {
@@ -141,6 +149,14 @@ export function BehavioralComparePanel({
   const [groupOrderInput, setGroupOrderInput] = useState('');
   const [title, setTitle] = useState('');
   const [validationError, setValidationError] = useState<string | null>(null);
+
+  // Derived columns live for the lifetime of this panel instance —
+  // not persisted to URL / localStorage. The parent keys the panel
+  // stack by datasetId so a dataset switch already remounts and
+  // clears these; on a re-run within the same dataset we KEEP the
+  // derived columns since they're still valid against the new
+  // groups_summary rows (same shape from the chat-tool wrapper).
+  const derived = useDerivedColumns();
 
   const mutation = useMutation<RunResult, unknown, RunArgs>({
     mutationFn: (args) => runTabularQuery(datasetId, args),
@@ -287,7 +303,12 @@ export function BehavioralComparePanel({
             />
           )}
           {hasSuccess && mutation.data && (
-            <SuccessView result={mutation.data} />
+            <SuccessView
+              result={mutation.data}
+              derivedColumns={derived.derivedColumns}
+              onAddDerived={derived.add}
+              onRemoveDerived={derived.remove}
+            />
           )}
         </div>
       )}
@@ -410,10 +431,38 @@ function EmptyHintBox({
   );
 }
 
-const HEADERS = ['Group', 'n', 'Mean', 'Median', 'Std'] as const;
+const BASE_HEADERS = ['Group', 'n', 'Mean', 'Median', 'Std'] as const;
 const NUM_CLS = 'py-1.5 pr-3 text-right font-mono tabular-nums';
 
-function SuccessView({ result }: { result: RunResult }) {
+/**
+ * Column names exposed to user-typed derived-column formulas. These
+ * match the JSON keys on each GroupSummary row, so a user typing
+ * `std / mean` references the same numeric the table column shows.
+ * `count` is the integer N — most useful for normalising by sample
+ * size.
+ */
+const DERIVED_COLUMN_HINT = [
+  'count',
+  'mean',
+  'median',
+  'std',
+  'min',
+  'max',
+  'q1',
+  'q3',
+] as const;
+
+function SuccessView({
+  result,
+  derivedColumns,
+  onAddDerived,
+  onRemoveDerived,
+}: {
+  result: RunResult;
+  derivedColumns: ReadonlyArray<DerivedColumn>;
+  onAddDerived: (column: DerivedColumn) => void;
+  onRemoveDerived: (id: string) => void;
+}) {
   const { chart_payload, groups_summary } = result;
   return (
     <div data-testid="behavioral-compare-success">
@@ -428,9 +477,22 @@ function SuccessView({ result }: { result: RunResult }) {
         <table className="w-full text-[12.5px]" data-testid="behavioral-compare-summary-table">
           <thead>
             <tr className="border-b border-border-subtle text-left text-fg-secondary">
-              {HEADERS.map((h, i) => (
+              {BASE_HEADERS.map((h, i) => (
                 <th key={h} className={`py-1.5 pr-3 font-medium${i === 0 ? '' : ' text-right'}`}>
                   {h}
+                </th>
+              ))}
+              {derivedColumns.map((c) => (
+                <th
+                  key={c.id}
+                  className="py-1.5 pr-3 font-medium text-right"
+                  title={`Derived: ${c.label} = ${c.formula}`}
+                  data-testid="behavioral-compare-derived-header"
+                  data-derived-id={c.id}
+                >
+                  <span className="inline-flex items-center gap-1">
+                    <span className="italic">{c.label}</span>
+                  </span>
                 </th>
               ))}
             </tr>
@@ -443,10 +505,33 @@ function SuccessView({ result }: { result: RunResult }) {
                 <td className={NUM_CLS}>{fmt(g.mean)}</td>
                 <td className={NUM_CLS}>{fmt(g.median)}</td>
                 <td className={NUM_CLS}>{fmt(g.std)}</td>
+                {derivedColumns.map((c) => {
+                  const v = c.evaluator(
+                    g as unknown as Record<string, unknown>,
+                  );
+                  return (
+                    <td
+                      key={c.id}
+                      className={NUM_CLS}
+                      data-testid="behavioral-compare-derived-cell"
+                      data-derived-id={c.id}
+                    >
+                      {formatDerivedCell(v)}
+                    </td>
+                  );
+                })}
               </tr>
             ))}
           </tbody>
         </table>
+      </div>
+      <div className="mt-3" data-testid="behavioral-compare-derived-controls">
+        <DerivedColumnControls
+          derivedColumns={derivedColumns}
+          onAdd={onAddDerived}
+          onRemove={onRemoveDerived}
+          availableColumns={DERIVED_COLUMN_HINT}
+        />
       </div>
     </div>
   );
