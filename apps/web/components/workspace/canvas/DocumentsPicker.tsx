@@ -16,14 +16,17 @@
  *   Mode A — no `?docClass=`: render the class-counts list. The user
  *     sees every NDI class in the dataset with its document count;
  *     clicking a class sets `?docClass=<className>` and switches to
- *     mode B.
+ *     mode B. (Class-list mode is a plain button stack — no grid +
+ *     no per-class context menu, since clicks are navigation within
+ *     the picker, not selection writes.)
  *
  *   Mode B — `?docClass=<className>` is set: render the documents
- *     of that class. Each row carries a "Set as…" dropdown letting
- *     the user assign the doc to one of the 5 selection dimensions
- *     (Subject / Session / Probe / Stimulus / Unit) via the
- *     workspace selection hook. A "← All classes" link at the top
- *     clears `?docClass=` and returns to mode A.
+ *     of that class via the shared `WorkspaceDataGrid`. Right-click
+ *     on a row opens a context menu with a "Set as" group offering
+ *     all 5 selection dimensions (Subject / Session / Probe /
+ *     Stimulus / Unit), plus Copy ID and Open in Document Detail.
+ *     A "← All classes" link at the top clears `?docClass=` and
+ *     returns to mode A.
  *
  * Why `?docClass=` lives on the URL instead of local React state:
  *   - Deep-link / share survives ("show me Bhar's stimulus_presentation
@@ -36,14 +39,30 @@
  * `?docClass=` is intentionally kept separate from the 5 selection
  * dimensions (`useWorkspaceSelection` only owns those). It's a
  * picker-tab-local UI state — same way `?pick=` is.
+ *
+ * Phase G7 (2026-05-16): doc-list mode migrated to the shared
+ * `WorkspaceDataGrid` primitive. Class-list mode stays a button stack
+ * (per-class context-menu actions would be confusing — class clicks
+ * are navigation, not selection writes).
  */
-import { ChevronRight, ChevronLeft, Search } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { ChevronRight, ChevronLeft, Copy, ExternalLink, Search, Sparkles } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
+import {
+  createColumnHelper,
+  type ColumnDef,
+} from '@tanstack/react-table';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 
 import { Skeleton } from '@/components/ui/Skeleton';
+import { WorkspaceDataGrid } from '@/components/workspace/canvas/WorkspaceDataGrid';
+import type { BulkAction } from '@/components/workspace/canvas/DataGridBulkActions';
+import type { ContextMenuEntry, ContextMenuItem } from '@/components/workspace/canvas/DataGridContextMenu';
+import {
+  buildPrefillPrompt,
+  emitAskPrefill,
+} from '@/lib/ai/ask-prefill-bus';
 import { useClassCounts } from '@/lib/api/datasets';
-import { useDocuments } from '@/lib/api/documents';
+import { useDocuments, type DocumentSummary } from '@/lib/api/documents';
 import { cn } from '@/lib/cn';
 import { formatNumber } from '@/lib/format';
 import {
@@ -225,21 +244,157 @@ const ASSIGNABLE_KEYS: ReadonlyArray<SelectionKey> = [
   'unit',
 ];
 
+/**
+ * Normalised doc row shape for the doc-list grid. Pulls the
+ * canonical id out of `DocumentSummary` once so the column accessors
+ * + rowId callback stay simple.
+ */
+interface DocRow {
+  docId: string;
+  name: string | null;
+  raw: DocumentSummary;
+}
+
+function projectDocRow(doc: DocumentSummary): DocRow | null {
+  const docId = doc.id ?? doc.ndiId ?? '';
+  if (typeof docId !== 'string' || docId.length === 0) return null;
+  return {
+    docId,
+    name: typeof doc.name === 'string' ? doc.name : null,
+    raw: doc,
+  };
+}
+
+function docRowId(row: DocRow): string {
+  return row.docId;
+}
+
 function DocumentList({ datasetId, docClass, onBack }: DocumentListProps) {
   const { set } = useWorkspaceSelection();
   const [searchQuery, setSearchQuery] = useState('');
   const docs = useDocuments(datasetId, docClass, 1, 200);
 
-  const items = useMemo(() => {
+  // Project + filter once.
+  const filteredRows = useMemo<DocRow[]>(() => {
     const all = docs.data?.documents ?? [];
+    const projected: DocRow[] = [];
+    for (const doc of all) {
+      const row = projectDocRow(doc);
+      if (row) projected.push(row);
+    }
     const q = searchQuery.trim().toLowerCase();
-    if (!q) return all;
-    return all.filter((doc) => {
-      const id = String(doc.id ?? doc.ndiId ?? '').toLowerCase();
-      const name = String(doc.name ?? '').toLowerCase();
-      return id.includes(q) || name.includes(q);
-    });
+    if (!q) return projected;
+    return projected.filter(
+      (row) =>
+        row.docId.toLowerCase().includes(q) ||
+        (row.name ?? '').toLowerCase().includes(q),
+    );
   }, [docs.data, searchQuery]);
+
+  const columnHelper = createColumnHelper<DocRow>();
+  const columns = useMemo<ColumnDef<DocRow, unknown>[]>(
+    () =>
+      [
+        columnHelper.accessor((r) => r.name ?? r.docId, {
+          id: 'name',
+          header: 'Document',
+          cell: (info) => {
+            const row = info.row.original;
+            return (
+              <div className="min-w-0">
+                {row.name && (
+                  <div className="text-[12px] text-fg-primary truncate">
+                    {row.name}
+                  </div>
+                )}
+                <div
+                  className="font-mono text-[10.5px] text-fg-muted truncate"
+                  aria-label={`Set document ${row.docId.slice(0, 8)} as…`}
+                >
+                  {row.docId}
+                </div>
+              </div>
+            );
+          },
+          size: 260,
+        }),
+      ] as ColumnDef<DocRow, unknown>[],
+    [columnHelper],
+  );
+
+  // Context menu — the "Set as" group exposes every selection
+  // dimension as a separate item. Mirrors the old AssignMenu's
+  // native <select>, but right-click discovery + grouping per the
+  // grid's chrome.
+  const contextMenuActions = useCallback(
+    (row: DocRow): ReadonlyArray<ContextMenuEntry> => {
+      const id = row.docId;
+      if (!id) return [];
+      const setAsItems: ReadonlyArray<ContextMenuItem> = ASSIGNABLE_KEYS.map(
+        (key) => ({
+          kind: 'item' as const,
+          label: SELECTION_TITLES[key],
+          onSelect: () => set({ [key]: id }),
+        }),
+      );
+      return [
+        { kind: 'group', label: 'Set as', items: setAsItems },
+        { kind: 'separator' },
+        {
+          kind: 'item',
+          label: 'Copy ID',
+          icon: Copy,
+          shortcut: '⌘C',
+          onSelect: () => {
+            void navigator.clipboard?.writeText(id);
+          },
+        },
+        {
+          kind: 'item',
+          label: 'Open in Document Detail',
+          icon: ExternalLink,
+          onSelect: () => {
+            window.open(
+              `/datasets/${datasetId}/documents/${id}`,
+              '_blank',
+              'noopener,noreferrer',
+            );
+          },
+        },
+      ];
+    },
+    [set, datasetId],
+  );
+
+  const bulkActions = useCallback(
+    (selectedIds: ReadonlyArray<string>): ReadonlyArray<BulkAction> => [
+      {
+        id: 'copy-ids',
+        label: `Copy ${selectedIds.length} IDs`,
+        icon: Copy,
+        onSelect: (ids) => {
+          void navigator.clipboard?.writeText(ids.join('\n'));
+        },
+      },
+      {
+        id: 'ask-claude',
+        label: `Ask Claude about these documents`,
+        variant: 'primary',
+        icon: Sparkles,
+        onSelect: (ids) => {
+          // Use the doc class as the noun if we have one — keeps
+          // the prompt specific ("3 probe_location documents" vs
+          // generic "3 documents").
+          const noun = docClass ?? 'document';
+          emitAskPrefill({
+            text: buildPrefillPrompt(noun, ids),
+            autoSend: false,
+          });
+        },
+      },
+    ],
+    [docClass],
+  );
 
   return (
     <div className="space-y-3">
@@ -291,80 +446,32 @@ function DocumentList({ datasetId, docClass, onBack }: DocumentListProps) {
         >
           Couldn&rsquo;t load documents for this class.
         </div>
-      ) : items.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border-subtle bg-bg-surface px-3 py-6 text-center text-[12.5px] text-fg-secondary">
-          {searchQuery
-            ? `No documents match "${searchQuery}".`
-            : 'No documents in this class.'}
-        </div>
       ) : (
-        <ul className="rounded-md border border-border-subtle bg-bg-surface overflow-hidden divide-y divide-border-subtle">
-          {items.map((doc) => {
-            const docId = doc.id ?? doc.ndiId ?? '';
-            return (
-              <li
-                key={docId}
-                className="px-2 py-2 flex items-center gap-2 hover:bg-bg-muted"
-              >
-                <div className="min-w-0 flex-1">
-                  {doc.name && (
-                    <div className="text-[12px] text-fg-primary truncate">
-                      {doc.name}
-                    </div>
-                  )}
-                  <div className="font-mono text-[10.5px] text-fg-muted truncate">
-                    {docId}
-                  </div>
-                </div>
-                <AssignMenu
-                  docId={docId}
-                  onAssign={(key) => set({ [key]: docId })}
-                />
-              </li>
-            );
-          })}
-        </ul>
+        <WorkspaceDataGrid<DocRow>
+          data={filteredRows}
+          columns={columns}
+          rowId={docRowId}
+          noun="document"
+          // Documents picker has no per-class primary selection
+          // concept — assignment is via the "Set as" context menu
+          // group instead. Pass null + no-op so the grid never
+          // highlights a row as primary.
+          primaryId={null}
+          onPrimaryChange={() => undefined}
+          contextMenuActions={contextMenuActions}
+          bulkActions={bulkActions}
+          columnLabels={{ name: 'Document' }}
+          lockedColumnIds={['name']}
+          label="Documents"
+          emptyState={
+            <div className="rounded-md border border-dashed border-border-subtle bg-bg-surface px-3 py-6 text-center text-[12.5px] text-fg-secondary">
+              {searchQuery
+                ? `No documents match "${searchQuery}".`
+                : 'No documents in this class.'}
+            </div>
+          }
+        />
       )}
     </div>
-  );
-}
-
-interface AssignMenuProps {
-  docId: string;
-  onAssign: (key: SelectionKey) => void;
-}
-
-/**
- * Native `<select>`-backed "Set as…" dropdown. We use a real
- * `<select>` rather than a custom popover so the rail stays under
- * the bundle budget and keyboard / screen-reader navigation Just
- * Works. The first option is a sentinel that re-renders after each
- * choice via the controlled-empty-value reset.
- */
-function AssignMenu({ docId, onAssign }: AssignMenuProps) {
-  return (
-    <select
-      aria-label={`Set document ${docId.slice(0, 8)} as…`}
-      value=""
-      onChange={(e) => {
-        const next = e.target.value;
-        if (next && ASSIGNABLE_KEYS.includes(next as SelectionKey)) {
-          onAssign(next as SelectionKey);
-        }
-      }}
-      className={cn(
-        'shrink-0 rounded-md border border-border-subtle bg-bg-canvas',
-        'px-1.5 py-1 text-[11px] text-fg-secondary',
-        'focus:outline-none focus:ring-2 focus:ring-brand-500/40',
-        'hover:border-border-strong cursor-pointer',
-      )}
-    >
-      <option value="">Set as…</option>
-      {ASSIGNABLE_KEYS.map((key) => (
-        <option key={key} value={key}>
-          {SELECTION_TITLES[key]}
-        </option>
-      ))}
-    </select>
   );
 }

@@ -153,17 +153,25 @@ function extractSubjectId(doc: DocumentSummary): string | null {
   return null;
 }
 
+// Backend caps pageSize at 200 on /api/datasets/:id/documents — any
+// value above silently fails as a 400 VALIDATION_ERROR ("Input should
+// be less than or equal to 200"), and the panel's catch-all error
+// state degrades to a generic "no probes" empty state which read as a
+// data bug to users (Phase F smoke 2026-05-16 finding). Cap at the
+// backend limit and rely on the soft-truncation note for datasets
+// with more than 200 probe_location docs. A real fix needs a
+// dedicated `/probe-locations` endpoint that paginates server-side
+// or a multi-page client fetch — out of scope for this round.
+const PROBE_LOCATION_PAGE_SIZE = 200;
+
 export function ElectrodePositionPanel({ datasetId }: ElectrodePositionPanelProps) {
   // Auto-load: same useDocuments hook the Document Explorer uses.
-  // Page size 500 covers the largest probe_location populations we've
-  // seen (Allen Institute Neuropixels datasets ~384 channels × a few
-  // probes per subject); larger datasets get the first 500 + a soft
-  // truncation note rather than crash.
+  // Page size capped at the backend's 200 limit.
   const { data, isLoading, isError } = useDocuments(
     datasetId,
     'probe_location',
     1,
-    500,
+    PROBE_LOCATION_PAGE_SIZE,
   );
 
   const { points, subjectCount } = useMemo(() => {
@@ -208,7 +216,11 @@ export function ElectrodePositionPanel({ datasetId }: ElectrodePositionPanelProp
       footer={
         <ShowCodeButton
           toolName="query_documents"
-          args={{ datasetId, className: 'probe_location', limit: 500 }}
+          args={{
+            datasetId,
+            className: 'probe_location',
+            limit: PROBE_LOCATION_PAGE_SIZE,
+          }}
           disabled={!showChart}
         />
       }

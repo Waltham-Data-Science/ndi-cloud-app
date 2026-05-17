@@ -1,33 +1,35 @@
 /**
- * SubjectsBrowser — pure filter coverage + picker-rail behaviour.
+ * SubjectsBrowser — pure filter coverage + picker-rail wiring.
  *
- * Phase F3 of the one-canvas redesign (2026-05-16). The browser is
- * now a picker-rail body: row click writes through
- * `useWorkspaceSelection.set({ subject })` instead of the old
- * `?select=` URL param. The old ViewActionsRail is gone; no outbound
- * View Actions render.
+ * Phase G7 (2026-05-16). The browser now delegates row rendering to
+ * the shared `WorkspaceDataGrid` primitive. We stub the grid (its own
+ * tests cover internals) and assert the picker hands it the right
+ * factory callbacks:
  *
- * Tests in this file:
- *   - the pure `filterSubjects` algorithm (substring + sex equality +
- *     case insensitivity, AND semantics across fields)
- *   - clicking a row calls `set({ subject: docId })`
- *   - clicking the already-active row calls `set({ subject: null })`
- *     (toggle-off)
- *   - the "Active subject — analysis cards on the right will update."
- *     hint renders only when a subject is selected
- *   - no ViewActionsRail / outbound "View document" link renders
- *     (the rail is retired in F3 — the canvas's selection bar +
- *     auto-fill replaces it)
+ *   - `rowId(row)` returns the subject doc id (or fallback)
+ *   - `contextMenuActions(row)` includes "Set as primary subject",
+ *     "Copy ID", "Open in Document Detail" — each dispatches the
+ *     right side-effect when invoked
+ *   - `bulkActions(ids)` includes "Copy N IDs" and "Ask Claude"
+ *   - `onPrimaryChange(id)` calls set({ subject: id })
+ *
+ * The pure `filterSubjects` algorithm coverage is unchanged from
+ * Phase F3 — it's exported separately for testability and the grid
+ * migration didn't touch it.
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
 import { filterSubjects } from '@/components/workspace/SubjectsBrowser';
+import type { BulkAction } from '@/components/workspace/canvas/DataGridBulkActions';
+import type {
+  ContextMenuEntry,
+  ContextMenuItem,
+} from '@/components/workspace/canvas/DataGridContextMenu';
 
-// `useWorkspaceSelection` is mocked module-wide so each test can swap
-// out the selection state. The hook's shape mirrors WorkspaceSelectionState.
+// `useWorkspaceSelection` mock — same shape as today.
 const setMock = vi.fn();
 const clearMock = vi.fn();
 const clearOneMock = vi.fn();
@@ -63,9 +65,7 @@ vi.mock('@/lib/workspace/use-workspace-selection', () => ({
   }),
 }));
 
-// Next navigation — empty params + no-op router. The browser also
-// reads ?strain=, ?species=, ?sex= directly via useSearchParams; we
-// keep that empty so no filter is applied.
+// next/navigation — empty params + no-op router.
 let searchParamsStub: URLSearchParams = new URLSearchParams();
 const replaceMock = vi.fn();
 vi.mock('next/navigation', () => ({
@@ -81,35 +81,7 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/my/workspace/ds-test',
 }));
 
-// Virtualizer stub — same pattern as summary-table-view.test.tsx;
-// jsdom returns zero container dimensions so we expose every row.
-vi.mock('@tanstack/react-virtual', () => ({
-  useVirtualizer: ({
-    count,
-    estimateSize,
-  }: {
-    count: number;
-    estimateSize: () => number;
-  }) => {
-    const size = estimateSize();
-    const items = Array.from({ length: count }, (_, i) => ({
-      index: i,
-      key: i,
-      start: i * size,
-      end: (i + 1) * size,
-      size,
-      lane: 0,
-    }));
-    return {
-      getVirtualItems: () => items,
-      getTotalSize: () => count * size,
-    };
-  },
-}));
-
-// Stub the summary-table fetch so the browser renders rows without
-// hitting the network. The shape mirrors what the real backend
-// returns (TableResponse).
+// Stub the data fetch.
 const SUBJECT_DOC_ID_1 = '68d6e54703a03f5cfdac8eff';
 const SUBJECT_DOC_ID_2 = '68d6e54703a03f5cfdac8f00';
 const FIXTURE_SUBJECTS = {
@@ -148,6 +120,37 @@ vi.mock('@/lib/api/tables', () => ({
   }),
 }));
 
+// ── Stub WorkspaceDataGrid to capture props. The grid's internals
+// have their own coverage in tests/unit/components/workspace/canvas/
+// WorkspaceDataGrid.test.tsx; here we just verify the picker hands it
+// the right factories and callbacks.
+interface CapturedGridProps {
+  data: unknown[];
+  rowId: (row: unknown) => string;
+  noun: string;
+  primaryId: string | null;
+  onPrimaryChange: (id: string | null) => void;
+  contextMenuActions: (row: unknown) => ReadonlyArray<ContextMenuEntry>;
+  bulkActions: (ids: ReadonlyArray<string>) => ReadonlyArray<BulkAction>;
+  columnLabels?: Record<string, string>;
+  lockedColumnIds?: ReadonlyArray<string>;
+}
+
+let captured: CapturedGridProps | null = null;
+
+vi.mock('@/components/workspace/canvas/WorkspaceDataGrid', () => ({
+  WorkspaceDataGrid: (props: CapturedGridProps) => {
+    captured = props;
+    return (
+      <div data-testid="workspace-data-grid-stub">
+        <span data-testid="grid-noun">{props.noun}</span>
+        <span data-testid="grid-row-count">{props.data.length}</span>
+        <span data-testid="grid-primary-id">{props.primaryId ?? 'none'}</span>
+      </div>
+    );
+  },
+}));
+
 import { SubjectsBrowser } from '@/components/workspace/SubjectsBrowser';
 
 function withProviders(ui: ReactNode) {
@@ -171,6 +174,7 @@ beforeEach(() => {
     stimulus: null,
     unit: null,
   };
+  captured = null;
 });
 
 afterEach(() => {
@@ -294,80 +298,169 @@ describe('filterSubjects', () => {
   });
 });
 
-// ── Row click → workspace selection. ──────────────────────────────
-describe('SubjectsBrowser — row click writes through useWorkspaceSelection', () => {
-  it('clicking a row calls set({ subject: <docId> })', () => {
+// ── Picker → grid wiring. ─────────────────────────────────────────
+describe('SubjectsBrowser — grid wiring', () => {
+  it('renders the grid stub with the subject noun', () => {
     render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
-    // Two fixture rows render; the first identifier text is unique.
-    const firstRow = screen.getByText('NSUBJ-001').closest('tr');
-    expect(firstRow).not.toBeNull();
-    fireEvent.click(firstRow!);
-    expect(setMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('grid-noun')).toHaveTextContent('subject');
+  });
+
+  it('forwards the active subject as the grid primaryId', () => {
+    selectionStub.subject = SUBJECT_DOC_ID_1;
+    render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
+    expect(screen.getByTestId('grid-primary-id')).toHaveTextContent(
+      SUBJECT_DOC_ID_1,
+    );
+  });
+
+  it('passes filtered rows to the grid', () => {
+    render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
+    expect(screen.getByTestId('grid-row-count')).toHaveTextContent('2');
+  });
+
+  it('rowId resolves to subjectDocumentIdentifier', () => {
+    render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
+    expect(captured).not.toBeNull();
+    expect(
+      captured!.rowId({ subjectDocumentIdentifier: SUBJECT_DOC_ID_1 }),
+    ).toBe(SUBJECT_DOC_ID_1);
+  });
+
+  it('rowId falls back to subjectIdentifier when documentIdentifier is missing', () => {
+    render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
+    expect(captured).not.toBeNull();
+    expect(captured!.rowId({ subjectIdentifier: 'NSUBJ-FB' })).toBe(
+      'NSUBJ-FB',
+    );
+  });
+
+  it('onPrimaryChange writes through set({ subject })', () => {
+    render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
+    captured!.onPrimaryChange(SUBJECT_DOC_ID_1);
     expect(setMock).toHaveBeenCalledWith({ subject: SUBJECT_DOC_ID_1 });
   });
 
-  it('clicking the already-active row toggles selection off (set({ subject: null }))', () => {
-    selectionStub.subject = SUBJECT_DOC_ID_1;
+  it('locks the identifier column', () => {
     render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
-    const activeRow = screen.getByText('NSUBJ-001').closest('tr');
-    fireEvent.click(activeRow!);
-    expect(setMock).toHaveBeenCalledTimes(1);
-    expect(setMock).toHaveBeenCalledWith({ subject: null });
-  });
-
-  it('clicking a different row reassigns selection to that row', () => {
-    selectionStub.subject = SUBJECT_DOC_ID_1;
-    render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
-    const otherRow = screen.getByText('NSUBJ-002').closest('tr');
-    fireEvent.click(otherRow!);
-    expect(setMock).toHaveBeenCalledWith({ subject: SUBJECT_DOC_ID_2 });
+    expect(captured!.lockedColumnIds).toContain('identifier');
   });
 });
 
-describe('SubjectsBrowser — selection-active hint', () => {
-  it('renders the hint when a subject is selected', () => {
-    selectionStub.subject = SUBJECT_DOC_ID_1;
+// ── Context-menu factory. ─────────────────────────────────────────
+describe('SubjectsBrowser — context menu actions', () => {
+  it('builds the canonical action list per row', () => {
     render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
-    expect(
-      screen.getByTestId('subjects-selection-active-hint'),
-    ).toBeInTheDocument();
+    const actions = captured!.contextMenuActions({
+      subjectDocumentIdentifier: SUBJECT_DOC_ID_1,
+    });
+    // group/separator entries plus item entries — flatten the labels.
+    const itemLabels = actions
+      .filter((a): a is ContextMenuItem => a.kind === 'item')
+      .map((a) => a.label);
+    expect(itemLabels).toEqual([
+      'Set as primary subject',
+      'Copy ID',
+      'Open in Document Detail',
+    ]);
   });
 
-  it('hides the hint when nothing is selected', () => {
+  it('"Set as primary subject" calls set({ subject: id })', () => {
     render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
-    expect(
-      screen.queryByTestId('subjects-selection-active-hint'),
-    ).toBeNull();
-  });
-});
-
-describe('SubjectsBrowser — no outbound View Actions render', () => {
-  it('does not render a ViewActionsRail "Selected" eyebrow', () => {
-    selectionStub.subject = SUBJECT_DOC_ID_1;
-    render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
-    // The retired ViewActionsRail rendered an eyebrow that read
-    // "Selected" — its absence guards against a regression where
-    // someone re-mounts the rail. We only render the lightweight
-    // testid-tagged hint above the table now.
-    expect(screen.queryByText('Selected')).toBeNull();
-  });
-
-  it('does not render a "View document" outbound link', () => {
-    selectionStub.subject = SUBJECT_DOC_ID_1;
-    const { container } = render(
-      withProviders(<SubjectsBrowser datasetId="ds-test" />),
+    const actions = captured!.contextMenuActions({
+      subjectDocumentIdentifier: SUBJECT_DOC_ID_1,
+    });
+    const item = actions.find(
+      (a): a is ContextMenuItem =>
+        a.kind === 'item' && a.label === 'Set as primary subject',
     );
-    // Belt-and-suspenders: no anchor pointing at the Document
-    // Explorer's per-doc route should render anywhere inside the
-    // browser body.
-    expect(
-      container.querySelector(
-        `a[href*="/datasets/ds-test/documents/${SUBJECT_DOC_ID_1}"]`,
-      ),
-    ).toBeNull();
-    // Also no button labelled "View document" (the old action's text).
-    expect(
-      screen.queryByRole('link', { name: /view document/i }),
-    ).toBeNull();
+    expect(item).toBeDefined();
+    item!.onSelect();
+    expect(setMock).toHaveBeenCalledWith({ subject: SUBJECT_DOC_ID_1 });
+  });
+
+  it('"Copy ID" writes the id to the clipboard', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
+    const actions = captured!.contextMenuActions({
+      subjectDocumentIdentifier: SUBJECT_DOC_ID_1,
+    });
+    const item = actions.find(
+      (a): a is ContextMenuItem => a.kind === 'item' && a.label === 'Copy ID',
+    );
+    item!.onSelect();
+    expect(writeText).toHaveBeenCalledWith(SUBJECT_DOC_ID_1);
+  });
+
+  it('"Open in Document Detail" opens the doc-detail route in a new tab', () => {
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
+
+    render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
+    const actions = captured!.contextMenuActions({
+      subjectDocumentIdentifier: SUBJECT_DOC_ID_1,
+    });
+    const item = actions.find(
+      (a): a is ContextMenuItem =>
+        a.kind === 'item' && a.label === 'Open in Document Detail',
+    );
+    item!.onSelect();
+    expect(open).toHaveBeenCalledWith(
+      `/datasets/ds-test/documents/${SUBJECT_DOC_ID_1}`,
+      '_blank',
+      'noopener,noreferrer',
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('returns an empty action list when the row has no id', () => {
+    render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
+    expect(captured!.contextMenuActions({})).toEqual([]);
+  });
+});
+
+// ── Bulk actions factory. ─────────────────────────────────────────
+describe('SubjectsBrowser — bulk actions', () => {
+  it('builds the shared "copy IDs" + "Ask Claude" actions', () => {
+    render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
+    const actions = captured!.bulkActions([SUBJECT_DOC_ID_1, SUBJECT_DOC_ID_2]);
+    expect(actions.map((a) => a.id)).toEqual(['copy-ids', 'ask-claude']);
+    expect(actions[0]!.label).toBe('Copy 2 IDs');
+  });
+
+  it('"copy IDs" writes newline-joined ids to the clipboard', async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    Object.assign(navigator, { clipboard: { writeText } });
+
+    render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
+    const actions = captured!.bulkActions([SUBJECT_DOC_ID_1, SUBJECT_DOC_ID_2]);
+    actions[0]!.onSelect([SUBJECT_DOC_ID_1, SUBJECT_DOC_ID_2]);
+    expect(writeText).toHaveBeenCalledWith(
+      `${SUBJECT_DOC_ID_1}\n${SUBJECT_DOC_ID_2}`,
+    );
+  });
+
+  it('"Ask Claude" emits an ask-prefill payload via the bus', async () => {
+    const {
+      __resetAskPrefillBusForTests,
+      subscribeToAskPrefill,
+    } = await import('@/lib/ai/ask-prefill-bus');
+    __resetAskPrefillBusForTests();
+    const received: Array<{ text: string; autoSend?: boolean }> = [];
+    const unsub = subscribeToAskPrefill((p) => received.push(p));
+
+    render(withProviders(<SubjectsBrowser datasetId="ds-test" />));
+    const actions = captured!.bulkActions([SUBJECT_DOC_ID_1]);
+    const ask = actions.find((a) => a.id === 'ask-claude');
+    ask!.onSelect([SUBJECT_DOC_ID_1]);
+
+    expect(received).toHaveLength(1);
+    expect(received[0]!.text).toContain('subject');
+    expect(received[0]!.text).toContain(SUBJECT_DOC_ID_1);
+    expect(received[0]!.autoSend).toBe(false);
+
+    unsub();
+    __resetAskPrefillBusForTests();
   });
 });

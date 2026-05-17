@@ -156,7 +156,12 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
   const [isAutoFilled, setIsAutoFilled] = useState<boolean>(
     selection.unit !== null,
   );
-  const headingId = useId();
+  // Stable literal id — matches the convention used by the other
+  // 4 panels ("panel-signal-viewer" etc.) and what the smoke audit
+  // (2026-05-16) flagged as the canonical pattern. Pre-fix this
+  // used useId() which produces values like `_r_b_` — technically
+  // valid but harder to debug in the a11y tree.
+  const headingId = 'panel-spike-activity';
 
   const mutation = useMutation<EndpointResponse, Error, RequestBody>({
     mutationFn: (body) =>

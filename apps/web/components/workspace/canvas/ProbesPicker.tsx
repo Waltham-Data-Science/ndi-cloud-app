@@ -36,18 +36,25 @@
  * purely behavioural ones (Bhar's worm tracking, Francesconi's EPM
  * behavioural assays). We surface that explicitly rather than
  * implying the dataset is broken.
+ *
+ * Phase G7 (2026-05-16): table body migrated to the shared
+ * `WorkspaceDataGrid` primitive.
  */
-import { useMemo, useState } from 'react';
+import { Copy, Crosshair, ExternalLink, MapPin, Sparkles } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   createColumnHelper,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
   type ColumnDef,
 } from '@tanstack/react-table';
 
 import { Skeleton } from '@/components/ui/Skeleton';
-import { VirtualizedTable } from '@/components/ui/VirtualizedTable';
+import { WorkspaceDataGrid } from '@/components/workspace/canvas/WorkspaceDataGrid';
+import type { BulkAction } from '@/components/workspace/canvas/DataGridBulkActions';
+import type { ContextMenuEntry } from '@/components/workspace/canvas/DataGridContextMenu';
+import {
+  buildPrefillPrompt,
+  emitAskPrefill,
+} from '@/lib/ai/ask-prefill-bus';
 import { useSummaryTable } from '@/lib/api/tables';
 import { cn } from '@/lib/cn';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
@@ -125,6 +132,12 @@ export function filterProbes(
   });
 }
 
+/** Stable row-id accessor — shared across grid + context + bulk actions. */
+function probeRowId(row: ProbeRow): string {
+  const id = row.probeDocumentIdentifier;
+  return typeof id === 'string' && id.length > 0 ? id : '';
+}
+
 export function ProbesPicker({ datasetId }: ProbesPickerProps) {
   const { selection, set } = useWorkspaceSelection();
   const [nameQuery, setNameQuery] = useState('');
@@ -176,14 +189,82 @@ export function ProbesPicker({ datasetId }: ProbesPickerProps) {
     [columnHelper],
   );
 
-  // React Compiler skips memoization for components consuming
-  // `useReactTable()` — same rationale as SubjectsBrowser's disable.
-  // eslint-disable-next-line react-hooks/incompatible-library
-  const table = useReactTable({
-    data: filteredRows,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  });
+  // Context menu — "Show electrode positions" jumps to the
+  // ElectrodePosition panel (matching the canvas's analysis grid).
+  const contextMenuActions = useCallback(
+    (row: ProbeRow): ReadonlyArray<ContextMenuEntry> => {
+      const id = probeRowId(row);
+      if (!id) return [];
+      return [
+        {
+          kind: 'item',
+          label: 'Set as primary probe',
+          icon: Crosshair,
+          onSelect: () => set({ probe: id }),
+        },
+        {
+          kind: 'item',
+          label: 'Copy ID',
+          icon: Copy,
+          shortcut: '⌘C',
+          onSelect: () => {
+            void navigator.clipboard?.writeText(id);
+          },
+        },
+        { kind: 'separator' },
+        {
+          kind: 'item',
+          label: 'Show electrode positions',
+          icon: MapPin,
+          onSelect: () => {
+            set({ probe: id });
+            document
+              .getElementById('electrode-position')
+              ?.scrollIntoView({ behavior: 'smooth' });
+          },
+        },
+        {
+          kind: 'item',
+          label: 'Open in Document Detail',
+          icon: ExternalLink,
+          onSelect: () => {
+            window.open(
+              `/datasets/${datasetId}/documents/${id}`,
+              '_blank',
+              'noopener,noreferrer',
+            );
+          },
+        },
+      ];
+    },
+    [set, datasetId],
+  );
+
+  const bulkActions = useCallback(
+    (selectedIds: ReadonlyArray<string>): ReadonlyArray<BulkAction> => [
+      {
+        id: 'copy-ids',
+        label: `Copy ${selectedIds.length} IDs`,
+        icon: Copy,
+        onSelect: (ids) => {
+          void navigator.clipboard?.writeText(ids.join('\n'));
+        },
+      },
+      {
+        id: 'ask-claude',
+        label: `Ask Claude about these probes`,
+        variant: 'primary',
+        icon: Sparkles,
+        onSelect: (ids) => {
+          emitAskPrefill({
+            text: buildPrefillPrompt('probe', ids),
+            autoSend: false,
+          });
+        },
+      },
+    ],
+    [],
+  );
 
   if (summary.isLoading) {
     return (
@@ -239,61 +320,24 @@ export function ProbesPicker({ datasetId }: ProbesPickerProps) {
         )}
       </div>
 
-      {filteredRows.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border-subtle bg-bg-surface px-3 py-6 text-center text-[12.5px] text-fg-secondary">
-          No probes match the current filters.
-        </div>
-      ) : (
-        <VirtualizedTable
-          table={table}
-          estimateSize={32}
-          className="rounded-md border border-border-subtle overflow-auto max-h-[calc(100vh-280px)] min-h-[240px]"
-          onRowClick={(row) => {
-            const docId = row.probeDocumentIdentifier;
-            if (typeof docId === 'string' && docId.length > 0) {
-              set({ probe: docId });
-            }
-          }}
-          getRowClassName={(row) => {
-            const docId = row.original.probeDocumentIdentifier;
-            return docId === selection.probe
-              ? 'bg-brand-blue/5 border-l-2 border-l-brand-blue'
-              : undefined;
-          }}
-          renderHeaderCell={(header) => (
-            <th
-              key={header.id}
-              colSpan={header.colSpan}
-              className={cn(
-                'px-2 py-1.5 text-left text-[10px] font-bold tracking-eyebrow uppercase text-fg-muted',
-                'border-b border-border-subtle bg-bg-muted/40 sticky top-0',
-              )}
-              style={{ width: header.getSize() }}
-            >
-              {header.isPlaceholder
-                ? null
-                : flexRender(
-                    header.column.columnDef.header,
-                    header.getContext(),
-                  )}
-            </th>
-          )}
-          renderCell={(cell) => (
-            <td
-              key={cell.id}
-              className="px-2 py-1.5 align-top truncate"
-              style={{ width: cell.column.getSize() }}
-            >
-              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-            </td>
-          )}
-          emptyState={
-            <div className="text-center text-[12.5px] text-fg-secondary py-6">
-              No probes match the current filters.
-            </div>
-          }
-        />
-      )}
+      <WorkspaceDataGrid<ProbeRow>
+        data={filteredRows}
+        columns={columns}
+        rowId={probeRowId}
+        noun="probe"
+        primaryId={selection.probe}
+        onPrimaryChange={(id) => set({ probe: id })}
+        contextMenuActions={contextMenuActions}
+        bulkActions={bulkActions}
+        columnLabels={{ name: 'Probe', type: 'Type' }}
+        lockedColumnIds={['name']}
+        label="Probes"
+        emptyState={
+          <div className="rounded-md border border-dashed border-border-subtle bg-bg-surface px-3 py-6 text-center text-[12.5px] text-fg-secondary">
+            No probes match the current filters.
+          </div>
+        }
+      />
     </div>
   );
 }

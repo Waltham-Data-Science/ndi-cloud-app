@@ -2,17 +2,25 @@
  * DocumentsPicker — class-list mode (no ?docClass=), doc-list mode
  * (?docClass=<name>), assign-to-selection-dimension flow.
  *
- * Phase F3 of the one-canvas redesign. Mocks:
- *   - `useClassCounts` for the class-list mode
- *   - `useDocuments` for the doc-list mode
- *   - `next/navigation` (router + searchParams) so we can flip
- *     `?docClass=` and observe the URL writes
- *   - `useWorkspaceSelection` for the AssignMenu's set() target
- *
- * Includes pure-helper coverage for `deriveDocumentClasses`.
+ * Phase G7 (2026-05-16). The doc-list mode now delegates row
+ * rendering to the shared `WorkspaceDataGrid` primitive. Class-list
+ * mode stays a button stack (clicks are picker-local navigation, not
+ * selection writes). Tests:
+ *   - pure `deriveDocumentClasses` (unchanged)
+ *   - class-list rendering / loading / error / click → ?docClass=
+ *   - doc-list rendering with the grid stub
+ *   - "Set as <X>" context-menu group calls set({ [X]: docId })
+ *   - bulk-actions factory shape
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
+
+import type { BulkAction } from '@/components/workspace/canvas/DataGridBulkActions';
+import type {
+  ContextMenuEntry,
+  ContextMenuGroup,
+  ContextMenuItem,
+} from '@/components/workspace/canvas/DataGridContextMenu';
 
 const useClassCountsMock = vi.fn();
 const useDocumentsMock = vi.fn();
@@ -46,6 +54,31 @@ vi.mock('@/lib/workspace/use-workspace-selection', async (importOriginal) => {
   };
 });
 
+interface CapturedGridProps {
+  data: unknown[];
+  rowId: (row: unknown) => string;
+  noun: string;
+  primaryId: string | null;
+  onPrimaryChange: (id: string | null) => void;
+  contextMenuActions: (row: unknown) => ReadonlyArray<ContextMenuEntry>;
+  bulkActions: (ids: ReadonlyArray<string>) => ReadonlyArray<BulkAction>;
+  lockedColumnIds?: ReadonlyArray<string>;
+}
+
+let captured: CapturedGridProps | null = null;
+
+vi.mock('@/components/workspace/canvas/WorkspaceDataGrid', () => ({
+  WorkspaceDataGrid: (props: CapturedGridProps) => {
+    captured = props;
+    return (
+      <div data-testid="workspace-data-grid-stub">
+        <span data-testid="grid-noun">{props.noun}</span>
+        <span data-testid="grid-row-count">{props.data.length}</span>
+      </div>
+    );
+  },
+}));
+
 import {
   DocumentsPicker,
   deriveDocumentClasses,
@@ -59,6 +92,7 @@ beforeEach(() => {
   replaceMock.mockReset();
   searchParamsStub = new URLSearchParams();
   pathnameStub = '/my/workspace/ds-test';
+  captured = null;
   useWorkspaceSelectionMock.mockReturnValue({
     selection: {
       subject: null,
@@ -196,7 +230,7 @@ describe('DocumentsPicker — doc-list mode (?docClass=<name>)', () => {
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
-  it('renders the empty state when the class has zero docs', () => {
+  it('renders the empty state via the grid stub when the class has zero docs', () => {
     useDocumentsMock.mockReturnValue({
       data: { documents: [], total: 0, page: 1, pageSize: 200 },
       isLoading: false,
@@ -205,10 +239,10 @@ describe('DocumentsPicker — doc-list mode (?docClass=<name>)', () => {
 
     render(<DocumentsPicker datasetId="ds1" />);
 
-    expect(screen.getByText(/no documents in this class/i)).toBeInTheDocument();
+    expect(screen.getByTestId('grid-row-count')).toHaveTextContent('0');
   });
 
-  it('renders the document list when docs are present', () => {
+  it('renders the grid with the document rows', () => {
     useDocumentsMock.mockReturnValue({
       data: {
         documents: [
@@ -225,9 +259,8 @@ describe('DocumentsPicker — doc-list mode (?docClass=<name>)', () => {
 
     render(<DocumentsPicker datasetId="ds1" />);
 
-    expect(screen.getByText('first doc')).toBeInTheDocument();
-    expect(screen.getByText('second doc')).toBeInTheDocument();
-    expect(screen.getAllByLabelText(/Set document/i)).toHaveLength(2);
+    expect(screen.getByTestId('grid-row-count')).toHaveTextContent('2');
+    expect(screen.getByTestId('grid-noun')).toHaveTextContent('document');
   });
 
   it('clicking the back button clears ?docClass= from the URL', () => {
@@ -245,8 +278,12 @@ describe('DocumentsPicker — doc-list mode (?docClass=<name>)', () => {
     const url = replaceMock.mock.calls[0]![0] as string;
     expect(url).not.toContain('docClass=');
   });
+});
 
-  it('selecting "Subject" from the assign menu calls set({ subject: docId })', () => {
+// ── Context-menu factory. ─────────────────────────────────────────
+describe('DocumentsPicker — context menu actions', () => {
+  beforeEach(() => {
+    searchParamsStub = new URLSearchParams('docClass=subject');
     useDocumentsMock.mockReturnValue({
       data: {
         documents: [{ id: 'doc-id-to-assign', name: 'pick me' }],
@@ -257,22 +294,108 @@ describe('DocumentsPicker — doc-list mode (?docClass=<name>)', () => {
       isLoading: false,
       isError: false,
     });
+  });
 
+  it('builds a "Set as" group with all 5 selection dimensions', () => {
     render(<DocumentsPicker datasetId="ds1" />);
+    const actions = captured!.contextMenuActions({
+      docId: 'doc-id-to-assign',
+      name: 'pick me',
+      raw: {},
+    });
+    const group = actions.find(
+      (a): a is ContextMenuGroup =>
+        a.kind === 'group' && a.label === 'Set as',
+    );
+    expect(group).toBeDefined();
+    expect(group!.items.map((it) => it.label)).toEqual([
+      'Subject',
+      'Session',
+      'Probe',
+      'Stimulus',
+      'Unit',
+    ]);
+  });
 
-    const select = screen.getByLabelText(/Set document/i) as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: 'subject' } });
-
-    expect(setSelectionMock).toHaveBeenCalledTimes(1);
+  it('"Set as Subject" calls set({ subject: docId })', () => {
+    render(<DocumentsPicker datasetId="ds1" />);
+    const actions = captured!.contextMenuActions({
+      docId: 'doc-id-to-assign',
+      name: 'pick me',
+      raw: {},
+    });
+    const group = actions.find(
+      (a): a is ContextMenuGroup => a.kind === 'group',
+    );
+    const subjectItem = group!.items.find((it) => it.label === 'Subject');
+    subjectItem!.onSelect();
     expect(setSelectionMock).toHaveBeenCalledWith({
       subject: 'doc-id-to-assign',
     });
   });
 
-  it('selecting "Probe" from the assign menu calls set({ probe: docId })', () => {
+  it('"Set as Probe" calls set({ probe: docId })', () => {
+    render(<DocumentsPicker datasetId="ds1" />);
+    const actions = captured!.contextMenuActions({
+      docId: 'doc-id-to-assign',
+      name: 'pick me',
+      raw: {},
+    });
+    const group = actions.find(
+      (a): a is ContextMenuGroup => a.kind === 'group',
+    );
+    const probeItem = group!.items.find((it) => it.label === 'Probe');
+    probeItem!.onSelect();
+    expect(setSelectionMock).toHaveBeenCalledWith({
+      probe: 'doc-id-to-assign',
+    });
+  });
+
+  it('includes Copy ID + Open in Document Detail items', () => {
+    render(<DocumentsPicker datasetId="ds1" />);
+    const actions = captured!.contextMenuActions({
+      docId: 'doc-id-to-assign',
+      name: 'pick me',
+      raw: {},
+    });
+    const itemLabels = actions
+      .filter((a): a is ContextMenuItem => a.kind === 'item')
+      .map((a) => a.label);
+    expect(itemLabels).toContain('Copy ID');
+    expect(itemLabels).toContain('Open in Document Detail');
+  });
+
+  it('"Open in Document Detail" opens the doc-detail route', () => {
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
+
+    render(<DocumentsPicker datasetId="ds1" />);
+    const actions = captured!.contextMenuActions({
+      docId: 'doc-id-to-assign',
+      name: 'pick me',
+      raw: {},
+    });
+    const item = actions.find(
+      (a): a is ContextMenuItem =>
+        a.kind === 'item' && a.label === 'Open in Document Detail',
+    );
+    item!.onSelect();
+    expect(open).toHaveBeenCalledWith(
+      '/datasets/ds1/documents/doc-id-to-assign',
+      '_blank',
+      'noopener,noreferrer',
+    );
+    vi.unstubAllGlobals();
+  });
+});
+
+// ── Bulk actions factory. ─────────────────────────────────────────
+describe('DocumentsPicker — bulk actions', () => {
+  beforeEach(() => {
+    searchParamsStub = new URLSearchParams('docClass=subject');
     useDocumentsMock.mockReturnValue({
       data: {
-        documents: [{ id: 'doc-as-probe', name: 'a probe doc' }],
+        documents: [{ id: 'doc-1', name: 'first' }],
         total: 1,
         page: 1,
         pageSize: 200,
@@ -280,14 +403,37 @@ describe('DocumentsPicker — doc-list mode (?docClass=<name>)', () => {
       isLoading: false,
       isError: false,
     });
+  });
+
+  it('builds copy-ids + ask-claude actions', () => {
+    render(<DocumentsPicker datasetId="ds1" />);
+    const actions = captured!.bulkActions(['d1', 'd2']);
+    expect(actions.map((a) => a.id)).toEqual(['copy-ids', 'ask-claude']);
+    expect(actions[0]!.label).toBe('Copy 2 IDs');
+  });
+
+  it('"Ask Claude" emits an ask-prefill payload via the bus (uses doc class as noun)', async () => {
+    const {
+      __resetAskPrefillBusForTests,
+      subscribeToAskPrefill,
+    } = await import('@/lib/ai/ask-prefill-bus');
+    __resetAskPrefillBusForTests();
+    const received: Array<{ text: string; autoSend?: boolean }> = [];
+    const unsub = subscribeToAskPrefill((p) => received.push(p));
 
     render(<DocumentsPicker datasetId="ds1" />);
+    const actions = captured!.bulkActions(['d1']);
+    const ask = actions.find((a) => a.id === 'ask-claude');
+    ask!.onSelect(['d1']);
 
-    const select = screen.getByLabelText(/Set document/i) as HTMLSelectElement;
-    fireEvent.change(select, { target: { value: 'probe' } });
+    expect(received).toHaveLength(1);
+    // Test setup activates docClass='subject' so the prompt
+    // should use "subject" not the generic "document".
+    expect(received[0]!.text).toContain('subject');
+    expect(received[0]!.text).toContain('d1');
+    expect(received[0]!.autoSend).toBe(false);
 
-    expect(setSelectionMock).toHaveBeenCalledWith({
-      probe: 'doc-as-probe',
-    });
+    unsub();
+    __resetAskPrefillBusForTests();
   });
 });

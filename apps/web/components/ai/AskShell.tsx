@@ -89,6 +89,21 @@ export interface AskShellProps {
    * its own header + height management.
    */
   compact?: boolean;
+  /**
+   * Optional prefill from elsewhere in the workspace (e.g. the
+   * data-grid bulk-actions bar). When this changes to a non-empty
+   * value, AskShell stages it into the input. If `autoSend` is
+   * true, the message fires immediately; otherwise it stays in the
+   * input for the user to review + send.
+   *
+   * Phase G integration with `lib/ai/ask-prefill-bus.ts`: AskPanel
+   * subscribes to the bus, opens the panel, and forwards the
+   * payload here via this prop. AskShell calls `onPrefillConsumed`
+   * after handling so the parent can clear its staged value and
+   * the same prefill doesn't fire twice on re-render.
+   */
+  prefill?: { text: string; autoSend?: boolean } | null;
+  onPrefillConsumed?: () => void;
 }
 
 /**
@@ -106,6 +121,8 @@ export interface AskShellProps {
 export function AskShell({
   context,
   compact = false,
+  prefill,
+  onPrefillConsumed,
 }: AskShellProps = {}) {
   const {
     conversationId,
@@ -148,6 +165,8 @@ export function AskShell({
       shareUrl={shareUrl}
       compact={compact}
       context={context}
+      prefill={prefill ?? null}
+      onPrefillConsumed={onPrefillConsumed}
     />
   );
 }
@@ -160,6 +179,8 @@ type AskChatProps = {
   shareUrl: string | null;
   compact: boolean;
   context: AskShellContext | undefined;
+  prefill: { text: string; autoSend?: boolean } | null;
+  onPrefillConsumed: (() => void) | undefined;
 };
 
 function AskChat({
@@ -170,6 +191,8 @@ function AskChat({
   shareUrl,
   compact,
   context,
+  prefill,
+  onPrefillConsumed,
 }: AskChatProps) {
   const [input, setInput] = useState('');
   const [errorBanner, setErrorBanner] = useState<string | null>(null);
@@ -261,6 +284,38 @@ function AskChat({
   useEffect(() => {
     persist(messages);
   }, [messages, persist]);
+
+  // Phase G — consume prefill events forwarded by AskPanel. Each
+  // distinct prefill payload (changed identity) fires once: stage
+  // text into the input, optionally auto-send, then notify the
+  // parent to clear its staged value.
+  //
+  // Guarded with `processedPrefillRef` so React 19's strict-mode
+  // double-effect doesn't double-send the same prefill. We capture
+  // a key based on the prefill payload itself; ref keeps "we already
+  // handled this" across re-renders without breaking the deps array.
+  const processedPrefillRef = useRef<unknown>(null);
+  useEffect(() => {
+    if (!prefill) return;
+    if (processedPrefillRef.current === prefill) return;
+    processedPrefillRef.current = prefill;
+    if (prefill.autoSend) {
+      // Auto-send mode: fire the message directly. Don't stage in
+      // the input first — that would create a momentary "user is
+      // typing" flash before the send. The cleared input is the
+      // natural post-send state.
+      void sendMessage({ text: prefill.text });
+    } else {
+      // Stage-only mode: drop the text into the input so the user
+      // can review + edit before sending. setState-in-effect is the
+      // right shape here — we're syncing a transient prop (prefill
+      // payload from the bus) into local input state. The
+      // processedPrefillRef guards against cascading re-renders.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
+      setInput(prefill.text);
+    }
+    onPrefillConsumed?.();
+  }, [prefill, sendMessage, onPrefillConsumed]);
 
   const entries: ThreadEntry[] = useMemo(() => {
     const out: ThreadEntry[] = [];

@@ -64,7 +64,7 @@ afterEach(() => {
 });
 
 describe('ElectrodePositionPanel', () => {
-  it('auto-loads on mount with class=probe_location, page=1, size=500', () => {
+  it('auto-loads on mount with class=probe_location, page=1, size=200 (backend cap)', () => {
     useDocumentsMock.mockReturnValue({
       data: undefined,
       isLoading: true,
@@ -78,7 +78,7 @@ describe('ElectrodePositionPanel', () => {
     );
 
     // The hook is invoked once on mount with the documented args.
-    expect(useDocumentsMock).toHaveBeenCalledWith('ds1', 'probe_location', 1, 500);
+    expect(useDocumentsMock).toHaveBeenCalledWith('ds1', 'probe_location', 1, 200);
   });
 
   it('renders the loading skeleton while the documents query is pending', () => {
@@ -131,7 +131,7 @@ describe('ElectrodePositionPanel', () => {
 
   it('renders the no-docs empty state when the dataset has zero probe_location documents', () => {
     useDocumentsMock.mockReturnValue({
-      data: { total: 0, page: 1, pageSize: 500, documents: [] },
+      data: { total: 0, page: 1, pageSize: 200, documents: [] },
       isLoading: false,
       isError: false,
     });
@@ -161,7 +161,7 @@ describe('ElectrodePositionPanel', () => {
       data: {
         total: 2,
         page: 1,
-        pageSize: 500,
+        pageSize: 200,
         documents: [
           { id: 'doc1', name: 'probe A', data: { probe_location: { name: 'A' } } },
           { id: 'doc2', name: 'probe B', data: { probe_location: { region: 'Cortex' } } },
@@ -189,7 +189,7 @@ describe('ElectrodePositionPanel', () => {
       data: {
         total: 2,
         page: 1,
-        pageSize: 500,
+        pageSize: 200,
         documents: [
           {
             id: 'doc1',
@@ -244,7 +244,7 @@ describe('ElectrodePositionPanel', () => {
       data: {
         total: 1,
         page: 1,
-        pageSize: 500,
+        pageSize: 200,
         documents: [
           {
             id: 'doc1',
@@ -282,7 +282,7 @@ describe('ElectrodePositionPanel', () => {
       data: {
         total: 1,
         page: 1,
-        pageSize: 500,
+        pageSize: 200,
         documents: [
           {
             id: 'doc1',
@@ -315,7 +315,7 @@ describe('ElectrodePositionPanel', () => {
       data: {
         total: 2,
         page: 1,
-        pageSize: 500,
+        pageSize: 200,
         documents: [
           {
             id: 'doc1',
@@ -354,7 +354,7 @@ describe('ElectrodePositionPanel', () => {
       data: {
         total: 3,
         page: 1,
-        pageSize: 500,
+        pageSize: 200,
         documents: [
           // Good: nested coordinates.
           {
@@ -386,7 +386,7 @@ describe('ElectrodePositionPanel', () => {
       data: {
         total: 1,
         page: 1,
-        pageSize: 500,
+        pageSize: 200,
         documents: [
           { id: 'doc1', data: { probe_location: { coordinates: { x: 1, y: 2 } } } },
         ],
@@ -407,7 +407,7 @@ describe('ElectrodePositionPanel', () => {
     expect(args).toEqual({
       datasetId: 'ds1',
       className: 'probe_location',
-      limit: 500,
+      limit: 200,
     });
   });
 });

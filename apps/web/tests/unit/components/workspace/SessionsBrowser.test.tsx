@@ -1,23 +1,23 @@
 /**
- * SessionsBrowser — pure filter coverage + picker-rail behaviour.
+ * SessionsBrowser — pure filter coverage + picker-rail wiring.
  *
- * Phase F3 of the one-canvas redesign (2026-05-16). The browser is
- * now a picker-rail body: row click writes through
- * `useWorkspaceSelection.set({ session })` instead of the old
- * `?select=` URL param. The old ViewActionsRail is gone.
+ * Phase G7 (2026-05-16). The browser now delegates row rendering to
+ * the shared `WorkspaceDataGrid` primitive. We stub the grid (its own
+ * tests cover internals) and assert the picker hands it the right
+ * factory callbacks:
  *
- * Tests in this file:
- *   - `filterEpochs` pure substring + AND semantics
- *   - `formatEpochTime` prefers globalTime / falls back to devTime
- *   - clicking a row calls `set({ session: <docId> })`
- *   - clicking the active row toggles selection off
- *   - reactive cascade: when selection.subject is set, the table
- *     filters to only that subject's epochs (and the cascade hint
- *     renders)
- *   - no ViewActionsRail / outbound View Actions render
+ *   - `rowId(row)` returns the epoch doc id
+ *   - `contextMenuActions(row)` includes "Set as primary session",
+ *     "Copy ID", "Plot signal trace", "Open in Document Detail" —
+ *     each dispatches the right side-effect
+ *   - `bulkActions(ids)` includes "Copy N IDs" and "Ask Claude"
+ *   - `onPrimaryChange(id)` calls set({ session: id })
+ *
+ * The pure `filterEpochs` / `formatEpochTime` helpers are unchanged
+ * (the grid migration didn't touch them).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import type { ReactNode } from 'react';
 
@@ -25,6 +25,11 @@ import {
   filterEpochs,
   formatEpochTime,
 } from '@/components/workspace/SessionsBrowser';
+import type { BulkAction } from '@/components/workspace/canvas/DataGridBulkActions';
+import type {
+  ContextMenuEntry,
+  ContextMenuItem,
+} from '@/components/workspace/canvas/DataGridContextMenu';
 
 const setMock = vi.fn();
 const clearMock = vi.fn();
@@ -76,30 +81,6 @@ vi.mock('next/navigation', () => ({
   usePathname: () => '/my/workspace/ds-test',
 }));
 
-vi.mock('@tanstack/react-virtual', () => ({
-  useVirtualizer: ({
-    count,
-    estimateSize,
-  }: {
-    count: number;
-    estimateSize: () => number;
-  }) => {
-    const size = estimateSize();
-    const items = Array.from({ length: count }, (_, i) => ({
-      index: i,
-      key: i,
-      start: i * size,
-      end: (i + 1) * size,
-      size,
-      lane: 0,
-    }));
-    return {
-      getVirtualItems: () => items,
-      getTotalSize: () => count * size,
-    };
-  },
-}));
-
 const EPOCH_DOC_ID_1 = '68d6e54703a03f5cfdac8e01';
 const EPOCH_DOC_ID_2 = '68d6e54703a03f5cfdac8e02';
 const EPOCH_DOC_ID_3 = '68d6e54703a03f5cfdac8e03';
@@ -149,6 +130,33 @@ vi.mock('@/lib/api/tables', () => ({
   }),
 }));
 
+// Stub the grid — capture props so we can drive them in the test.
+interface CapturedGridProps {
+  data: unknown[];
+  rowId: (row: unknown) => string;
+  noun: string;
+  primaryId: string | null;
+  onPrimaryChange: (id: string | null) => void;
+  contextMenuActions: (row: unknown) => ReadonlyArray<ContextMenuEntry>;
+  bulkActions: (ids: ReadonlyArray<string>) => ReadonlyArray<BulkAction>;
+  lockedColumnIds?: ReadonlyArray<string>;
+}
+
+let captured: CapturedGridProps | null = null;
+
+vi.mock('@/components/workspace/canvas/WorkspaceDataGrid', () => ({
+  WorkspaceDataGrid: (props: CapturedGridProps) => {
+    captured = props;
+    return (
+      <div data-testid="workspace-data-grid-stub">
+        <span data-testid="grid-noun">{props.noun}</span>
+        <span data-testid="grid-row-count">{props.data.length}</span>
+        <span data-testid="grid-primary-id">{props.primaryId ?? 'none'}</span>
+      </div>
+    );
+  },
+}));
+
 import { SessionsBrowser } from '@/components/workspace/SessionsBrowser';
 
 function withProviders(ui: ReactNode) {
@@ -172,6 +180,7 @@ beforeEach(() => {
     stimulus: null,
     unit: null,
   };
+  captured = null;
 });
 
 afterEach(() => {
@@ -297,58 +306,52 @@ describe('filterEpochs', () => {
   });
 });
 
-// ── Row click → workspace selection. ──────────────────────────────
-describe('SessionsBrowser — row click writes through useWorkspaceSelection', () => {
-  it('clicking a row calls set({ session: <docId> })', () => {
+// ── Picker → grid wiring. ─────────────────────────────────────────
+describe('SessionsBrowser — grid wiring', () => {
+  it('renders the grid stub with the session noun', () => {
     render(withProviders(<SessionsBrowser datasetId="ds-test" />));
-    const row = screen.getByText('epoch_1').closest('tr');
-    expect(row).not.toBeNull();
-    fireEvent.click(row!);
-    expect(setMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId('grid-noun')).toHaveTextContent('session');
+  });
+
+  it('forwards the active session as the grid primaryId', () => {
+    selectionStub.session = EPOCH_DOC_ID_1;
+    render(withProviders(<SessionsBrowser datasetId="ds-test" />));
+    expect(screen.getByTestId('grid-primary-id')).toHaveTextContent(
+      EPOCH_DOC_ID_1,
+    );
+  });
+
+  it('rowId resolves to epochDocumentIdentifier', () => {
+    render(withProviders(<SessionsBrowser datasetId="ds-test" />));
+    expect(captured).not.toBeNull();
+    expect(
+      captured!.rowId({ epochDocumentIdentifier: EPOCH_DOC_ID_1 }),
+    ).toBe(EPOCH_DOC_ID_1);
+  });
+
+  it('onPrimaryChange writes through set({ session })', () => {
+    render(withProviders(<SessionsBrowser datasetId="ds-test" />));
+    captured!.onPrimaryChange(EPOCH_DOC_ID_1);
     expect(setMock).toHaveBeenCalledWith({ session: EPOCH_DOC_ID_1 });
   });
 
-  it('clicking the already-active row toggles selection off', () => {
-    selectionStub.session = EPOCH_DOC_ID_1;
+  it('locks the epoch column', () => {
     render(withProviders(<SessionsBrowser datasetId="ds-test" />));
-    const activeRow = screen.getByText('epoch_1').closest('tr');
-    fireEvent.click(activeRow!);
-    expect(setMock).toHaveBeenCalledWith({ session: null });
+    expect(captured!.lockedColumnIds).toContain('epoch');
   });
 });
 
-describe('SessionsBrowser — selection-active hint', () => {
-  it('renders the hint when a session is selected', () => {
-    selectionStub.session = EPOCH_DOC_ID_1;
-    render(withProviders(<SessionsBrowser datasetId="ds-test" />));
-    expect(
-      screen.getByTestId('sessions-selection-active-hint'),
-    ).toBeInTheDocument();
-  });
-
-  it('hides the hint when nothing is selected', () => {
-    render(withProviders(<SessionsBrowser datasetId="ds-test" />));
-    expect(
-      screen.queryByTestId('sessions-selection-active-hint'),
-    ).toBeNull();
-  });
-});
-
+// ── Subject cascade. ──────────────────────────────────────────────
 describe('SessionsBrowser — subject cascade', () => {
-  it('renders all epochs when no subject is selected', () => {
+  it('passes all epochs to the grid when no subject is selected', () => {
     render(withProviders(<SessionsBrowser datasetId="ds-test" />));
-    expect(screen.getByText('epoch_1')).toBeInTheDocument();
-    expect(screen.getByText('epoch_2')).toBeInTheDocument();
-    expect(screen.getByText('epoch_3')).toBeInTheDocument();
+    expect(screen.getByTestId('grid-row-count')).toHaveTextContent('3');
   });
 
-  it('filters to only the cascade subject when selection.subject is set', () => {
+  it('narrows the grid data to only the cascade subject\'s epochs', () => {
     selectionStub.subject = SUBJ_ID_A;
     render(withProviders(<SessionsBrowser datasetId="ds-test" />));
-    // epoch_1 and epoch_2 belong to subj-A; epoch_3 belongs to subj-B.
-    expect(screen.getByText('epoch_1')).toBeInTheDocument();
-    expect(screen.getByText('epoch_2')).toBeInTheDocument();
-    expect(screen.queryByText('epoch_3')).toBeNull();
+    expect(screen.getByTestId('grid-row-count')).toHaveTextContent('2');
   });
 
   it('renders the cascade hint when subject is set', () => {
@@ -365,25 +368,119 @@ describe('SessionsBrowser — subject cascade', () => {
   });
 });
 
-describe('SessionsBrowser — no outbound View Actions render', () => {
-  it('does not render a ViewActionsRail "Selected" eyebrow', () => {
-    selectionStub.session = EPOCH_DOC_ID_1;
+// ── Context-menu factory. ─────────────────────────────────────────
+describe('SessionsBrowser — context menu actions', () => {
+  it('builds the canonical action list per row', () => {
     render(withProviders(<SessionsBrowser datasetId="ds-test" />));
-    expect(screen.queryByText('Selected')).toBeNull();
+    const actions = captured!.contextMenuActions({
+      epochDocumentIdentifier: EPOCH_DOC_ID_1,
+    });
+    const itemLabels = actions
+      .filter((a): a is ContextMenuItem => a.kind === 'item')
+      .map((a) => a.label);
+    expect(itemLabels).toEqual([
+      'Set as primary session',
+      'Copy ID',
+      'Plot signal trace for this session',
+      'Open in Document Detail',
+    ]);
   });
 
-  it('does not render a "View document" outbound link', () => {
-    selectionStub.session = EPOCH_DOC_ID_1;
-    const { container } = render(
-      withProviders(<SessionsBrowser datasetId="ds-test" />),
+  it('"Set as primary session" calls set({ session: id })', () => {
+    render(withProviders(<SessionsBrowser datasetId="ds-test" />));
+    const actions = captured!.contextMenuActions({
+      epochDocumentIdentifier: EPOCH_DOC_ID_1,
+    });
+    const item = actions.find(
+      (a): a is ContextMenuItem =>
+        a.kind === 'item' && a.label === 'Set as primary session',
     );
-    expect(
-      container.querySelector(
-        `a[href*="/datasets/ds-test/documents/${EPOCH_DOC_ID_1}"]`,
-      ),
-    ).toBeNull();
-    expect(
-      screen.queryByRole('link', { name: /view document/i }),
-    ).toBeNull();
+    item!.onSelect();
+    expect(setMock).toHaveBeenCalledWith({ session: EPOCH_DOC_ID_1 });
+  });
+
+  it('"Plot signal trace" sets the session and scrolls SignalViewer into view', () => {
+    const scrollIntoView = vi.fn();
+    const target = document.createElement('div');
+    target.id = 'signal-viewer';
+    Object.defineProperty(target, 'scrollIntoView', {
+      value: scrollIntoView,
+      writable: true,
+    });
+    document.body.appendChild(target);
+
+    render(withProviders(<SessionsBrowser datasetId="ds-test" />));
+    const actions = captured!.contextMenuActions({
+      epochDocumentIdentifier: EPOCH_DOC_ID_1,
+    });
+    const item = actions.find(
+      (a): a is ContextMenuItem =>
+        a.kind === 'item' && a.label === 'Plot signal trace for this session',
+    );
+    item!.onSelect();
+
+    expect(setMock).toHaveBeenCalledWith({ session: EPOCH_DOC_ID_1 });
+    expect(scrollIntoView).toHaveBeenCalled();
+
+    document.body.removeChild(target);
+  });
+
+  it('"Open in Document Detail" opens the doc-detail route in a new tab', () => {
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
+
+    render(withProviders(<SessionsBrowser datasetId="ds-test" />));
+    const actions = captured!.contextMenuActions({
+      epochDocumentIdentifier: EPOCH_DOC_ID_1,
+    });
+    const item = actions.find(
+      (a): a is ContextMenuItem =>
+        a.kind === 'item' && a.label === 'Open in Document Detail',
+    );
+    item!.onSelect();
+    expect(open).toHaveBeenCalledWith(
+      `/datasets/ds-test/documents/${EPOCH_DOC_ID_1}`,
+      '_blank',
+      'noopener,noreferrer',
+    );
+    vi.unstubAllGlobals();
+  });
+
+  it('returns an empty list when row id is missing', () => {
+    render(withProviders(<SessionsBrowser datasetId="ds-test" />));
+    expect(captured!.contextMenuActions({})).toEqual([]);
+  });
+});
+
+// ── Bulk actions factory. ─────────────────────────────────────────
+describe('SessionsBrowser — bulk actions', () => {
+  it('builds the shared "copy IDs" + "Ask Claude" actions', () => {
+    render(withProviders(<SessionsBrowser datasetId="ds-test" />));
+    const actions = captured!.bulkActions([EPOCH_DOC_ID_1, EPOCH_DOC_ID_2]);
+    expect(actions.map((a) => a.id)).toEqual(['copy-ids', 'ask-claude']);
+    expect(actions[0]!.label).toBe('Copy 2 IDs');
+  });
+
+  it('"Ask Claude" emits an ask-prefill payload via the bus', async () => {
+    const {
+      __resetAskPrefillBusForTests,
+      subscribeToAskPrefill,
+    } = await import('@/lib/ai/ask-prefill-bus');
+    __resetAskPrefillBusForTests();
+    const received: Array<{ text: string; autoSend?: boolean }> = [];
+    const unsub = subscribeToAskPrefill((p) => received.push(p));
+
+    render(withProviders(<SessionsBrowser datasetId="ds-test" />));
+    const actions = captured!.bulkActions([EPOCH_DOC_ID_1]);
+    const ask = actions.find((a) => a.id === 'ask-claude');
+    ask!.onSelect([EPOCH_DOC_ID_1]);
+
+    expect(received).toHaveLength(1);
+    expect(received[0]!.text).toContain('session');
+    expect(received[0]!.text).toContain(EPOCH_DOC_ID_1);
+    expect(received[0]!.autoSend).toBe(false);
+
+    unsub();
+    __resetAskPrefillBusForTests();
   });
 });

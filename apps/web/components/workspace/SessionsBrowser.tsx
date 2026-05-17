@@ -9,9 +9,10 @@
  *
  * Selection contract: row click writes `selection.session` via
  * `useWorkspaceSelection.set({ session })`. Toggle-off by clicking
- * the active row again. There are NO outbound View Actions in this
- * body — the analysis panels on the canvas read `selection.session`
- * directly.
+ * the active row again. Right-click opens a context menu with "Set
+ * as primary session" / "Copy ID" / "Plot signal trace" (jumps to
+ * the SignalViewer panel) / "Open in Document Detail". Multi-select
+ * via the checkbox column drives bulk actions.
  *
  * Reactive cascade: when `selection.subject` is set, the table
  * pre-filters client-side to only that subject's epochs. The
@@ -31,25 +32,31 @@
  * from 5 → 3 (Epoch / Start / Approach); the Stop column + Subject
  * column are dropped (Subject is the cascade source, Stop is
  * available in the Document Explorer drill).
+ *
+ * Phase G7 (2026-05-16): table body migrated to the shared
+ * `WorkspaceDataGrid` primitive.
  */
-import { useMemo } from 'react';
+import { Copy, Crosshair, ExternalLink, Sparkles, Waves } from 'lucide-react';
+import { useCallback, useMemo } from 'react';
 import {
   createColumnHelper,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
   type ColumnDef,
 } from '@tanstack/react-table';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 
 import { Skeleton } from '@/components/ui/Skeleton';
-import { VirtualizedTable } from '@/components/ui/VirtualizedTable';
 import {
   WorkspaceFilterBar,
   type FilterField,
 } from '@/components/workspace/WorkspaceFilterBar';
+import { WorkspaceDataGrid } from '@/components/workspace/canvas/WorkspaceDataGrid';
+import type { BulkAction } from '@/components/workspace/canvas/DataGridBulkActions';
+import type { ContextMenuEntry } from '@/components/workspace/canvas/DataGridContextMenu';
+import {
+  buildPrefillPrompt,
+  emitAskPrefill,
+} from '@/lib/ai/ask-prefill-bus';
 import { useSummaryTable } from '@/lib/api/tables';
-import { cn } from '@/lib/cn';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 
 interface SessionsBrowserProps {
@@ -130,6 +137,15 @@ export function filterEpochs(
     }
     return true;
   });
+}
+
+/**
+ * Resolve the row's primary id. The grid + context menu + bulk
+ * actions all consume this single accessor.
+ */
+function epochRowId(row: EpochRow): string {
+  const id = row.epochDocumentIdentifier;
+  return typeof id === 'string' && id.length > 0 ? id : '';
 }
 
 export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
@@ -258,15 +274,83 @@ export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
     [columnHelper],
   );
 
-  // React Compiler skip — same rationale as SubjectsBrowser /
-  // VirtualizedTable: useReactTable returns functions that can't be
-  // safely memoized. TanStack Table handles its own memoization.
-  // eslint-disable-next-line react-hooks/incompatible-library
-  const table = useReactTable({
-    data: filteredRows,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  });
+  // Context menu factory — per-row. "Plot signal trace" sets the
+  // session AND scrolls the SignalViewer panel into view; matches
+  // the canvas's mental model of "one click → analysis updates".
+  const contextMenuActions = useCallback(
+    (row: EpochRow): ReadonlyArray<ContextMenuEntry> => {
+      const id = epochRowId(row);
+      if (!id) return [];
+      return [
+        {
+          kind: 'item',
+          label: 'Set as primary session',
+          icon: Crosshair,
+          onSelect: () => set({ session: id }),
+        },
+        {
+          kind: 'item',
+          label: 'Copy ID',
+          icon: Copy,
+          shortcut: '⌘C',
+          onSelect: () => {
+            void navigator.clipboard?.writeText(id);
+          },
+        },
+        { kind: 'separator' },
+        {
+          kind: 'item',
+          label: 'Plot signal trace for this session',
+          icon: Waves,
+          onSelect: () => {
+            set({ session: id });
+            document
+              .getElementById('signal-viewer')
+              ?.scrollIntoView({ behavior: 'smooth' });
+          },
+        },
+        {
+          kind: 'item',
+          label: 'Open in Document Detail',
+          icon: ExternalLink,
+          onSelect: () => {
+            window.open(
+              `/datasets/${datasetId}/documents/${id}`,
+              '_blank',
+              'noopener,noreferrer',
+            );
+          },
+        },
+      ];
+    },
+    [set, datasetId],
+  );
+
+  const bulkActions = useCallback(
+    (selectedIds: ReadonlyArray<string>): ReadonlyArray<BulkAction> => [
+      {
+        id: 'copy-ids',
+        label: `Copy ${selectedIds.length} IDs`,
+        icon: Copy,
+        onSelect: (ids) => {
+          void navigator.clipboard?.writeText(ids.join('\n'));
+        },
+      },
+      {
+        id: 'ask-claude',
+        label: `Ask Claude about these sessions`,
+        variant: 'primary',
+        icon: Sparkles,
+        onSelect: (ids) => {
+          emitAskPrefill({
+            text: buildPrefillPrompt('session', ids),
+            autoSend: false,
+          });
+        },
+      },
+    ],
+    [],
+  );
 
   if (summary.isLoading) {
     return (
@@ -319,81 +403,42 @@ export function SessionsBrowser({ datasetId }: SessionsBrowserProps) {
         </p>
       )}
 
-      {selectedDocId && (
-        // Selection-active hint — mirrors SubjectsBrowser's pattern.
-        <p
-          data-testid="sessions-selection-active-hint"
-          className="text-[11.5px] text-fg-secondary"
-        >
-          Active session — analysis cards on the right will update.
-        </p>
-      )}
-
       {hasNoEpochs ? (
         <div className="rounded-xl border border-dashed border-border-subtle bg-bg-surface p-8 text-center text-[13.5px] text-fg-secondary">
           This dataset doesn&rsquo;t have any element_epoch documents yet.
           The Documents picker lists every class with rows.
         </div>
-      ) : filteredRows.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border-subtle bg-bg-surface p-8 text-center text-[13.5px] text-fg-secondary">
-          {subjectCascadeId
-            ? "No epochs for the active subject match the current filters."
-            : 'No epochs match the current filters.'}{' '}
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="text-ndi-teal hover:underline font-semibold"
-          >
-            Clear filters
-          </button>
-        </div>
       ) : (
-        <VirtualizedTable
-          table={table}
-          estimateSize={36}
-          onRowClick={(row) => {
-            const docId = row.epochDocumentIdentifier;
-            if (typeof docId !== 'string' || docId.length === 0) return;
-            // Toggle: clicking the active row again clears it.
-            if (docId === selectedDocId) {
-              set({ session: null });
-            } else {
-              set({ session: docId });
-            }
+        <WorkspaceDataGrid<EpochRow>
+          data={filteredRows}
+          columns={columns}
+          rowId={epochRowId}
+          noun="session"
+          primaryId={selectedDocId}
+          onPrimaryChange={(id) => set({ session: id })}
+          contextMenuActions={contextMenuActions}
+          bulkActions={bulkActions}
+          columnLabels={{
+            epoch: 'Epoch',
+            start: 'Start',
+            approach: 'Approach',
           }}
-          getRowClassName={(row) => {
-            const docId = row.original.epochDocumentIdentifier;
-            return docId === selectedDocId
-              ? 'bg-brand-blue/5 border-l-2 border-l-brand-blue'
-              : undefined;
-          }}
-          renderHeaderCell={(header) => (
-            <th
-              key={header.id}
-              colSpan={header.colSpan}
-              className={cn(
-                'px-3 py-2 text-left text-[10.5px] font-bold tracking-eyebrow uppercase text-fg-muted',
-                'border-b border-border-subtle bg-bg-muted/40 sticky top-0',
-              )}
-              style={{ width: header.getSize() }}
-            >
-              {header.isPlaceholder
-                ? null
-                : flexRender(
-                    header.column.columnDef.header,
-                    header.getContext(),
-                  )}
-            </th>
-          )}
-          renderCell={(cell) => (
-            <td
-              key={cell.id}
-              className="px-3 py-2 align-top truncate"
-              style={{ width: cell.column.getSize() }}
-            >
-              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-            </td>
-          )}
+          lockedColumnIds={['epoch']}
+          label="Sessions"
+          emptyState={
+            <div className="rounded-xl border border-dashed border-border-subtle bg-bg-surface p-8 text-center text-[13.5px] text-fg-secondary">
+              {subjectCascadeId
+                ? "No epochs for the active subject match the current filters."
+                : 'No epochs match the current filters.'}{' '}
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-ndi-teal hover:underline font-semibold"
+              >
+                Clear filters
+              </button>
+            </div>
+          }
         />
       )}
     </div>

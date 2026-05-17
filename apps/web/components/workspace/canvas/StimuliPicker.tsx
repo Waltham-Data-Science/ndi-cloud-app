@@ -32,18 +32,25 @@
  * The shape of stimulus docs varies dataset-to-dataset; when we
  * can't derive `type` or `count` we fall back to "—" rather than
  * crash. Per the design-doc principle: never crash on partial data.
+ *
+ * Phase G7 (2026-05-16): table body migrated to the shared
+ * `WorkspaceDataGrid` primitive.
  */
-import { useMemo, useState } from 'react';
+import { Activity, Copy, Crosshair, ExternalLink, Sparkles } from 'lucide-react';
+import { useCallback, useMemo, useState } from 'react';
 import {
   createColumnHelper,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
   type ColumnDef,
 } from '@tanstack/react-table';
 
 import { Skeleton } from '@/components/ui/Skeleton';
-import { VirtualizedTable } from '@/components/ui/VirtualizedTable';
+import { WorkspaceDataGrid } from '@/components/workspace/canvas/WorkspaceDataGrid';
+import type { BulkAction } from '@/components/workspace/canvas/DataGridBulkActions';
+import type { ContextMenuEntry } from '@/components/workspace/canvas/DataGridContextMenu';
+import {
+  buildPrefillPrompt,
+  emitAskPrefill,
+} from '@/lib/ai/ask-prefill-bus';
 import { useDocuments, type DocumentSummary } from '@/lib/api/documents';
 import { cn } from '@/lib/cn';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
@@ -142,6 +149,11 @@ export function filterStimuli(
   );
 }
 
+/** Stable row id accessor — every grid touchpoint uses this. */
+function stimulusRowId(row: StimulusRow): string {
+  return row.docId;
+}
+
 export function StimuliPicker({ datasetId }: StimuliPickerProps) {
   const { selection, set } = useWorkspaceSelection();
   const [typeQuery, setTypeQuery] = useState('');
@@ -229,13 +241,83 @@ export function StimuliPicker({ datasetId }: StimuliPickerProps) {
     [columnHelper],
   );
 
-  // React Compiler skips memoization for useReactTable consumers.
-  // eslint-disable-next-line react-hooks/incompatible-library
-  const table = useReactTable({
-    data: filteredRows,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  });
+  // Context menu — "Use in PSTH" sets the stimulus and jumps the
+  // user to the PSTH panel. This is the most common downstream use:
+  // pick a stimulus → align spikes around it.
+  const contextMenuActions = useCallback(
+    (row: StimulusRow): ReadonlyArray<ContextMenuEntry> => {
+      const id = row.docId;
+      if (!id) return [];
+      return [
+        {
+          kind: 'item',
+          label: 'Set as primary stimulus',
+          icon: Crosshair,
+          onSelect: () => set({ stimulus: id }),
+        },
+        {
+          kind: 'item',
+          label: 'Copy ID',
+          icon: Copy,
+          shortcut: '⌘C',
+          onSelect: () => {
+            void navigator.clipboard?.writeText(id);
+          },
+        },
+        { kind: 'separator' },
+        {
+          kind: 'item',
+          label: 'Use in PSTH',
+          icon: Activity,
+          onSelect: () => {
+            set({ stimulus: id });
+            document
+              .getElementById('psth')
+              ?.scrollIntoView({ behavior: 'smooth' });
+          },
+        },
+        {
+          kind: 'item',
+          label: 'Open in Document Detail',
+          icon: ExternalLink,
+          onSelect: () => {
+            window.open(
+              `/datasets/${datasetId}/documents/${id}`,
+              '_blank',
+              'noopener,noreferrer',
+            );
+          },
+        },
+      ];
+    },
+    [set, datasetId],
+  );
+
+  const bulkActions = useCallback(
+    (selectedIds: ReadonlyArray<string>): ReadonlyArray<BulkAction> => [
+      {
+        id: 'copy-ids',
+        label: `Copy ${selectedIds.length} IDs`,
+        icon: Copy,
+        onSelect: (ids) => {
+          void navigator.clipboard?.writeText(ids.join('\n'));
+        },
+      },
+      {
+        id: 'ask-claude',
+        label: `Ask Claude about these stimuli`,
+        variant: 'primary',
+        icon: Sparkles,
+        onSelect: (ids) => {
+          emitAskPrefill({
+            text: buildPrefillPrompt('stimulus', ids),
+            autoSend: false,
+          });
+        },
+      },
+    ],
+    [],
+  );
 
   if (isLoading) {
     return (
@@ -283,57 +365,24 @@ export function StimuliPicker({ datasetId }: StimuliPickerProps) {
         {allRows.length === 1 ? '' : 's'}
       </div>
 
-      {filteredRows.length === 0 ? (
-        <div className="rounded-md border border-dashed border-border-subtle bg-bg-surface px-3 py-6 text-center text-[12.5px] text-fg-secondary">
-          No stimuli match the current filter.
-        </div>
-      ) : (
-        <VirtualizedTable
-          table={table}
-          estimateSize={32}
-          className="rounded-md border border-border-subtle overflow-auto max-h-[calc(100vh-280px)] min-h-[240px]"
-          onRowClick={(row) => {
-            set({ stimulus: row.docId });
-          }}
-          getRowClassName={(row) => {
-            return row.original.docId === selection.stimulus
-              ? 'bg-brand-blue/5 border-l-2 border-l-brand-blue'
-              : undefined;
-          }}
-          renderHeaderCell={(header) => (
-            <th
-              key={header.id}
-              colSpan={header.colSpan}
-              className={cn(
-                'px-2 py-1.5 text-left text-[10px] font-bold tracking-eyebrow uppercase text-fg-muted',
-                'border-b border-border-subtle bg-bg-muted/40 sticky top-0',
-              )}
-              style={{ width: header.getSize() }}
-            >
-              {header.isPlaceholder
-                ? null
-                : flexRender(
-                    header.column.columnDef.header,
-                    header.getContext(),
-                  )}
-            </th>
-          )}
-          renderCell={(cell) => (
-            <td
-              key={cell.id}
-              className="px-2 py-1.5 align-top truncate"
-              style={{ width: cell.column.getSize() }}
-            >
-              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-            </td>
-          )}
-          emptyState={
-            <div className="text-center text-[12.5px] text-fg-secondary py-6">
-              No stimuli match the current filter.
-            </div>
-          }
-        />
-      )}
+      <WorkspaceDataGrid<StimulusRow>
+        data={filteredRows}
+        columns={columns}
+        rowId={stimulusRowId}
+        noun="stimulus"
+        primaryId={selection.stimulus}
+        onPrimaryChange={(id) => set({ stimulus: id })}
+        contextMenuActions={contextMenuActions}
+        bulkActions={bulkActions}
+        columnLabels={{ type: 'Type', count: 'Count', shortid: 'ID' }}
+        lockedColumnIds={['type']}
+        label="Stimuli"
+        emptyState={
+          <div className="rounded-md border border-dashed border-border-subtle bg-bg-surface px-3 py-6 text-center text-[12.5px] text-fg-secondary">
+            No stimuli match the current filter.
+          </div>
+        }
+      />
     </div>
   );
 }

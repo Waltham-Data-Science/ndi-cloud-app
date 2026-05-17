@@ -14,38 +14,41 @@
  *
  * Selection contract: row click writes through `useWorkspaceSelection`'s
  * `set({ subject })`. Toggle-off by clicking the active row again.
- * There are NO outbound View Actions in this body — the analysis
- * panels on the canvas read `selection.subject` directly. The single
- * remaining Document Explorer escape lives at the bottom of the
- * PickerRail (see `DocumentExplorerEscape`).
+ * Right-click opens a context menu with "Set as primary subject" /
+ * "Copy ID" / "Open in Document Detail". Multi-select via the
+ * checkbox column drives bulk actions.
  *
  * Filter state (?strain=, ?species=, ?sex=) stays in URL params as
  * before — those are LOCAL picker state, not workspace selection
  * context. They survive refresh + share but never leave the picker.
  *
- * Layout adapted for the ~340px-wide picker rail (~316px of usable
- * space after padding). Columns trimmed from 5 → 3 (Subject / Species
- * / Age); strain + sex remain in the filter chips above the table.
- * The filter cascade logic + filter UI is otherwise intact.
+ * Phase G7 (2026-05-16): the table body is now the shared
+ * `WorkspaceDataGrid` primitive — same chrome (sticky header, sortable
+ * columns, column visibility menu, bulk actions, context menu, kbd
+ * nav) across every picker. The picker only owns the columns +
+ * filter UI + the per-row action factory.
  */
-import { useMemo } from 'react';
+import { Copy, Crosshair, ExternalLink, Sparkles } from 'lucide-react';
+import { useCallback, useMemo } from 'react';
 import {
   createColumnHelper,
-  flexRender,
-  getCoreRowModel,
-  useReactTable,
   type ColumnDef,
 } from '@tanstack/react-table';
 import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 
 import { Skeleton } from '@/components/ui/Skeleton';
-import { VirtualizedTable } from '@/components/ui/VirtualizedTable';
 import {
   WorkspaceFilterBar,
   type FilterField,
 } from '@/components/workspace/WorkspaceFilterBar';
+import { WorkspaceDataGrid } from '@/components/workspace/canvas/WorkspaceDataGrid';
+import type { BulkAction } from '@/components/workspace/canvas/DataGridBulkActions';
+import type { ContextMenuEntry } from '@/components/workspace/canvas/DataGridContextMenu';
+import {
+  buildPrefillPrompt,
+  emitAskPrefill,
+} from '@/lib/ai/ask-prefill-bus';
 import { useSummaryTable } from '@/lib/api/tables';
-import { cn } from '@/lib/cn';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 
 interface SubjectsBrowserProps {
@@ -111,6 +114,17 @@ function deriveSexOptions(
     { value: '', label: 'Any' },
     ...sorted.map(([v]) => ({ value: v, label: v })),
   ];
+}
+
+/**
+ * Resolve the row's primary id — prefer the canonical
+ * `subjectDocumentIdentifier`, fall back to `subjectIdentifier`. The
+ * primary id is what every other workspace surface keys on, so the
+ * grid + context menu + bulk actions all use the SAME accessor.
+ */
+function subjectRowId(row: SubjectRow): string {
+  const id = row.subjectDocumentIdentifier ?? row.subjectIdentifier;
+  return typeof id === 'string' && id.length > 0 ? id : '';
 }
 
 export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
@@ -203,9 +217,8 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
     },
   ];
 
-  // TanStack table — columns trimmed for the narrow picker rail.
-  // Strain + Sex are filter-only (they live in the filter chips above
-  // the table); the table shows Subject identifier, Species, and Age.
+  // TanStack table columns — trimmed for the narrow picker rail.
+  // The grid owns the table instance; we hand it the column defs.
   const columnHelper = createColumnHelper<SubjectRow>();
   const columns = useMemo<ColumnDef<SubjectRow, unknown>[]>(
     () =>
@@ -250,17 +263,80 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
     [columnHelper],
   );
 
-  // React Compiler skips memoization for components consuming
-  // `useReactTable()` — same rationale as VirtualizedTable's
-  // useVirtualizer disable. The compiler's reduced optimization here
-  // is acceptable; TanStack Table memoizes its own state. Disabled
-  // at the call site only.
-  // eslint-disable-next-line react-hooks/incompatible-library
-  const table = useReactTable({
-    data: filteredRows,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  });
+  // Context menu factory — per-row. The grid calls this with the
+  // right-clicked row's original data; we resolve the doc id and
+  // build the action list. Keep this stable across renders so Radix
+  // doesn't re-mount the menu.
+  const contextMenuActions = useCallback(
+    (row: SubjectRow): ReadonlyArray<ContextMenuEntry> => {
+      const id = subjectRowId(row);
+      if (!id) return [];
+      return [
+        {
+          kind: 'item',
+          label: 'Set as primary subject',
+          icon: Crosshair,
+          onSelect: () => set({ subject: id }),
+        },
+        {
+          kind: 'item',
+          label: 'Copy ID',
+          icon: Copy,
+          shortcut: '⌘C',
+          onSelect: () => {
+            void navigator.clipboard?.writeText(id);
+          },
+        },
+        { kind: 'separator' },
+        {
+          kind: 'item',
+          label: 'Open in Document Detail',
+          icon: ExternalLink,
+          // Explicit user gesture → external nav is the expected
+          // behavior. NOT an automatic redirect.
+          onSelect: () => {
+            window.open(
+              `/datasets/${datasetId}/documents/${id}`,
+              '_blank',
+              'noopener,noreferrer',
+            );
+          },
+        },
+      ];
+    },
+    [set, datasetId],
+  );
+
+  // Bulk-action factory — receives the selection set as ordered ids.
+  // Two shared actions across every picker: copy-ids and ask-claude.
+  // Ask-Claude dispatches a custom event so a future AskPanel listener
+  // can pre-fill chat; we ALSO copy to clipboard so the button does
+  // something useful TODAY even without a listener.
+  const bulkActions = useCallback(
+    (selectedIds: ReadonlyArray<string>): ReadonlyArray<BulkAction> => [
+      {
+        id: 'copy-ids',
+        label: `Copy ${selectedIds.length} IDs`,
+        icon: Copy,
+        onSelect: (ids) => {
+          void navigator.clipboard?.writeText(ids.join('\n'));
+        },
+      },
+      {
+        id: 'ask-claude',
+        label: `Ask Claude about these subjects`,
+        variant: 'primary',
+        icon: Sparkles,
+        onSelect: (ids) => {
+          emitAskPrefill({
+            text: buildPrefillPrompt('subject', ids),
+            autoSend: false,
+          });
+        },
+      },
+    ],
+    [],
+  );
 
   if (summary.isLoading) {
     return (
@@ -272,6 +348,9 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
   }
 
   if (summary.isError) {
+    // Rich error copy with a fallback link to the summary table —
+    // mounted ABOVE the grid (the grid's default empty state is
+    // generic; this one names the dataset-level fallback).
     return (
       <div className="rounded-md border border-dashed border-border-subtle bg-bg-surface px-4 py-3 text-[13px] text-fg-secondary">
         Couldn&rsquo;t load subjects for this dataset. Refresh the page, or
@@ -299,87 +378,39 @@ export function SubjectsBrowser({ datasetId }: SubjectsBrowserProps) {
         onClear={clearFilters}
       />
 
-      {selectedDocId && (
-        // Selection-active hint — confirms the user that their row
-        // click took effect AND that the canvas panels will react.
-        // Hidden when nothing is selected so we don't add chrome to
-        // the cold-start state.
-        <p
-          data-testid="subjects-selection-active-hint"
-          className="text-[11.5px] text-fg-secondary"
-        >
-          Active subject — analysis cards on the right will update.
-        </p>
-      )}
-
       {hasNoSubjects ? (
         <div className="rounded-xl border border-dashed border-border-subtle bg-bg-surface p-8 text-center text-[13.5px] text-fg-secondary">
           This dataset doesn&rsquo;t have any subject documents yet. The
           Documents picker lists every class with rows.
         </div>
-      ) : filteredRows.length === 0 ? (
-        <div className="rounded-xl border border-dashed border-border-subtle bg-bg-surface p-8 text-center text-[13.5px] text-fg-secondary">
-          No subjects match the current filters.{' '}
-          <button
-            type="button"
-            onClick={clearFilters}
-            className="text-ndi-teal hover:underline font-semibold"
-          >
-            Clear filters
-          </button>{' '}
-          to see all {allRows.length.toLocaleString()} subjects.
-        </div>
       ) : (
-        <VirtualizedTable
-          table={table}
-          estimateSize={36}
-          onRowClick={(row) => {
-            const docId = row.subjectDocumentIdentifier;
-            if (typeof docId !== 'string' || docId.length === 0) return;
-            // Toggle: clicking the active row again clears it.
-            // Otherwise activate this row as the selection context.
-            if (docId === selectedDocId) {
-              set({ subject: null });
-            } else {
-              set({ subject: docId });
-            }
+        <WorkspaceDataGrid<SubjectRow>
+          data={filteredRows}
+          columns={columns}
+          rowId={subjectRowId}
+          noun="subject"
+          primaryId={selectedDocId}
+          onPrimaryChange={(id) => set({ subject: id })}
+          contextMenuActions={contextMenuActions}
+          bulkActions={bulkActions}
+          columnLabels={{
+            identifier: 'Subject',
+            species: 'Species',
+            age: 'Age',
           }}
-          getRowClassName={(row) => {
-            const docId = row.original.subjectDocumentIdentifier;
-            return docId === selectedDocId
-              ? 'bg-brand-blue/5 border-l-2 border-l-brand-blue'
-              : undefined;
-          }}
-          renderHeaderCell={(header) => (
-            <th
-              key={header.id}
-              colSpan={header.colSpan}
-              className={cn(
-                'px-3 py-2 text-left text-[10.5px] font-bold tracking-eyebrow uppercase text-fg-muted',
-                'border-b border-border-subtle bg-bg-muted/40 sticky top-0',
-              )}
-              style={{ width: header.getSize() }}
-            >
-              {header.isPlaceholder
-                ? null
-                : flexRender(
-                    header.column.columnDef.header,
-                    header.getContext(),
-                  )}
-            </th>
-          )}
-          renderCell={(cell) => (
-            <td
-              key={cell.id}
-              className="px-3 py-2 align-top truncate"
-              style={{ width: cell.column.getSize() }}
-            >
-              {flexRender(cell.column.columnDef.cell, cell.getContext())}
-            </td>
-          )}
+          lockedColumnIds={['identifier']}
+          label="Subjects"
           emptyState={
-            <div className="text-center text-[13.5px] text-fg-secondary py-8">
-              No subjects match the current filters.
+            <div className="rounded-xl border border-dashed border-border-subtle bg-bg-surface p-8 text-center text-[13.5px] text-fg-secondary">
+              No subjects match the current filters.{' '}
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-ndi-teal hover:underline font-semibold"
+              >
+                Clear filters
+              </button>{' '}
+              to see all {allRows.length.toLocaleString()} subjects.
             </div>
           }
         />

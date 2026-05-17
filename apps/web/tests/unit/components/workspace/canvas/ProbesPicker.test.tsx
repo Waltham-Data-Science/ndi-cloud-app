@@ -1,41 +1,21 @@
 /**
- * ProbesPicker — empty state, render-on-data, row-click → set({ probe }),
- * and reactive subject filtering.
+ * ProbesPicker — pure-helper coverage + picker-rail wiring.
  *
- * Phase F3 of the one-canvas redesign. Mocks `useSummaryTable` (the
- * single data dependency) and `useWorkspaceSelection` (the single
- * write target) so the component logic is exercised without dragging
- * in router or React Query setup.
+ * Phase G7 (2026-05-16). The picker now delegates row rendering to
+ * the shared `WorkspaceDataGrid` primitive; we stub the grid and
+ * assert the picker hands it the right factory callbacks.
  *
- * Includes pure-helper coverage for `probeSubjectId` and `filterProbes`.
+ * Includes pure-helper coverage for `probeSubjectId` and
+ * `filterProbes` (unchanged from Phase F3).
  */
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 
-// jsdom's `getBoundingClientRect` returns zeros, so the real
-// `useVirtualizer` reports an empty getVirtualItems() and renders
-// no body rows. Mock it to render a fixed window so we can assert
-// row-click handlers fire. Same pattern as
-// `tests/unit/(app)/my-datasets-virtualization.test.tsx`.
-vi.mock('@tanstack/react-virtual', () => ({
-  useVirtualizer: ({ count }: { count: number }) => {
-    const windowSize = Math.min(count, 50);
-    const virtualItems = Array.from({ length: windowSize }, (_, i) => ({
-      key: i,
-      index: i,
-      start: i * 32,
-      end: (i + 1) * 32,
-      size: 32,
-      lane: 0,
-    }));
-    return {
-      getVirtualItems: () => virtualItems,
-      getTotalSize: () => count * 32,
-      scrollToIndex: () => {},
-      measureElement: () => 32,
-    };
-  },
-}));
+import type { BulkAction } from '@/components/workspace/canvas/DataGridBulkActions';
+import type {
+  ContextMenuEntry,
+  ContextMenuItem,
+} from '@/components/workspace/canvas/DataGridContextMenu';
 
 const useSummaryTableMock = vi.fn();
 const setSelectionMock = vi.fn();
@@ -55,6 +35,33 @@ vi.mock('@/lib/workspace/use-workspace-selection', async (importOriginal) => {
   };
 });
 
+// Stub WorkspaceDataGrid — capture props.
+interface CapturedGridProps {
+  data: unknown[];
+  rowId: (row: unknown) => string;
+  noun: string;
+  primaryId: string | null;
+  onPrimaryChange: (id: string | null) => void;
+  contextMenuActions: (row: unknown) => ReadonlyArray<ContextMenuEntry>;
+  bulkActions: (ids: ReadonlyArray<string>) => ReadonlyArray<BulkAction>;
+  lockedColumnIds?: ReadonlyArray<string>;
+}
+
+let captured: CapturedGridProps | null = null;
+
+vi.mock('@/components/workspace/canvas/WorkspaceDataGrid', () => ({
+  WorkspaceDataGrid: (props: CapturedGridProps) => {
+    captured = props;
+    return (
+      <div data-testid="workspace-data-grid-stub">
+        <span data-testid="grid-noun">{props.noun}</span>
+        <span data-testid="grid-row-count">{props.data.length}</span>
+        <span data-testid="grid-primary-id">{props.primaryId ?? 'none'}</span>
+      </div>
+    );
+  },
+}));
+
 import {
   ProbesPicker,
   filterProbes,
@@ -65,6 +72,7 @@ beforeEach(() => {
   useSummaryTableMock.mockReset();
   setSelectionMock.mockReset();
   useWorkspaceSelectionMock.mockReset();
+  captured = null;
   useWorkspaceSelectionMock.mockReturnValue({
     selection: {
       subject: null,
@@ -201,7 +209,7 @@ describe('ProbesPicker — render', () => {
     expect(skeletons.length).toBeGreaterThan(0);
   });
 
-  it('renders the table when probes are present', () => {
+  it('renders the grid when probes are present', () => {
     useSummaryTableMock.mockReturnValue({
       data: {
         rows: [
@@ -219,39 +227,11 @@ describe('ProbesPicker — render', () => {
 
     render(<ProbesPicker datasetId="ds1" />);
 
-    expect(screen.getByText('Neuropixel A')).toBeInTheDocument();
-    expect(screen.getByText('extracellular')).toBeInTheDocument();
-    expect(screen.getByText(/Showing/)).toBeInTheDocument();
+    expect(screen.getByTestId('grid-noun')).toHaveTextContent('probe');
+    expect(screen.getByTestId('grid-row-count')).toHaveTextContent('1');
   });
 
-  it('row click calls set({ probe: docId })', () => {
-    useSummaryTableMock.mockReturnValue({
-      data: {
-        rows: [
-          {
-            probeDocumentIdentifier: 'probe-doc-id-1',
-            probeName: 'Neuropixel A',
-            probeType: 'extracellular',
-          },
-        ],
-      },
-      isLoading: false,
-      isError: false,
-    });
-
-    render(<ProbesPicker datasetId="ds1" />);
-
-    const row = screen.getByText('Neuropixel A').closest('tr');
-    expect(row).toBeTruthy();
-    fireEvent.click(row!);
-
-    expect(setSelectionMock).toHaveBeenCalledTimes(1);
-    expect(setSelectionMock).toHaveBeenCalledWith({
-      probe: 'probe-doc-id-1',
-    });
-  });
-
-  it('applies reactive subject filter when selection.subject is set', () => {
+  it('applies the reactive subject filter when selection.subject is set', () => {
     useSummaryTableMock.mockReturnValue({
       data: {
         rows: [
@@ -290,14 +270,181 @@ describe('ProbesPicker — render', () => {
 
     render(<ProbesPicker datasetId="ds1" />);
 
-    expect(
-      screen.getByText('Probe in selected subject'),
-    ).toBeInTheDocument();
-    expect(
-      screen.queryByText('Probe in different subject'),
-    ).not.toBeInTheDocument();
+    expect(screen.getByTestId('grid-row-count')).toHaveTextContent('1');
     expect(
       screen.getByText(/filtered to selected subject/i),
     ).toBeInTheDocument();
+  });
+});
+
+// ── Picker → grid wiring. ─────────────────────────────────────────
+describe('ProbesPicker — grid wiring', () => {
+  beforeEach(() => {
+    useSummaryTableMock.mockReturnValue({
+      data: {
+        rows: [
+          {
+            probeDocumentIdentifier: 'probe-doc-id-1',
+            probeName: 'Neuropixel A',
+            probeType: 'extracellular',
+          },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    });
+  });
+
+  it('rowId resolves to probeDocumentIdentifier', () => {
+    render(<ProbesPicker datasetId="ds1" />);
+    expect(captured).not.toBeNull();
+    expect(
+      captured!.rowId({ probeDocumentIdentifier: 'probe-doc-id-1' }),
+    ).toBe('probe-doc-id-1');
+  });
+
+  it('onPrimaryChange writes through set({ probe })', () => {
+    render(<ProbesPicker datasetId="ds1" />);
+    captured!.onPrimaryChange('probe-doc-id-1');
+    expect(setSelectionMock).toHaveBeenCalledWith({ probe: 'probe-doc-id-1' });
+  });
+
+  it('locks the name column', () => {
+    render(<ProbesPicker datasetId="ds1" />);
+    expect(captured!.lockedColumnIds).toContain('name');
+  });
+});
+
+// ── Context-menu factory. ─────────────────────────────────────────
+describe('ProbesPicker — context menu actions', () => {
+  beforeEach(() => {
+    useSummaryTableMock.mockReturnValue({
+      data: {
+        rows: [
+          { probeDocumentIdentifier: 'p1', probeName: 'Probe A' },
+        ],
+      },
+      isLoading: false,
+      isError: false,
+    });
+  });
+
+  it('builds the canonical action list per row', () => {
+    render(<ProbesPicker datasetId="ds1" />);
+    const actions = captured!.contextMenuActions({
+      probeDocumentIdentifier: 'p1',
+    });
+    const itemLabels = actions
+      .filter((a): a is ContextMenuItem => a.kind === 'item')
+      .map((a) => a.label);
+    expect(itemLabels).toEqual([
+      'Set as primary probe',
+      'Copy ID',
+      'Show electrode positions',
+      'Open in Document Detail',
+    ]);
+  });
+
+  it('"Set as primary probe" calls set({ probe: id })', () => {
+    render(<ProbesPicker datasetId="ds1" />);
+    const actions = captured!.contextMenuActions({
+      probeDocumentIdentifier: 'p1',
+    });
+    const item = actions.find(
+      (a): a is ContextMenuItem =>
+        a.kind === 'item' && a.label === 'Set as primary probe',
+    );
+    item!.onSelect();
+    expect(setSelectionMock).toHaveBeenCalledWith({ probe: 'p1' });
+  });
+
+  it('"Show electrode positions" sets probe and scrolls panel into view', () => {
+    const scrollIntoView = vi.fn();
+    const target = document.createElement('div');
+    target.id = 'electrode-position';
+    Object.defineProperty(target, 'scrollIntoView', {
+      value: scrollIntoView,
+      writable: true,
+    });
+    document.body.appendChild(target);
+
+    render(<ProbesPicker datasetId="ds1" />);
+    const actions = captured!.contextMenuActions({
+      probeDocumentIdentifier: 'p1',
+    });
+    const item = actions.find(
+      (a): a is ContextMenuItem =>
+        a.kind === 'item' && a.label === 'Show electrode positions',
+    );
+    item!.onSelect();
+
+    expect(setSelectionMock).toHaveBeenCalledWith({ probe: 'p1' });
+    expect(scrollIntoView).toHaveBeenCalled();
+
+    document.body.removeChild(target);
+  });
+
+  it('"Open in Document Detail" opens the doc-detail route in a new tab', () => {
+    const open = vi.fn();
+    vi.stubGlobal('open', open);
+
+    render(<ProbesPicker datasetId="ds1" />);
+    const actions = captured!.contextMenuActions({
+      probeDocumentIdentifier: 'p1',
+    });
+    const item = actions.find(
+      (a): a is ContextMenuItem =>
+        a.kind === 'item' && a.label === 'Open in Document Detail',
+    );
+    item!.onSelect();
+    expect(open).toHaveBeenCalledWith(
+      '/datasets/ds1/documents/p1',
+      '_blank',
+      'noopener,noreferrer',
+    );
+    vi.unstubAllGlobals();
+  });
+});
+
+// ── Bulk actions factory. ─────────────────────────────────────────
+describe('ProbesPicker — bulk actions', () => {
+  beforeEach(() => {
+    useSummaryTableMock.mockReturnValue({
+      data: {
+        rows: [{ probeDocumentIdentifier: 'p1', probeName: 'Probe A' }],
+      },
+      isLoading: false,
+      isError: false,
+    });
+  });
+
+  it('builds copy-ids + ask-claude actions', () => {
+    render(<ProbesPicker datasetId="ds1" />);
+    const actions = captured!.bulkActions(['p1', 'p2']);
+    expect(actions.map((a) => a.id)).toEqual(['copy-ids', 'ask-claude']);
+    expect(actions[0]!.label).toBe('Copy 2 IDs');
+  });
+
+  it('"Ask Claude" emits an ask-prefill payload via the bus', async () => {
+    const {
+      __resetAskPrefillBusForTests,
+      subscribeToAskPrefill,
+    } = await import('@/lib/ai/ask-prefill-bus');
+    __resetAskPrefillBusForTests();
+    const received: Array<{ text: string; autoSend?: boolean }> = [];
+    const unsub = subscribeToAskPrefill((p) => received.push(p));
+
+    render(<ProbesPicker datasetId="ds1" />);
+    const actions = captured!.bulkActions(['p1']);
+    const ask = actions.find((a) => a.id === 'ask-claude');
+    ask!.onSelect(['p1']);
+
+    expect(received).toHaveLength(1);
+    expect(received[0]!.text).toContain('probe');
+    expect(received[0]!.text).toContain('p1');
+    expect(received[0]!.autoSend).toBe(false);
+
+    unsub();
+    __resetAskPrefillBusForTests();
   });
 });

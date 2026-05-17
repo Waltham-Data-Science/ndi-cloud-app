@@ -41,11 +41,14 @@
  */
 import { Maximize2, MessageSquare, Minimize2, X } from 'lucide-react';
 import type { RefObject } from 'react';
-import { useEffect, useRef } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { AskShell, type AskShellContext } from '@/components/ai/AskShell';
 import { cn } from '@/lib/cn';
-import { useMemo } from 'react';
+import {
+  subscribeToAskPrefill,
+  type AskPrefillPayload,
+} from '@/lib/ai/ask-prefill-bus';
 import { useAskPanelState } from '@/lib/ai/use-ask-panel-state';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 
@@ -65,8 +68,27 @@ export interface AskPanelProps {
 }
 
 export function AskPanel({ context }: AskPanelProps) {
-  const { open, mode, expand, contract, close } = useAskPanelState();
+  const { open, mode, openPanel, expand, contract, close } = useAskPanelState();
   const { selection } = useWorkspaceSelection();
+
+  // Phase G — listen for "Ask Claude about these" gestures from
+  // anywhere in the workspace (today: WorkspaceDataGrid bulk-actions
+  // bar). On event: open the panel (if closed) and forward the
+  // payload to AskShell, which stages text + optionally auto-sends.
+  // The staged value clears after consumption so re-renders don't
+  // double-fire.
+  const [pendingPrefill, setPendingPrefill] =
+    useState<AskPrefillPayload | null>(null);
+  useEffect(() => {
+    const unsubscribe = subscribeToAskPrefill((payload) => {
+      setPendingPrefill(payload);
+      openPanel();
+    });
+    return unsubscribe;
+  }, [openPanel]);
+  const handlePrefillConsumed = useCallback(() => {
+    setPendingPrefill(null);
+  }, []);
 
   // Merge selection into the baseline context. AskShell stringifies
   // this to detect transport rebuilds, so we don't include null /
@@ -132,6 +154,8 @@ export function AskPanel({ context }: AskPanelProps) {
         onContract={contract}
         onClose={close}
         closeButtonRef={closeButtonRef}
+        prefill={pendingPrefill}
+        onPrefillConsumed={handlePrefillConsumed}
       />
     );
   }
@@ -148,6 +172,8 @@ export function AskPanel({ context }: AskPanelProps) {
         onContract={contract}
         onClose={close}
         closeButtonRef={closeButtonRef}
+        prefill={pendingPrefill}
+        onPrefillConsumed={handlePrefillConsumed}
       />
     );
   }
@@ -162,6 +188,8 @@ export function AskPanel({ context }: AskPanelProps) {
       onExpand={expand}
       onClose={close}
       closeButtonRef={closeButtonRef}
+      prefill={pendingPrefill}
+      onPrefillConsumed={handlePrefillConsumed}
     />
   );
 }
@@ -290,6 +318,8 @@ interface DrawerPanelProps {
   onExpand: () => void;
   onClose: () => void;
   closeButtonRef: RefObject<HTMLButtonElement | null>;
+  prefill: AskPrefillPayload | null;
+  onPrefillConsumed: () => void;
 }
 
 function DrawerPanel({
@@ -300,6 +330,8 @@ function DrawerPanel({
   onExpand,
   onClose,
   closeButtonRef,
+  prefill,
+  onPrefillConsumed,
 }: DrawerPanelProps) {
   return (
     <>
@@ -332,7 +364,12 @@ function DrawerPanel({
           closeButtonRef={closeButtonRef}
         />
         <div className="flex-1 min-h-0 overflow-hidden">
-          <AskShell context={context} compact />
+          <AskShell
+            context={context}
+            compact
+            prefill={prefill}
+            onPrefillConsumed={onPrefillConsumed}
+          />
         </div>
       </div>
       <style>{`
@@ -359,6 +396,8 @@ interface SidebarPanelProps {
   onContract: () => void;
   onClose: () => void;
   closeButtonRef: RefObject<HTMLButtonElement | null>;
+  prefill: AskPrefillPayload | null;
+  onPrefillConsumed: () => void;
 }
 
 function SidebarPanel({
@@ -371,6 +410,8 @@ function SidebarPanel({
   onContract,
   onClose,
   closeButtonRef,
+  prefill,
+  onPrefillConsumed,
 }: SidebarPanelProps) {
   // Sidebar: not a modal overlay — `role="complementary"`. v1 still
   // renders position:fixed (same as drawer) so it doesn't require
@@ -398,7 +439,12 @@ function SidebarPanel({
         closeButtonRef={closeButtonRef}
       />
       <div className="flex-1 min-h-0 overflow-hidden">
-        <AskShell context={context} compact />
+        <AskShell
+          context={context}
+          compact
+          prefill={prefill}
+          onPrefillConsumed={onPrefillConsumed}
+        />
       </div>
     </aside>
   );
@@ -416,6 +462,8 @@ interface FullscreenPanelProps {
   onContract: () => void;
   onClose: () => void;
   closeButtonRef: RefObject<HTMLButtonElement | null>;
+  prefill: AskPrefillPayload | null;
+  onPrefillConsumed: () => void;
 }
 
 function FullscreenPanel({
@@ -426,6 +474,8 @@ function FullscreenPanel({
   onContract,
   onClose,
   closeButtonRef,
+  prefill,
+  onPrefillConsumed,
 }: FullscreenPanelProps) {
   return (
     <div
@@ -478,7 +528,12 @@ function FullscreenPanel({
       {/* Chat area — centered, max-w-[760px] like ChatGPT / Claude.ai. */}
       <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
         <div className="flex-1 min-h-0 overflow-hidden max-w-[760px] mx-auto w-full flex flex-col">
-          <AskShell context={context} compact />
+          <AskShell
+            context={context}
+            compact
+            prefill={prefill}
+            onPrefillConsumed={onPrefillConsumed}
+          />
         </div>
       </div>
     </div>

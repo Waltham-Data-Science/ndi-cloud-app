@@ -88,7 +88,14 @@ const MAX_SUBJECTS_CAP = 100;
 export function TreatmentTimelinePanel({
   datasetId,
 }: TreatmentTimelinePanelProps) {
-  const headingId = useId();
+  // Stable literal ids — match the convention the other 5 panels
+  // use ("panel-signal-viewer" etc.). Phase F smoke (2026-05-16)
+  // flagged that the prior `useId()` values like `_r_b_` leaked into
+  // the a11y tree as `aria-labelledby`, which is technically valid
+  // but harder to debug than a meaningful literal. Form-field ids
+  // still use useId since they're scoped to a single panel and
+  // collision-safe even when the panel is rendered twice.
+  const headingId = 'panel-treatment-timeline';
   const titleId = useId();
   const maxSubjectsId = useId();
   const [title, setTitle] = useState('');

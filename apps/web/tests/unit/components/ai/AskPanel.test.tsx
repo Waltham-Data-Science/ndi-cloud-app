@@ -32,12 +32,15 @@ vi.mock('next/navigation', () => ({
 }));
 
 // Stub AskShell — we test panel chrome, not the chat surface. The
-// mock captures the `context` prop so the F7 enrichment tests can
-// assert what AskPanel forwarded.
-const askShellPropsLog: Array<{ context: unknown }> = [];
+// mock captures the `context` and `prefill` props so the F7 + G
+// enrichment tests can assert what AskPanel forwarded.
+const askShellPropsLog: Array<{ context: unknown; prefill: unknown }> = [];
 vi.mock('@/components/ai/AskShell', () => ({
-  AskShell: (props: { context?: unknown }) => {
-    askShellPropsLog.push({ context: props.context });
+  AskShell: (props: { context?: unknown; prefill?: unknown }) => {
+    askShellPropsLog.push({
+      context: props.context,
+      prefill: props.prefill,
+    });
     return <div data-testid="ask-shell-mock">Ask shell</div>;
   },
 }));
@@ -310,5 +313,77 @@ describe('AskPanel — F7 context enrichment from workspace selection', () => {
     render(<AskPanel />);
     const last = askShellPropsLog[askShellPropsLog.length - 1]!;
     expect(last.context).toBeUndefined();
+  });
+});
+
+describe('AskPanel — G Phase prefill bus integration', () => {
+  // The bus is module-level; reset between tests so a stale event
+  // from a previous test doesn't fire on a fresh subscriber.
+
+  // Lazy-import so the vi.mock above settles first.
+  it('opens the panel when emitAskPrefill fires while closed', async () => {
+    const { emitAskPrefill, __resetAskPrefillBusForTests } = await import(
+      '@/lib/ai/ask-prefill-bus'
+    );
+    __resetAskPrefillBusForTests();
+    setMode(null); // panel closed
+    const { rerender } = render(<AskPanel context={{ datasetId: 'abc' }} />);
+
+    // Initially closed — nothing in DOM.
+    expect(screen.queryByTestId('ask-shell-mock')).toBeNull();
+
+    // Emit a prefill — AskPanel should call openPanel which writes
+    // ?ask=drawer via router.replace.
+    emitAskPrefill({ text: 'Tell me about these 3 subjects' });
+    // Verify the open call was routed; second render reflects open state.
+    expect(replaceMock).toHaveBeenCalled();
+    const lastUrl = replaceMock.mock.calls[replaceMock.mock.calls.length - 1]![0] as string;
+    expect(lastUrl).toContain('ask=drawer');
+
+    // Simulate the URL update by re-rendering with ?ask=drawer.
+    setMode('drawer');
+    rerender(<AskPanel context={{ datasetId: 'abc' }} />);
+    expect(screen.getByTestId('ask-shell-mock')).toBeInTheDocument();
+
+    __resetAskPrefillBusForTests();
+  });
+
+  it('forwards the prefill payload to AskShell once the panel opens', async () => {
+    const { emitAskPrefill, __resetAskPrefillBusForTests } = await import(
+      '@/lib/ai/ask-prefill-bus'
+    );
+    __resetAskPrefillBusForTests();
+    setMode('drawer'); // already open
+    askShellPropsLog.length = 0;
+    render(<AskPanel context={{ datasetId: 'abc' }} />);
+    askShellPropsLog.length = 0; // ignore initial mount log
+
+    emitAskPrefill({
+      text: 'Ask me about these subjects',
+      autoSend: true,
+    });
+
+    // Wait a tick for React state to flush.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    // After the event AskShell re-receives a prefill prop.
+    const last = askShellPropsLog[askShellPropsLog.length - 1]!;
+    expect(last.prefill).toMatchObject({
+      text: 'Ask me about these subjects',
+      autoSend: true,
+    });
+
+    __resetAskPrefillBusForTests();
+  });
+
+  it('does not error when emit fires before AskPanel mounts (silent drop)', async () => {
+    const { emitAskPrefill, __resetAskPrefillBusForTests } = await import(
+      '@/lib/ai/ask-prefill-bus'
+    );
+    __resetAskPrefillBusForTests();
+    // No render — no subscribers — emit is a no-op.
+    expect(() =>
+      emitAskPrefill({ text: 'into the void' }),
+    ).not.toThrow();
   });
 });
