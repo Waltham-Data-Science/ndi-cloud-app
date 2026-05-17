@@ -16,7 +16,7 @@
  *   stimuli   → StimuliPicker    (new in F3)
  *   documents → DocumentsPicker  (new in F3 — replaces StructureBrowser navigate-out)
  *
- * Analyses grid slot resolution: all 6 panels from
+ * Analyses grid slot resolution: all 7 panels from
  * `components/workspace/` (each refactored in F5 to read selection
  * from useWorkspaceSelection).
  *
@@ -27,6 +27,7 @@
  *   4. Behavioral compare  — dataset-wide
  *   5. Treatment timeline  — dataset-wide
  *   6. Electrode positions — dataset-wide (auto-loads on mount)
+ *   7. Video playback      — `session` driven (Bhar B10, Haley H12)
  *
  * Dataset structure / class browser is NOT a panel here — it lives
  * inside the Documents picker tab in the rail.
@@ -37,6 +38,7 @@ import { PsthPanel } from '@/components/workspace/PsthPanel';
 import { SignalViewerPanel } from '@/components/workspace/SignalViewerPanel';
 import { SpikeActivityPanel } from '@/components/workspace/SpikeActivityPanel';
 import { TreatmentTimelinePanel } from '@/components/workspace/TreatmentTimelinePanel';
+import { VideoPlaybackPanel } from '@/components/workspace/VideoPlaybackPanel';
 import { DocumentsPicker } from '@/components/workspace/canvas/DocumentsPicker';
 import { ProbesPicker } from '@/components/workspace/canvas/ProbesPicker';
 import { StimuliPicker } from '@/components/workspace/canvas/StimuliPicker';
@@ -69,6 +71,7 @@ export function WorkspaceCanvasClient({
     <BehavioralComparePanel key="behavior" datasetId={datasetId} />,
     <TreatmentTimelinePanel key="treatment" datasetId={datasetId} />,
     <ElectrodePositionPanel key="electrode" datasetId={datasetId} />,
+    <VideoPlaybackPanel key="video" datasetId={datasetId} />,
   ];
 
   return (
