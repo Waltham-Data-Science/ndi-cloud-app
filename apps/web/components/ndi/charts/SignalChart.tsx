@@ -90,6 +90,13 @@ export interface SignalChartColorbarSpec {
   scale?: 'viridis' | 'plasma' | 'cool-warm';
 }
 
+/**
+ * Per-point coloring modes for the `colorBy` prop on SignalChart. See
+ * MultiTraceChart's `ColorByMode` for the semantics — this re-export
+ * just keeps `signal-chart` fence parsing co-located.
+ */
+export type SignalChartColorBy = 'time' | 'index' | 'value' | null;
+
 export interface SignalChartProps {
   datasetId: string;
   docId: string;
@@ -110,6 +117,15 @@ export interface SignalChartProps {
    * data (e.g. ai+ao+stim) where a discrete legend is more useful.
    */
   colorbar?: SignalChartColorbarSpec;
+  /**
+   * Per-point continuous coloring mode. When non-null, each trace's
+   * line is drawn as a sequence of viridis-colored segments keyed on
+   * the chosen axis (time, sample index, or amplitude). Default null
+   * keeps the legacy single-color-per-trace rendering. When set, the
+   * chart automatically routes through MultiTraceChart even on
+   * single-channel data so the per-segment renderer is available.
+   */
+  colorBy?: SignalChartColorBy;
 }
 
 /**
@@ -142,6 +158,7 @@ export function SignalChart({
   file,
   title,
   colorbar,
+  colorBy = null,
 }: SignalChartProps) {
   const url = useMemo(() => {
     const qs = new URLSearchParams({ downsample: String(downsample) });
@@ -188,6 +205,7 @@ export function SignalChart({
         isError={isError}
         error={error}
         colorbar={colorbar}
+        colorBy={colorBy}
       />
 
       <div className="mt-2 flex items-center justify-between text-[11px] text-gray-500">
@@ -217,6 +235,7 @@ interface ChartBodyProps {
   isError: boolean;
   error: unknown;
   colorbar?: SignalChartColorbarSpec;
+  colorBy?: SignalChartColorBy;
 }
 
 // Explicit displayName so the Markdown component's child-identity
@@ -228,7 +247,7 @@ SignalChart.displayName = 'SignalChart';
  * Inner body — split out so the figure's caption + footer render
  * consistently across loading / error / empty states.
  */
-function ChartBody({ data, isLoading, isError, error, colorbar }: ChartBodyProps) {
+function ChartBody({ data, isLoading, isError, error, colorbar, colorBy }: ChartBodyProps) {
   // Error branch FIRST — on rejection `data` is undefined and
   // `isLoading` is already false, but a "loading || !data" check
   // would mask the error and leave the spinner spinning forever.
@@ -274,12 +293,19 @@ function ChartBody({ data, isLoading, isError, error, colorbar }: ChartBodyProps
   }
   // 1-channel docs keep the original TimeseriesChart delegate — so the
   // EPM-example regression-free behavior is identical to before.
-  // Multi-channel (or single-channel-but-colorbar-requested) routes
-  // through the new MultiTraceChart which owns auto-color-ramp +
-  // legend + colorbar.
+  // Multi-channel (or single-channel-but-colorbar-requested, or any
+  // colorBy mode active) routes through the new MultiTraceChart which
+  // owns auto-color-ramp + legend + colorbar + per-segment coloring.
   const channelCount = Object.keys(data.channels ?? {}).length;
-  if (channelCount <= 1 && !colorbar) {
+  if (channelCount <= 1 && !colorbar && !colorBy) {
     return <TimeseriesChart data={data} height={300} />;
   }
-  return <MultiTraceChart data={data} height={300} colorbar={colorbar} />;
+  return (
+    <MultiTraceChart
+      data={data}
+      height={300}
+      colorbar={colorbar}
+      colorBy={colorBy ?? null}
+    />
+  );
 }

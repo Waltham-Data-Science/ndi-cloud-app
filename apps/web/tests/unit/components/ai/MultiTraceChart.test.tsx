@@ -56,6 +56,10 @@ vi.mock('uplot', () => ({
 // uPlot's CSS import — stub so the vite-transformer doesn't choke.
 vi.mock('uplot/dist/uPlot.min.css', () => ({}));
 
+// Type-only import so the stub-uplot helper can satisfy uPlot's shape
+// without dragging the real implementation into the test.
+import type uPlot from 'uplot';
+
 import {
   MultiTraceChart,
   pickColorAssignment,
@@ -63,6 +67,8 @@ import {
   viridisColor,
   plasmaColor,
   coolWarmColor,
+  computeColorRamp,
+  makePerSegmentPaths,
 } from '@/components/ndi/charts/MultiTraceChart';
 
 const fixture3Numeric = {
@@ -294,5 +300,300 @@ describe('MultiTraceChart', () => {
     expect(root.textContent).toMatch(/4 samples/);
     expect(root.textContent).toMatch(/3 channels/);
     expect(root.textContent).toMatch(/nbf/i);
+  });
+});
+
+// -------------------------------------------------------------------
+// computeColorRamp — pure helper for per-point coloring along a chosen
+// axis (time / index / amplitude). Tested standalone because the
+// uPlot integration is hard to assert visually in jsdom.
+// -------------------------------------------------------------------
+
+describe('computeColorRamp', () => {
+  it("maps 'index' mode to evenly-spaced t∈[0,1] regardless of values", () => {
+    const out = computeColorRamp([10, 20, 30, 40, 50], 'index');
+    expect(out).toEqual([0, 0.25, 0.5, 0.75, 1]);
+  });
+
+  it("'index' on a single point collapses to [0]", () => {
+    expect(computeColorRamp([42], 'index')).toEqual([0]);
+  });
+
+  it("'index' on an empty array returns []", () => {
+    expect(computeColorRamp([], 'index')).toEqual([]);
+  });
+
+  it("'time' mode ramps from t=0 at first timestamp to t=1 at last", () => {
+    const out = computeColorRamp([1, 2, 3], 'time', [0, 0.5, 1]);
+    expect(out).toEqual([0, 0.5, 1]);
+  });
+
+  it("'time' mode preserves non-linear timestamp spacing", () => {
+    // Timestamps spaced unevenly — t-fraction should follow them
+    // (not the sample index).
+    const out = computeColorRamp([10, 20, 30, 40], 'time', [0, 0.1, 0.5, 1]);
+    expect(out[0]).toBeCloseTo(0);
+    expect(out[1]).toBeCloseTo(0.1);
+    expect(out[2]).toBeCloseTo(0.5);
+    expect(out[3]).toBeCloseTo(1);
+  });
+
+  it("'time' falls back to index when no timeAxis is supplied", () => {
+    // Without timestamps, time-mode should behave like index-mode.
+    const out = computeColorRamp([10, 20, 30], 'time');
+    expect(out).toEqual([0, 0.5, 1]);
+  });
+
+  it("'value' mode maps each value into [0,1] keyed on the trace's own min/max", () => {
+    // Values 0, 5, 10 → t = 0, 0.5, 1.
+    const out = computeColorRamp([0, 5, 10], 'value');
+    expect(out).toEqual([0, 0.5, 1]);
+  });
+
+  it("'value' mode maps null/undefined/NaN entries to NaN (caller skips)", () => {
+    const out = computeColorRamp([0, null, 5, undefined, 10], 'value');
+    expect(out[0]).toBe(0);
+    expect(Number.isNaN(out[1])).toBe(true);
+    expect(out[2]).toBe(0.5);
+    expect(Number.isNaN(out[3])).toBe(true);
+    expect(out[4]).toBe(1);
+  });
+
+  it("'value' mode on all-null data returns zeros (no division-by-zero)", () => {
+    const out = computeColorRamp([null, null, null], 'value');
+    expect(out).toEqual([0, 0, 0]);
+  });
+
+  it("'value' mode on a flat trace (min === max) returns t=0 for every point", () => {
+    const out = computeColorRamp([5, 5, 5], 'value');
+    expect(out).toEqual([0, 0, 0]);
+  });
+
+  it("'time' mode with a flat timeAxis still returns finite ts (degenerate range collapses to 0)", () => {
+    const out = computeColorRamp([10, 20, 30], 'time', [0, 0, 0]);
+    expect(out.every(Number.isFinite)).toBe(true);
+  });
+});
+
+// -------------------------------------------------------------------
+// makePerSegmentPaths — uPlot custom paths builder that strokes each
+// consecutive pair of points in a different color.
+// -------------------------------------------------------------------
+
+interface StubCtx {
+  save: ReturnType<typeof vi.fn>;
+  restore: ReturnType<typeof vi.fn>;
+  beginPath: ReturnType<typeof vi.fn>;
+  moveTo: ReturnType<typeof vi.fn>;
+  lineTo: ReturnType<typeof vi.fn>;
+  stroke: ReturnType<typeof vi.fn>;
+  strokeStyle: string;
+  lineWidth: number;
+  lineCap: string;
+  lineJoin: string;
+}
+
+function makeStubCtx(): StubCtx {
+  return {
+    save: vi.fn(),
+    restore: vi.fn(),
+    beginPath: vi.fn(),
+    moveTo: vi.fn(),
+    lineTo: vi.fn(),
+    stroke: vi.fn(),
+    strokeStyle: '',
+    lineWidth: 0,
+    lineCap: '',
+    lineJoin: '',
+  };
+}
+
+function makeStubUplot(
+  data: Array<ReadonlyArray<number | null | undefined>>,
+  ctx: StubCtx,
+) {
+  // Identity-mapped valToPos — keeps the assertion math simple
+  // (px === val), which is all we need for behavior coverage.
+  return {
+    ctx,
+    data,
+    valToPos: (v: number) => v,
+  } as unknown as uPlot;
+}
+
+describe('makePerSegmentPaths', () => {
+  it('strokes one segment per consecutive pair, each with its own color', () => {
+    // 4 points → 3 segments. Each colored differently.
+    const xs = [0, 1, 2, 3];
+    const ys = [10, 20, 30, 40];
+    const ramp = ['#ff0000', '#00ff00', '#0000ff', '#ffffff'];
+    const ctx = makeStubCtx();
+    const u = makeStubUplot([xs, ys], ctx);
+
+    const builder = makePerSegmentPaths(ramp, 1.5);
+    builder(u, 1, 0, 3);
+
+    // 3 strokes for 3 segments (i → i+1 for i = 0,1,2).
+    expect(ctx.stroke).toHaveBeenCalledTimes(3);
+    expect(ctx.moveTo).toHaveBeenCalledTimes(3);
+    expect(ctx.lineTo).toHaveBeenCalledTimes(3);
+    // Default uPlot width respected via lineWidth.
+    expect(ctx.lineWidth).toBe(1.5);
+    // save / restore boundary — required so we don't leak strokeStyle
+    // changes to other series uPlot might draw next.
+  });
+
+  it('skips segments where either endpoint y is null/undefined (spanGaps=false)', () => {
+    const xs = [0, 1, 2, 3];
+    // ys has a gap at index 1 — segments (0→1) and (1→2) should be
+    // skipped entirely; only (2→3) renders.
+    const ys = [10, null, 30, 40];
+    const ramp = ['#ff0000', '#00ff00', '#0000ff', '#ffffff'];
+    const ctx = makeStubCtx();
+    const u = makeStubUplot([xs, ys], ctx);
+
+    const builder = makePerSegmentPaths(ramp, 1.5);
+    builder(u, 1, 0, 3);
+
+    // Only one segment survived → exactly one stroke call.
+    expect(ctx.stroke).toHaveBeenCalledTimes(1);
+  });
+
+  it('skips segments where the ramp color is null', () => {
+    const xs = [0, 1, 2];
+    const ys = [10, 20, 30];
+    // Middle ramp slot is null → both segments touching index 1 are
+    // skipped because the source-color lookup returns null.
+    const ramp = ['#ff0000', null, '#0000ff'];
+    const ctx = makeStubCtx();
+    const u = makeStubUplot([xs, ys], ctx);
+
+    const builder = makePerSegmentPaths(ramp, 1.5);
+    builder(u, 1, 0, 2);
+
+    // Segment 0→1 used ramp[0] = '#ff0000' (valid) → 1 stroke. Segment
+    // 1→2 used ramp[1] = null → skipped.
+    expect(ctx.stroke).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns null (paths builder contract: caller drew the series itself)", () => {
+    const xs = [0, 1];
+    const ys = [10, 20];
+    const ramp = ['#ff0000', '#00ff00'];
+    const ctx = makeStubCtx();
+    const u = makeStubUplot([xs, ys], ctx);
+
+    const builder = makePerSegmentPaths(ramp, 1.5);
+    const result = builder(u, 1, 0, 1);
+    expect(result).toBeNull();
+  });
+
+  it('balances save() with restore() so it does not leak ctx state', () => {
+    const xs = [0, 1, 2];
+    const ys = [10, 20, 30];
+    const ramp = ['#ff0000', '#00ff00', '#0000ff'];
+    const ctx = makeStubCtx();
+    const u = makeStubUplot([xs, ys], ctx);
+
+    const builder = makePerSegmentPaths(ramp, 1.5);
+    builder(u, 1, 0, 2);
+
+    expect(ctx.save).toHaveBeenCalledTimes(1);
+    expect(ctx.restore).toHaveBeenCalledTimes(1);
+  });
+});
+
+// -------------------------------------------------------------------
+// MultiTraceChart — colorBy integration: when the prop is set, each
+// series must carry a custom `paths` builder and the metadata footer
+// surfaces a "Color by …" label.
+// -------------------------------------------------------------------
+
+describe('MultiTraceChart — colorBy prop', () => {
+  beforeEach(() => {
+    uplotInstances.length = 0;
+  });
+
+  afterEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('does NOT install custom paths when colorBy is null/undefined (default)', () => {
+    render(<MultiTraceChart data={fixture3Numeric} />);
+    const opts = uplotInstances[0]!.opts as {
+      series: Array<{ paths?: unknown }>;
+    };
+    // Channel series (index 1+) should not have a custom paths
+    // builder when colorBy is unset.
+    for (let i = 1; i < opts.series.length; i++) {
+      expect(opts.series[i]!.paths).toBeUndefined();
+    }
+    // Footer label not rendered.
+    expect(
+      screen.queryByTestId('multitrace-colorby-label'),
+    ).not.toBeInTheDocument();
+  });
+
+  it("installs a custom paths builder on each channel when colorBy='time'", () => {
+    render(<MultiTraceChart data={fixture3Numeric} colorBy="time" />);
+    const opts = uplotInstances[0]!.opts as {
+      series: Array<{ paths?: unknown }>;
+    };
+    // 3 channels → 3 series each with a paths builder.
+    for (let i = 1; i < opts.series.length; i++) {
+      expect(opts.series[i]!.paths).toBeTypeOf('function');
+    }
+    expect(screen.getByTestId('multitrace-colorby-label')).toHaveTextContent(
+      /color by time/i,
+    );
+  });
+
+  it("installs a custom paths builder on each channel when colorBy='index'", () => {
+    render(<MultiTraceChart data={fixture3Numeric} colorBy="index" />);
+    const opts = uplotInstances[0]!.opts as {
+      series: Array<{ paths?: unknown }>;
+    };
+    for (let i = 1; i < opts.series.length; i++) {
+      expect(opts.series[i]!.paths).toBeTypeOf('function');
+    }
+    expect(screen.getByTestId('multitrace-colorby-label')).toHaveTextContent(
+      /color by sample/i,
+    );
+  });
+
+  it("installs a custom paths builder on each channel when colorBy='value'", () => {
+    render(<MultiTraceChart data={fixture3Numeric} colorBy="value" />);
+    const opts = uplotInstances[0]!.opts as {
+      series: Array<{ paths?: unknown }>;
+    };
+    for (let i = 1; i < opts.series.length; i++) {
+      expect(opts.series[i]!.paths).toBeTypeOf('function');
+    }
+    expect(screen.getByTestId('multitrace-colorby-label')).toHaveTextContent(
+      /color by value/i,
+    );
+  });
+
+  it('hides the legacy "Color: viridis ramp" label when colorBy is engaged', () => {
+    // Pre-colorBy multi-channel numeric data showed a "Color: viridis
+    // ramp" hint. When colorBy is on, that hint is replaced by the
+    // colorBy label so the user sees a single source of truth.
+    render(<MultiTraceChart data={fixture3Numeric} colorBy="time" />);
+    const root = document.body;
+    expect(root.textContent).not.toMatch(/^Color: viridis ramp/);
+    expect(screen.getByTestId('multitrace-colorby-label')).toBeInTheDocument();
+  });
+
+  it('still routes the categorical-fallback channels through colorBy when set', () => {
+    // colorBy is independent of channel-name parsing — even when the
+    // legend reverts to categorical (non-numeric names), the custom
+    // paths builder should still get installed.
+    render(<MultiTraceChart data={fixtureCategorical} colorBy="value" />);
+    const opts = uplotInstances[0]!.opts as {
+      series: Array<{ paths?: unknown }>;
+    };
+    for (let i = 1; i < opts.series.length; i++) {
+      expect(opts.series[i]!.paths).toBeTypeOf('function');
+    }
   });
 });

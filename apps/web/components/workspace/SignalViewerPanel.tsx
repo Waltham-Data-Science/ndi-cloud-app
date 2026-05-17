@@ -57,6 +57,15 @@ interface SignalViewerPanelProps {
   datasetId: string;
 }
 
+/**
+ * Available coloring modes for the panel's small dropdown. `''`
+ * represents the default null-coloring (single solid stroke per trace);
+ * the other three map directly to MultiTraceChart's `ColorByMode`. The
+ * empty string surface keeps the native `<select>` element idiomatic
+ * (no JSON-encoding into the value attribute needed).
+ */
+type ColorByOption = '' | 'time' | 'index' | 'value';
+
 interface ChartPayload {
   datasetId: string;
   docId: string;
@@ -65,6 +74,7 @@ interface ChartPayload {
   t1?: number;
   file?: string;
   title?: string;
+  colorBy?: 'time' | 'index' | 'value';
 }
 
 function parseFloatOrUndefined(v: string): number | undefined {
@@ -92,6 +102,7 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
   const [t1, setT1] = useState('');
   const [file, setFile] = useState('');
   const [title, setTitle] = useState('');
+  const [colorBy, setColorBy] = useState<ColorByOption>('');
   const [error, setError] = useState<string | null>(null);
 
   // Tracks whether the docId currently in the form came from the
@@ -153,10 +164,11 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
         t1: parseFloatOrUndefined(t1),
         file: file.trim() || undefined,
         title: title.trim() || undefined,
+        colorBy: colorBy === '' ? undefined : colorBy,
       });
     }, 400);
     return () => clearTimeout(handle);
-  }, [isAutoFilled, docId, downsample, t0, t1, file, title, datasetId]);
+  }, [isAutoFilled, docId, downsample, t0, t1, file, title, colorBy, datasetId]);
 
   function handleRun(e: FormEvent) {
     e.preventDefault();
@@ -186,6 +198,7 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
       t1: parseFloatOrUndefined(t1),
       file: file.trim() || undefined,
       title: title.trim() || undefined,
+      colorBy: colorBy === '' ? undefined : colorBy,
     });
   }
 
@@ -304,6 +317,32 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
             hint="Window end. Leave blank for epoch end."
           />
         </div>
+        {/* Color-by dropdown — small inline control that lets the user
+            pick a continuous coloring mode for the rendered trace(s).
+            Default "" maps to colorBy=null in the payload (no visual
+            change vs. the historical rendering); the three other
+            options engage the per-segment renderer in MultiTraceChart. */}
+        <label className="flex flex-col gap-1.5 min-w-0">
+          <span className="text-[10.5px] font-bold tracking-eyebrow uppercase text-fg-muted">
+            Color by
+          </span>
+          <select
+            name="colorBy"
+            value={colorBy}
+            onChange={(e) => setColorBy(e.target.value as ColorByOption)}
+            data-testid="signal-viewer-colorby"
+            aria-label="Color by"
+            className="rounded-md border border-border-subtle bg-bg-surface px-2.5 py-1.5 text-[13px] text-fg-primary focus:outline-none focus:ring-2 focus:ring-brand-500/40 transition-colors"
+          >
+            <option value="">None (default)</option>
+            <option value="time">Time progression</option>
+            <option value="index">Sample index</option>
+            <option value="value">Amplitude</option>
+          </select>
+          <span className="text-[11.5px] text-fg-muted">
+            Colors each trace point along the chosen axis using a viridis ramp.
+          </span>
+        </label>
       </form>
 
       {error && (
@@ -335,7 +374,7 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
               ensures the chart fully re-mounts on Run, avoiding any
               stale-state bleed between consecutive runs against
               different documents. */}
-          <SignalChart key={`${payload.docId}-${payload.downsample}-${payload.t0 ?? ''}-${payload.t1 ?? ''}-${payload.file ?? ''}`} {...payload} />
+          <SignalChart key={`${payload.docId}-${payload.downsample}-${payload.t0 ?? ''}-${payload.t1 ?? ''}-${payload.file ?? ''}-${payload.colorBy ?? ''}`} {...payload} colorBy={payload.colorBy ?? null} />
         </div>
       )}
     </PanelCard>

@@ -294,4 +294,44 @@ describe('fetch_signal', () => {
       expect(result.chart_payload.file).toBe('ai_group1_seg.nbf_1');
     });
   });
+
+  // -------------------------------------------------------------------
+  // colorBy passthrough — the input enum echoes into chart_payload so
+  // the chat-side fence parser hands it to SignalChart.
+  // -------------------------------------------------------------------
+  describe('colorBy passthrough', () => {
+    it('omits colorBy from chart_payload when not supplied (default behavior)', async () => {
+      mockFetchOnce(mockSignalResponse());
+      const result = await fetchSignalHandler({
+        datasetId: 'ds1',
+        docId: 'doc1',
+      });
+      if ('error' in result) throw new Error('expected success');
+      expect(result.chart_payload).not.toHaveProperty('colorBy');
+    });
+
+    it.each(['time', 'index', 'value'] as const)(
+      "echoes colorBy='%s' into chart_payload verbatim",
+      async (mode) => {
+        mockFetchOnce(mockSignalResponse());
+        const result = await fetchSignalHandler({
+          datasetId: 'ds1',
+          docId: 'doc1',
+          colorBy: mode,
+        });
+        if ('error' in result) throw new Error('expected success');
+        expect(result.chart_payload.colorBy).toBe(mode);
+      },
+    );
+
+    it('rejects unknown colorBy values via zod', async () => {
+      const result = await fetchSignalHandler({
+        datasetId: 'ds1',
+        docId: 'doc1',
+        // @ts-expect-error - intentionally invalid value to drive zod
+        colorBy: 'random',
+      });
+      expect(result).toEqual({ error: expect.stringMatching(/invalid/i) });
+    });
+  });
 });

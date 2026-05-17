@@ -44,10 +44,33 @@ import 'uplot/dist/uPlot.min.css';
 import type { TimeseriesData } from '@/lib/api/binary';
 import type { SignalChartColorbarSpec } from './SignalChart';
 
+/**
+ * Per-point coloring modes for the `colorBy` prop.
+ *
+ *   - `null` — default; each trace is drawn in a single channel color.
+ *   - `'time'` — color each point of a trace by its position along the
+ *     time axis (or sample index when no timestamps). Useful for
+ *     visualizing the evolution of a recording.
+ *   - `'index'` — color each point by its sample index. Equivalent to
+ *     'time' when timestamps are absent, but stays consistent even on
+ *     wall-clock-anchored traces.
+ *   - `'value'` — color each point by its y-axis value (normalized to
+ *     the trace's own min/max). Useful for highlighting amplitude
+ *     features.
+ */
+export type ColorByMode = 'time' | 'index' | 'value' | null;
+
 interface MultiTraceChartProps {
   data: TimeseriesData;
   height?: number;
   colorbar?: SignalChartColorbarSpec;
+  /**
+   * Per-point continuous coloring mode. When non-null, each trace's
+   * line is drawn as a sequence of small viridis-colored segments
+   * keyed on the chosen axis. Default `null` keeps the legacy single-
+   * color-per-trace rendering.
+   */
+  colorBy?: ColorByMode;
 }
 
 /** Categorical fallback — matches charts/ViolinChart's PALETTE. */
@@ -196,10 +219,137 @@ export function pickColorAssignment(
   };
 }
 
+/**
+ * Compute a normalized t ∈ [0,1] for each point of a channel given a
+ * coloring mode. The result feeds into a colormap function (viridis by
+ * default) to produce the per-segment stroke color.
+ *
+ * Extracted as a pure function so it can be unit-tested without
+ * touching uPlot or React.
+ *
+ *   - `'time'` requires a `timeAxis` of the same length as `values`;
+ *     ramps from t=0 at the first timestamp to t=1 at the last.
+ *   - `'index'` ramps from t=0 at i=0 to t=1 at i=len-1.
+ *   - `'value'` ramps from t=0 at min(values) to t=1 at max(values).
+ *     Null/undefined values map to t=NaN (caller skips them).
+ *   - A degenerate range (single point, or min === max) collapses to
+ *     t=0 for all points; uPlot just draws nothing visible there.
+ */
+export function computeColorRamp(
+  values: ReadonlyArray<number | null | undefined>,
+  mode: NonNullable<ColorByMode>,
+  timeAxis?: ReadonlyArray<number>,
+): number[] {
+  const n = values.length;
+  if (n === 0) return [];
+  if (mode === 'index') {
+    if (n === 1) return [0];
+    const denom = n - 1;
+    return Array.from({ length: n }, (_, i) => i / denom);
+  }
+  if (mode === 'time') {
+    if (!timeAxis || timeAxis.length === 0) {
+      // Fall through to index when no timestamps are available — the
+      // visual result is the same as 'index'.
+      if (n === 1) return [0];
+      const denom = n - 1;
+      return Array.from({ length: n }, (_, i) => i / denom);
+    }
+    const first = timeAxis[0]!;
+    const last = timeAxis[timeAxis.length - 1]!;
+    const range = last - first || 1;
+    return Array.from({ length: n }, (_, i) => {
+      const t = timeAxis[i];
+      if (typeof t !== 'number' || !Number.isFinite(t)) return 0;
+      return (t - first) / range;
+    });
+  }
+  // mode === 'value'
+  let min = Infinity;
+  let max = -Infinity;
+  for (const v of values) {
+    if (v === null || v === undefined || !Number.isFinite(v)) continue;
+    if (v < min) min = v;
+    if (v > max) max = v;
+  }
+  if (!Number.isFinite(min) || !Number.isFinite(max)) {
+    return Array.from({ length: n }, () => 0);
+  }
+  const range = max - min || 1;
+  return values.map((v) => {
+    if (v === null || v === undefined || !Number.isFinite(v)) return Number.NaN;
+    return (v - min) / range;
+  });
+}
+
+/**
+ * Per-segment line drawer for uPlot. Replaces the default line path
+ * builder with one that strokes each consecutive pair of points in a
+ * different color, looked up via the supplied colormap. The result is
+ * a smoothly-coloring line whose stroke evolves along the chosen axis.
+ *
+ * Returning `null` from the paths builder tells uPlot we drew the
+ * series ourselves (in the supplied draw hook); uPlot won't add its
+ * own stroke on top.
+ *
+ * NOTE: we mutate the supplied 2D context — that's how every uPlot
+ * custom-paths recipe works. The series's existing stroke/width
+ * settings are still honored for the legend swatch (a single color
+ * from the ramp midpoint).
+ */
+export function makePerSegmentPaths(
+  rampColors: ReadonlyArray<string | null>,
+  width: number,
+): uPlot.Series.PathBuilder {
+  return (u: uPlot, seriesIdx: number, idx0: number, idx1: number) => {
+    const ctx = u.ctx;
+    const xData = u.data[0] as ReadonlyArray<number>;
+    const yData = u.data[seriesIdx] as ReadonlyArray<number | null | undefined>;
+    ctx.save();
+    ctx.lineWidth = width;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (let i = idx0; i < idx1; i++) {
+      const x0 = xData[i];
+      const y0 = yData[i];
+      const x1 = xData[i + 1];
+      const y1 = yData[i + 1];
+      // Skip segments where either endpoint is missing — preserves the
+      // existing spanGaps=false semantics of the default renderer.
+      if (
+        typeof x0 !== 'number' ||
+        typeof x1 !== 'number' ||
+        y0 === null ||
+        y0 === undefined ||
+        !Number.isFinite(y0) ||
+        y1 === null ||
+        y1 === undefined ||
+        !Number.isFinite(y1)
+      ) {
+        continue;
+      }
+      const color = rampColors[i] ?? null;
+      if (!color) continue;
+      const px0 = u.valToPos(x0, 'x', true);
+      const py0 = u.valToPos(y0 as number, 'y', true);
+      const px1 = u.valToPos(x1, 'x', true);
+      const py1 = u.valToPos(y1 as number, 'y', true);
+      ctx.strokeStyle = color;
+      ctx.beginPath();
+      ctx.moveTo(px0, py0);
+      ctx.lineTo(px1, py1);
+      ctx.stroke();
+    }
+    ctx.restore();
+    return null;
+  };
+}
+
 export function MultiTraceChart({
   data,
   height = 300,
   colorbar,
+  colorBy = null,
 }: MultiTraceChartProps) {
   // displayName is required at the function-decl level for the
   // Markdown.tsx `<pre>` unwrap detector (`childIsChartComponent`)
@@ -246,14 +396,44 @@ export function MultiTraceChart({
     if (!containerRef.current || !uplotData || channelNames.length === 0) return;
     const width = containerRef.current.clientWidth || 600;
 
+    // When colorBy is active, compute a viridis-mapped per-segment
+    // color array for each channel and install a custom paths builder
+    // that strokes the line piecewise. The legend swatch keeps the
+    // colorAssignment color (the trace's "primary" color) so the
+    // sequential / categorical legend pattern stays intact.
+    const colormap = COLORMAPS[colorbar?.scale ?? 'viridis'];
+    const ramps: Array<string[] | null> = channelNames.map((name) => {
+      if (!colorBy) return null;
+      const channelValues = data.channels[name];
+      if (!channelValues) return null;
+      const timeAxis =
+        data.timestamps && data.timestamps.length === channelValues.length
+          ? data.timestamps
+          : undefined;
+      const ts = computeColorRamp(channelValues, colorBy, timeAxis);
+      return ts.map((t) => (Number.isFinite(t) ? colormap(t) : null)) as string[];
+    });
+
     const seriesConfig: uPlot.Series[] = [
       { label: data.timestamps ? 'Time (s)' : 'Sample' },
-      ...channelNames.map((name, i) => ({
-        label: name,
-        stroke: colorAssignment.colors[i],
-        width: 1.2,
-        spanGaps: false,
-      })),
+      ...channelNames.map((name, i) => {
+        const ramp = ramps[i];
+        const baseWidth = 1.2;
+        const base: uPlot.Series = {
+          label: name,
+          stroke: colorAssignment.colors[i],
+          width: baseWidth,
+          spanGaps: false,
+        };
+        if (colorBy && ramp) {
+          // Cast: uPlot's typings don't expose the PathBuilder signature
+          // on the published Series type but it's the documented
+          // extension point for custom renderers.
+          (base as unknown as { paths: uPlot.Series.PathBuilder }).paths =
+            makePerSegmentPaths(ramp, baseWidth);
+        }
+        return base;
+      }),
     ];
 
     const opts: uPlot.Options = {
@@ -305,7 +485,16 @@ export function MultiTraceChart({
       chartRef.current?.destroy();
       chartRef.current = null;
     };
-  }, [uplotData, channelNames, colorAssignment, height, data.timestamps]);
+  }, [
+    uplotData,
+    channelNames,
+    colorAssignment,
+    height,
+    data.timestamps,
+    data.channels,
+    colorBy,
+    colorbar?.scale,
+  ]);
 
   return (
     <div className="space-y-2">
@@ -319,9 +508,23 @@ export function MultiTraceChart({
         {data.format && (
           <span className="font-mono uppercase">{data.format}</span>
         )}
-        {colorAssignment.kind === 'sequential' && (
+        {colorAssignment.kind === 'sequential' && !colorBy && (
           <span className="text-[10px] opacity-60">
             Color: {colorbar?.scale ?? 'viridis'} ramp
+          </span>
+        )}
+        {colorBy && (
+          <span
+            className="text-[10px] opacity-60"
+            data-testid="multitrace-colorby-label"
+          >
+            Color by{' '}
+            {colorBy === 'time'
+              ? 'time'
+              : colorBy === 'index'
+                ? 'sample'
+                : 'value'}{' '}
+            ({colorbar?.scale ?? 'viridis'})
           </span>
         )}
       </div>

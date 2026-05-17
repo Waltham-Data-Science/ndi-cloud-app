@@ -29,7 +29,16 @@ import type { ReactNode } from 'react';
 // payload it constructs. The mock echoes the props it received for
 // assertion.
 vi.mock('@/components/ndi/charts/SignalChart', () => ({
-  SignalChart: (props: { datasetId: string; docId: string; downsample?: number; t0?: number; t1?: number; file?: string; title?: string }) => (
+  SignalChart: (props: {
+    datasetId: string;
+    docId: string;
+    downsample?: number;
+    t0?: number;
+    t1?: number;
+    file?: string;
+    title?: string;
+    colorBy?: 'time' | 'index' | 'value' | null;
+  }) => (
     <div
       data-testid="signal-chart-mock"
       data-dataset={props.datasetId}
@@ -39,6 +48,7 @@ vi.mock('@/components/ndi/charts/SignalChart', () => ({
       data-t1={props.t1 ?? ''}
       data-file={props.file ?? ''}
       data-title={props.title ?? ''}
+      data-colorby={props.colorBy ?? 'null'}
     />
   ),
 }));
@@ -389,5 +399,125 @@ describe('SignalViewerPanel — selection auto-fill', () => {
         container.querySelector('section#signal-viewer')!.getAttribute('data-pulse'),
       ).toBe('true');
     });
+  });
+});
+
+describe('SignalViewerPanel — color-by dropdown', () => {
+  it('renders a Color-by dropdown that defaults to the empty option (no coloring)', () => {
+    render(
+      <Wrapper>
+        <SignalViewerPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+
+    const select = screen.getByTestId('signal-viewer-colorby') as HTMLSelectElement;
+    expect(select).toBeInTheDocument();
+    expect(select.value).toBe('');
+    // The four canonical options must be present so the UI is
+    // self-documenting (None / Time / Index / Value).
+    expect(select.querySelector('option[value=""]')).toBeTruthy();
+    expect(select.querySelector('option[value="time"]')).toBeTruthy();
+    expect(select.querySelector('option[value="index"]')).toBeTruthy();
+    expect(select.querySelector('option[value="value"]')).toBeTruthy();
+  });
+
+  it('forwards colorBy=null to SignalChart by default — no visual change', async () => {
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <SignalViewerPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+
+    await user.type(screen.getByLabelText(/document id/i), VALID_DOC_ID);
+    await user.click(screen.getByRole('button', { name: /run/i }));
+
+    const chart = screen.getByTestId('signal-chart-mock');
+    // The mock surfaces colorBy via data-colorby; "null" is the
+    // stringified default.
+    expect(chart).toHaveAttribute('data-colorby', 'null');
+  });
+
+  it('forwards colorBy="time" to SignalChart when the user picks it', async () => {
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <SignalViewerPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+
+    await user.type(screen.getByLabelText(/document id/i), VALID_DOC_ID);
+    await user.selectOptions(
+      screen.getByTestId('signal-viewer-colorby'),
+      'time',
+    );
+    await user.click(screen.getByRole('button', { name: /run/i }));
+
+    const chart = screen.getByTestId('signal-chart-mock');
+    expect(chart).toHaveAttribute('data-colorby', 'time');
+  });
+
+  it('forwards colorBy="index" and "value" the same way', async () => {
+    const user = userEvent.setup();
+    const { rerender } = render(
+      <Wrapper>
+        <SignalViewerPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+
+    await user.type(screen.getByLabelText(/document id/i), VALID_DOC_ID);
+    await user.selectOptions(
+      screen.getByTestId('signal-viewer-colorby'),
+      'index',
+    );
+    await user.click(screen.getByRole('button', { name: /run/i }));
+
+    expect(screen.getByTestId('signal-chart-mock')).toHaveAttribute(
+      'data-colorby',
+      'index',
+    );
+
+    // Re-mount to test the third option cleanly (the chart key changes
+    // when colorBy flips, so we expect a fresh mount; a rerender keeps
+    // the same panel state but the chart inside remounts).
+    rerender(
+      <Wrapper>
+        <SignalViewerPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+    await user.selectOptions(
+      screen.getByTestId('signal-viewer-colorby'),
+      'value',
+    );
+    await user.click(screen.getByRole('button', { name: /run/i }));
+    expect(screen.getByTestId('signal-chart-mock')).toHaveAttribute(
+      'data-colorby',
+      'value',
+    );
+  });
+
+  it('changing colorBy after a run re-keys the SignalChart on the next Run', async () => {
+    // The SignalChart `key` prop encodes colorBy, so swapping the
+    // dropdown selection mid-session forces a full remount — preventing
+    // any stale uPlot instance from leaking between coloring modes.
+    const user = userEvent.setup();
+    render(
+      <Wrapper>
+        <SignalViewerPanel datasetId="ds1" />
+      </Wrapper>,
+    );
+
+    await user.type(screen.getByLabelText(/document id/i), VALID_DOC_ID);
+    await user.click(screen.getByRole('button', { name: /run/i }));
+    const firstChart = screen.getByTestId('signal-chart-mock');
+    expect(firstChart).toHaveAttribute('data-colorby', 'null');
+
+    await user.selectOptions(
+      screen.getByTestId('signal-viewer-colorby'),
+      'value',
+    );
+    await user.click(screen.getByRole('button', { name: /run/i }));
+    const secondChart = screen.getByTestId('signal-chart-mock');
+    expect(secondChart).toHaveAttribute('data-colorby', 'value');
   });
 });

@@ -32,11 +32,16 @@ vi.mock('@/components/ndi/charts/MultiTraceChart', () => ({
   MultiTraceChart: ({
     data,
     colorbar,
+    colorBy,
   }: {
     data: { sample_count: number; channels: Record<string, unknown> };
     colorbar?: { label: string };
+    colorBy?: 'time' | 'index' | 'value' | null;
   }) => (
-    <div data-testid="multitrace-chart">
+    <div
+      data-testid="multitrace-chart"
+      data-colorby={colorBy ?? 'null'}
+    >
       <span data-testid="multitrace-channel-count">
         {Object.keys(data.channels ?? {}).length}
       </span>
@@ -308,6 +313,76 @@ describe('SignalChart', () => {
         expect(screen.getByTestId('timeseries-chart')).toBeInTheDocument(),
       );
       expect(screen.queryByTestId('multitrace-chart')).not.toBeInTheDocument();
+    });
+  });
+
+  // -------------------------------------------------------------------
+  // colorBy prop — per-point continuous coloring
+  // -------------------------------------------------------------------
+  describe('colorBy prop', () => {
+    it('passes colorBy through to MultiTraceChart on multi-channel data', async () => {
+      mockedApiFetch.mockResolvedValueOnce(multiChannelResponse);
+      render(
+        <SignalChart datasetId="ds1" docId="doc1" colorBy="time" />,
+        { wrapper: withClient() },
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('multitrace-chart')).toBeInTheDocument(),
+      );
+      expect(screen.getByTestId('multitrace-chart')).toHaveAttribute(
+        'data-colorby',
+        'time',
+      );
+    });
+
+    it('routes single-channel data through MultiTraceChart when colorBy is set', async () => {
+      // Single-channel + colorBy = the user wants per-point coloring
+      // even on a flat trace — must route to MultiTraceChart so the
+      // per-segment paths builder is available.
+      mockedApiFetch.mockResolvedValueOnce(baseSignalResponse);
+      render(
+        <SignalChart datasetId="ds1" docId="doc1" colorBy="value" />,
+        { wrapper: withClient() },
+      );
+      await waitFor(() =>
+        expect(screen.getByTestId('multitrace-chart')).toBeInTheDocument(),
+      );
+      expect(screen.queryByTestId('timeseries-chart')).not.toBeInTheDocument();
+      expect(screen.getByTestId('multitrace-chart')).toHaveAttribute(
+        'data-colorby',
+        'value',
+      );
+    });
+
+    it('omits colorBy (passes null) when not specified — default behavior unchanged', async () => {
+      // Default-null path must keep the legacy single-channel delegate
+      // for 1-channel responses without colorbar.
+      mockedApiFetch.mockResolvedValueOnce(baseSignalResponse);
+      render(<SignalChart datasetId="ds1" docId="doc1" />, {
+        wrapper: withClient(),
+      });
+      await waitFor(() =>
+        expect(screen.getByTestId('timeseries-chart')).toBeInTheDocument(),
+      );
+      expect(screen.queryByTestId('multitrace-chart')).not.toBeInTheDocument();
+    });
+
+    it('supports all three colorBy modes', async () => {
+      // Quick smoke that each enum value propagates verbatim.
+      for (const mode of ['time', 'index', 'value'] as const) {
+        mockedApiFetch.mockResolvedValueOnce(multiChannelResponse);
+        const { unmount } = render(
+          <SignalChart datasetId="ds1" docId="doc1" colorBy={mode} />,
+          { wrapper: withClient() },
+        );
+        await waitFor(() =>
+          expect(screen.getByTestId('multitrace-chart')).toHaveAttribute(
+            'data-colorby',
+            mode,
+          ),
+        );
+        unmount();
+      }
     });
   });
 });
