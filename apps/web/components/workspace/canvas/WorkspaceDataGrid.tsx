@@ -755,9 +755,17 @@ export function WorkspaceDataGrid<TRow>({
           style={{ minHeight: 200 }}
         >
           <div
+            // Audit 2026-05-18 (UI sweep): explicit `minWidth` based
+            // on the table's total column width. The old `width:
+            // '100%'` left the parent's `overflow-auto` thinking no
+            // horizontal scroll was needed, so when 28+ columns were
+            // toggled on, cells got squeezed and right-side cells
+            // were clipped. With minWidth set, the parent now shows
+            // a horizontal scrollbar whenever content overflows.
             style={{
               height: `${virtualizer.getTotalSize()}px`,
               width: '100%',
+              minWidth: `${table.getTotalSize() + 32 + 36}px`,
               position: 'relative',
             }}
           >

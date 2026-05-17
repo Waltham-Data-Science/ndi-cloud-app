@@ -345,8 +345,18 @@ function DrawerPanel({
         aria-modal="true"
         aria-label="Ask panel"
         className={cn(
-          'fixed inset-y-0 right-0 z-50 flex flex-col',
-          'w-[420px] bg-bg-surface border-l border-border-subtle',
+          // Audit 2026-05-18 (UI sweep): grid layout instead of
+          // `flex flex-col`. Safari has long-standing bugs with
+          // multi-level `flex-1 min-h-0 overflow-hidden` chains —
+          // the scroll container's intrinsic height collapses to 0
+          // because Safari's flex sizing doesn't propagate the
+          // way Chrome/Firefox do. Grid with explicit
+          // `grid-template-rows: auto 1fr` gives the body row a
+          // computed pixel height that ChatThread's `overflow-y-auto`
+          // can scroll against reliably.
+          'fixed inset-y-0 right-0 z-50 grid',
+          'grid-rows-[auto_1fr]',
+          'w-[420px] max-w-[90vw] bg-bg-surface border-l border-border-subtle',
           'shadow-xl',
         )}
         style={{
@@ -363,7 +373,10 @@ function DrawerPanel({
           onClose={onClose}
           closeButtonRef={closeButtonRef}
         />
-        <div className="flex-1 min-h-0 overflow-hidden">
+        {/* Grid 1fr row — gives the chat a deterministic height for
+            ChatThread's overflow-y-auto to scroll against. `min-h-0`
+            prevents grid implicit-min from stretching with content. */}
+        <div className="min-h-0 overflow-hidden">
           <AskShell
             context={context}
             compact
@@ -423,8 +436,12 @@ function SidebarPanel({
       aria-label="Ask panel"
       data-ask-panel-mode="sidebar"
       className={cn(
-        'fixed inset-y-0 right-0 z-50 flex flex-col',
-        'w-[520px] bg-bg-surface border-l border-border-subtle',
+        // Audit 2026-05-18 (UI sweep): same grid-based layout as
+        // DrawerPanel for Safari scroll reliability. See DrawerPanel
+        // comment for the rationale.
+        'fixed inset-y-0 right-0 z-50 grid',
+        'grid-rows-[auto_1fr]',
+        'w-[520px] max-w-[90vw] bg-bg-surface border-l border-border-subtle',
         'shadow-xl',
       )}
     >
@@ -438,7 +455,7 @@ function SidebarPanel({
         onClose={onClose}
         closeButtonRef={closeButtonRef}
       />
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div className="min-h-0 overflow-hidden">
         <AskShell
           context={context}
           compact
@@ -482,7 +499,9 @@ function FullscreenPanel({
       role="dialog"
       aria-modal="true"
       aria-label="Ask panel — fullscreen"
-      className="fixed inset-0 z-50 flex flex-col bg-bg-surface"
+      // Audit 2026-05-18 (UI sweep): grid layout for the same
+      // Safari-scroll reasons as DrawerPanel + SidebarPanel.
+      className="fixed inset-0 z-50 grid grid-rows-[auto_1fr] bg-bg-surface"
     >
       {/* Fullscreen header — wider, max-width matches workspace shell. */}
       <header className="flex items-center justify-between gap-3 px-6 py-3.5 border-b border-border-subtle shrink-0 max-w-[1200px] mx-auto w-full">
@@ -525,9 +544,11 @@ function FullscreenPanel({
         </div>
       </header>
 
-      {/* Chat area — centered, max-w-[760px] like ChatGPT / Claude.ai. */}
-      <div className="flex-1 min-h-0 overflow-hidden flex flex-col">
-        <div className="flex-1 min-h-0 overflow-hidden max-w-[760px] mx-auto w-full flex flex-col">
+      {/* Chat area — centered, max-w-[760px] like ChatGPT / Claude.ai.
+          `min-h-0` propagates the grid's 1fr row height through the
+          centering wrapper so ChatThread can scroll. */}
+      <div className="min-h-0 overflow-hidden">
+        <div className="h-full max-w-[760px] mx-auto w-full flex flex-col">
           <AskShell
             context={context}
             compact

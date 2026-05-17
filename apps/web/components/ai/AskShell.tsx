@@ -140,7 +140,11 @@ export function AskShell({
       <div
         className={
           compact
-            ? 'flex flex-col flex-1 min-h-0 bg-bg-surface'
+            ? // Audit 2026-05-18: `h-full` instead of `flex-1 min-h-0`.
+              // Parent (AskPanel) now uses grid `1fr` row which gives
+              // an explicit pixel height; `h-full` inherits it cleanly.
+              // The old flex-1 chain collapsed to height: 0 on Safari.
+              'flex flex-col h-full min-h-0 bg-bg-surface'
             : 'flex flex-col h-[calc(100vh-128px)] max-w-3xl mx-auto bg-white border-x border-gray-100'
         }
       >
@@ -436,7 +440,10 @@ function AskChat({
     <div
       className={
         compact
-          ? 'flex flex-col flex-1 min-h-0 bg-bg-surface'
+          ? // Audit 2026-05-18: `h-full` instead of `flex-1 min-h-0`.
+            // AskPanel grid layout gives this row an explicit pixel
+            // height; cleanly inherit via h-full.
+            'flex flex-col h-full min-h-0 bg-bg-surface'
           : 'flex flex-col h-[calc(100vh-128px)] max-w-3xl mx-auto bg-white border-x border-gray-100'
       }
     >
