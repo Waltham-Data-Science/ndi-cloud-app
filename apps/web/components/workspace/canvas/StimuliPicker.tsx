@@ -18,7 +18,7 @@
  * The `tables` endpoint only exposes a handful of canonical classes
  * (subject / probe / element / element_epoch / treatment / etc.);
  * neither stimulus class is on the supported list, so we fall back
- * to `useDocuments(datasetId, <class>, 1, 500)` for both and merge
+ * to `useDocuments(datasetId, <class>, 1, 200)` for both and merge
  * the results.
  *
  * Columns of interest in the rail (constrained to ~300px width):
@@ -163,13 +163,19 @@ export function StimuliPicker({ datasetId }: StimuliPickerProps) {
   // concurrently; the table renders when both have resolved (we treat
   // a 404 on either as "no docs of this class" — that's a NORMAL
   // shape for datasets that only carry one variant).
+  //
+  // Backend caps pageSize at 200 on /api/datasets/:id/documents (same
+  // limit ElectrodePositionPanel hit). Capping here avoids silent 400
+  // VALIDATION_ERROR responses that degrade to "no stimuli" empty
+  // states. The right long-term fix is a dedicated /tables/stimulus
+  // backend projection — see the Phase H architecture review.
   const presentationQuery = useDocuments(
     datasetId,
     'stimulus_presentation',
     1,
-    500,
+    200,
   );
-  const responseQuery = useDocuments(datasetId, 'stimulus_response', 1, 500);
+  const responseQuery = useDocuments(datasetId, 'stimulus_response', 1, 200);
 
   const isLoading = presentationQuery.isLoading || responseQuery.isLoading;
   // Both 404-ing simultaneously is a real "no stimuli" signal — but

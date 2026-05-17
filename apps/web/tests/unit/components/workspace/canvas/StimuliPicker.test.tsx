@@ -205,13 +205,13 @@ describe('StimuliPicker — render', () => {
       'ds1',
       'stimulus_presentation',
       1,
-      500,
+      200,
     );
     expect(useDocumentsMock).toHaveBeenCalledWith(
       'ds1',
       'stimulus_response',
       1,
-      500,
+      200,
     );
   });
 
