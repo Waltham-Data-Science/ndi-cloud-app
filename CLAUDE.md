@@ -67,11 +67,11 @@ If you ever find yourself about to operate on `main` or on production Vercel/Rai
 
 **🚨 IF YOU ARE THE POST-COMPACTION SESSION FROM 2026-05-18:** read this FIRST, before anything else:
 
-**`apps/web/docs/reviews/2026-05-19-session-handoff.md`**
+**`apps/web/docs/reviews/2026-05-19b-post-handoff-execution.md`** (latest, evening 2026-05-19) — six new commits stacked on top of the earlier handoff, all six cloud-app capability gaps closed (time-coloring, video, BehavioralTrack, patch-clamp, derived columns, UI polish). Live G2/G3 verification with the fresh `steve+thing1@…` creds re-confirmed the B1 workspace-redirect bug from both directions — API-level parity green for Haley, but the workspace UI flips dataset within 3-10s. Contains the agent-collision postmortem for next session's parallel-agent dispatch.
 
-That doc is the single source-of-truth for everything that landed in the comprehensive audit + UI sweep session. It captures: today's 7 commits + what each did, the critical Vercel-rewrite bug that was bypassing every workspace POST handler (root cause + fix), the full audit findings table (33 items with dispositions), G-verify live results (3 of 4 tutorial tasks PASS including the flagship Saline-vs-CNO violin matching MATLAB to 2 decimal places), what's deferred (G2 Bhar + G3 Haley couldn't run due to test-account rate-limit), and the comprehensive "what's left" list grouped by owner (11 backend tickets, 4 SDK asks, 7 new cloud-app capability gaps, 4 polish items).
+**`apps/web/docs/reviews/2026-05-19-session-handoff.md`** (prior — still relevant) — Captured the comprehensive audit + UI sweep arc: seven commits including the critical Vercel-rewrite bug fix, full audit findings table (33 items), G-verify live results (3 of 4 Francesconi tutorial tasks PASS including the flagship Saline-vs-CNO violin matching MATLAB to 2 decimal places).
 
-**Critical operational caveat:** the test account `audri+test@walthamdatascience.com` was rate-limited at session end. Wait ~1 hour after the last login attempt OR request fresh creds from the user before re-dispatching G2/G3 (or any Playwright agent that logs in).
+**Critical operational caveat:** the test accounts `audri+test@walthamdatascience.com` AND `steve+thing1@walthamdatascience.com` are BOTH rate-limited as of 2026-05-19 evening. Wait ~1 hour after the last login attempt OR request fresh creds from the user before re-dispatching any Playwright agent that logs in. The auth rate-limit fires after ~5 logins per email in a sliding window; the workspace-redirect bug triggers more retries than expected because each redirect appears to re-trip the login flow.
 
 For ongoing context (older but still relevant):
 
