@@ -65,9 +65,18 @@ If you ever find yourself about to operate on `main` or on production Vercel/Rai
 
 ### Where to read next (pick up cold)
 
-1. **`apps/web/docs/specs/2026-05-16-pre-compact-handoff.md`** — the single source-of-truth status doc. Master-plan completion table, all commits, every finding + disposition, user-side action items. **Read this first after orientation.**
-2. `apps/web/docs/specs/2026-05-15-master-execution-plan.md` — the canonical plan; sub-stream IDs referenced everywhere.
-3. `apps/web/docs/specs/2026-05-15-remaining-backend-work.md` — S4.9/S5.3/S5.8 deferred specs.
+**🚨 IF YOU ARE THE POST-COMPACTION SESSION FROM 2026-05-17:** read this FIRST, before anything else:
+
+**`apps/web/docs/reviews/2026-05-18-post-compaction-audit-plan.md`**
+
+That doc captures the comprehensive NDI audit the previous session prepped but did not execute. It enumerates 7 audit dimensions, names every ground-truth path (14 NDI-family repos pulled to HEAD on 2026-05-17), points at the upstream Cloud API swagger spec saved at `/Users/audribhowmick/Documents/ndi-projects/_audit-deps/NDI-cloud-api-swagger.md`, and gives you a 7-step methodology with parallel agent dispatch. Execute it.
+
+For ongoing context (older but still relevant):
+
+1. **`apps/web/docs/specs/2026-05-16-pre-compact-handoff.md`** — older single source-of-truth status doc.
+2. **`apps/web/docs/reviews/2026-05-17-carryability-and-architecture.md`** — review from this session with 5 known followups (F1/F2/F3/F4 + B3) and the architecture grade.
+3. `apps/web/docs/specs/2026-05-15-master-execution-plan.md` — the canonical plan.
+4. `apps/web/docs/specs/2026-05-15-remaining-backend-work.md` — S4.9/S5.3/S5.8 deferred specs.
 
 ---
 
