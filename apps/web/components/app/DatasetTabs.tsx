@@ -150,12 +150,21 @@ export function DatasetTabs({ datasetId }: { datasetId: string }) {
       className="sticky top-[58px] z-30 bg-bg-surface border-b border-border-subtle"
       style={{ boxShadow: 'var(--shadow-xs)' }}
     >
+      {/* At <375px viewports the four tab labels (Overview /
+          Summary tables / Document explorer / Tutorial) total ~340px
+          of intrinsic width before padding, which forced wrapping or
+          overflow without a scroll affordance. `overflow-x-auto` lets
+          the tablist scroll horizontally on phones; `px-7` matches the
+          page chrome on both sides; tabs themselves keep `whitespace-
+          nowrap` so labels don't break mid-word. The scroll container
+          loses focus-ring at the tab boundary but tabs still get the
+          standard `focus-visible` ring per below. */}
       <div
         ref={tablistRef}
         role="tablist"
         aria-label="Dataset sections"
         onKeyDown={onKeyDown}
-        className="mx-auto flex max-w-[1200px] items-center gap-1 px-7"
+        className="mx-auto flex max-w-[1200px] items-center gap-1 px-4 sm:px-7 overflow-x-auto whitespace-nowrap"
       >
         {TABS.filter((tab) => {
           // Tutorials tab is the only tab with conditional visibility.
@@ -173,7 +182,11 @@ export function DatasetTabs({ datasetId }: { datasetId: string }) {
               aria-selected={active}
               tabIndex={active ? 0 : -1}
               className={cn(
-                '-mb-px inline-flex items-center gap-1.5 border-b-2 px-4 py-3 text-[13.5px] font-medium transition-colors',
+                // `shrink-0` keeps each tab its full intrinsic width
+                // inside the overflow-x-auto tablist; without it the
+                // flex layout would compress tabs to fit and break
+                // the `whitespace-nowrap` label rule on mobile.
+                '-mb-px inline-flex shrink-0 items-center gap-1.5 border-b-2 px-4 py-3 text-[13.5px] font-medium transition-colors',
                 'focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ndi-teal',
                 active
                   ? 'border-ndi-teal text-ndi-teal'

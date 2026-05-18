@@ -14,13 +14,17 @@ import { Skeleton } from '@/components/ui/Skeleton';
 
 export default function DocumentsLoading() {
   return (
+    // Breakpoint sync: live `<DocumentExplorer>` (DocumentExplorer.tsx
+    // ~198) switches to side-by-side at `md:` (768px), not `lg:`
+    // (1024px) — the skeleton must match so the layout doesn't reflow
+    // when the data lands on tablet widths.
     <div
-      className="grid gap-4 lg:grid-cols-[260px_1fr]"
+      className="grid gap-4 md:grid-cols-[260px_1fr]"
       aria-busy="true"
       aria-label="Loading document explorer"
     >
       {/* Sidebar: class filter list. */}
-      <aside className="space-y-2 hidden lg:block">
+      <aside className="space-y-2 hidden md:block">
         <Skeleton className="h-5 w-32" />
         <div className="space-y-1.5 pt-2">
           {Array.from({ length: 8 }).map((_, i) => (

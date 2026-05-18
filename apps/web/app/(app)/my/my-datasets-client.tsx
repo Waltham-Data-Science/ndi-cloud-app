@@ -168,7 +168,11 @@ export function MyDatasetsClient() {
             opacity: 0.05,
           }}
         />
-        <div className="relative mx-auto max-w-[1200px] px-7 py-12 md:py-14">
+        {/* `px-7` is the desktop chrome value; `px-4` below sm: gives
+            the hero stat strip enough horizontal room at narrow phone
+            viewports (the 2-col stat grid was tight at 320px because
+            the page padding alone consumed ~17%). */}
+        <div className="relative mx-auto max-w-[1200px] px-4 sm:px-7 py-12 md:py-14">
           <div className="flex flex-wrap items-start justify-between gap-4">
             <div>
               <div className="text-xs font-bold tracking-eyebrow uppercase text-brand-blue-3 mb-3 flex items-center gap-2">
@@ -239,7 +243,10 @@ export function MyDatasetsClient() {
       </section>
 
       {/* ── Body ─────────────────────────────────────────────────────── */}
-      <section className="mx-auto max-w-[1200px] px-7 py-7 bg-bg-canvas min-h-[40vh]">
+      {/* `px-7` is the desktop chrome value; `px-4` below sm: matches
+          the hero band's mobile padding ramp so the list flush-aligns
+          with the stat strip above on narrow viewports. */}
+      <section className="mx-auto max-w-[1200px] px-4 sm:px-7 py-7 bg-bg-canvas min-h-[40vh]">
         {/* Top-of-section tab strip — switches the dataset source
             between the user's own datasets and the public NDI catalog.
             Both feed the same card/table render below; the only thing

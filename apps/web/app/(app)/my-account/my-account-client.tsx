@@ -47,14 +47,18 @@ export function MyAccountClient() {
 
   if (isLoading || !user) {
     return (
-      <div className="px-7 py-20 bg-bg-canvas flex items-center justify-center">
+      // Match the main page's mobile-padding ramp so the loading view
+      // doesn't have a wider gutter than the resolved view.
+      <div className="px-4 sm:px-7 py-20 bg-bg-canvas flex items-center justify-center">
         <p className="text-fg-muted text-sm">Loading…</p>
       </div>
     );
   }
 
   return (
-    <div className="px-7 py-10 bg-bg-canvas">
+    // `px-4` below sm: matches the catalog + dataset detail mobile
+    // padding ramp; `px-7` on tablet+.
+    <div className="px-4 sm:px-7 py-10 bg-bg-canvas">
       <div className="max-w-[1100px] mx-auto">
         {/* Breadcrumb — restored after visual-comparison audit #8
             flagged it as dropped during the App Router port. Source
@@ -80,7 +84,10 @@ export function MyAccountClient() {
             desktop so the nav stays in view when the content card
             grows; collapses to a top-row on mobile so it doesn't
             consume vertical space. */}
-        <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-8">
+        {/* gap-6 on mobile stacking (slim gap between sidebar links
+            collapsed above the body card), gap-8 once the sidebar
+            sits beside content from md:+. */}
+        <div className="grid grid-cols-1 md:grid-cols-[220px_1fr] gap-6 md:gap-8">
           <aside className="md:sticky md:top-6 md:self-start">
             <AccountSidebar />
           </aside>
@@ -148,11 +155,17 @@ export function MyAccountClient() {
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-[160px_1fr] gap-4 py-2 text-sm border-b border-border-subtle last:border-b-0">
-      <div className="text-xs font-bold tracking-eyebrow uppercase text-fg-muted self-center">
+    // At <375px viewports the fixed `160px` label column left only
+    // ~120px for the value (after `px-4` page padding + `p-6` card
+    // padding), causing email-hash / account-id values to wrap
+    // awkwardly. Stack label-above-value on phones; revert to the
+    // side-by-side grid from `sm:` upward (640px) where there's
+    // adequate space for the 160px label column.
+    <div className="grid grid-cols-1 sm:grid-cols-[160px_1fr] gap-1 sm:gap-4 py-2 text-sm border-b border-border-subtle last:border-b-0">
+      <div className="text-xs font-bold tracking-eyebrow uppercase text-fg-muted sm:self-center">
         {label}
       </div>
-      <div className="text-fg-primary">{value}</div>
+      <div className="text-fg-primary break-words">{value}</div>
     </div>
   );
 }

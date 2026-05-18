@@ -103,7 +103,9 @@ export function DocumentDetailShell({
             opacity: 0.05,
           }}
         />
-        <div className="relative mx-auto max-w-[1200px] px-7 py-10 md:py-12">
+        {/* Match the mobile px ramp on the body section below: `px-4`
+            on phones, `px-7` from sm: upward. */}
+        <div className="relative mx-auto max-w-[1200px] px-4 sm:px-7 py-10 md:py-12">
           <div className="mb-3">
             <Link
               href={`/datasets/${datasetId}`}
@@ -159,7 +161,10 @@ export function DocumentDetailShell({
         visual). Side-by-side keeps both above the fold on most
         desktops + makes the page feel materially richer.
       */}
-      <section className="mx-auto max-w-[1200px] px-7 py-7">
+      {/* `px-7` desktop; `px-4` below sm: matches the dataset chrome
+          gate's mobile padding so the document-detail body uses the
+          same content width as the surrounding tab UI. */}
+      <section className="mx-auto max-w-[1200px] px-4 sm:px-7 py-7">
         <div className="space-y-4">
           <Link
             href={`/datasets/${datasetId}/documents`}

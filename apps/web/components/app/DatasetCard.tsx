@@ -165,7 +165,11 @@ function DatasetCardInner({
           Loading…
         </div>
       )}
-      <CardBody className="p-6 md:p-7">
+      {/* Padding ramp: p-5 (20px) on phones <640px so the card body
+          doesn't crowd the meta strip at <375px viewports (px-7 page
+          padding + p-6 card padding was leaving ~216px content at
+          320px), p-6 on small tablets, p-7 on md+ desktops. */}
+      <CardBody className="p-5 sm:p-6 md:p-7">
         <div className="flex items-center gap-2 mb-3 flex-wrap">
           {/* Status pill: PUBLISHED (green) / DRAFT (amber) / PROCESSING.
               2026-04-28 — these were previously stacked: Published +
@@ -299,7 +303,13 @@ function DatasetCardInner({
           )}
           {dataset.doi && (
             <MetaCell label="DOI">
-              <span className="font-mono truncate inline-block max-w-[260px] align-bottom">
+              {/* Truncate width was a fixed `max-w-[260px]` which overflowed
+                  the card at viewports <375px (after `px-7` page padding
+                  + `p-6` card padding eats ~104px, the inner column is
+                  ~216px at 320px viewport). Switched to a responsive
+                  ramp: 180px on small phones, 260px from sm: upward.
+                  `truncate` clips the rest with an ellipsis. */}
+              <span className="font-mono truncate inline-block max-w-[180px] sm:max-w-[260px] align-bottom">
                 {dataset.doi.replace(/^https?:\/\//, '')}
               </span>
             </MetaCell>
