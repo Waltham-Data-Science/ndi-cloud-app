@@ -8,22 +8,38 @@ what landed in the next sessions against the same branch.
 
 ## 🚦 IF YOU'RE THE POST-COMPACTION SESSION — START HERE
 
-**The big stuff (all backend F-* tickets that block visible features, 6 cloud-app capability gaps, BehavioralTrack pair-mode, useDocument className normalization) is DONE AND LIVE-VERIFIED.** Read on for the comprehensive log + table of all 13+ commits. But what's still LEFT for you:
+**Status as of 2026-05-18 post-compaction work:** F-1b shipped end-to-end (backend port + cloud-app JS cleanup). Mobile <375px + card gap CSS sweep shipped. Bhar class-count parity fixed. 2152 cloud-app + 1000 backend tests green.
+
+### What landed this session (chronological)
+
+| Commit | Repo | Description |
+|---|---|---|
+| `de2132d` | ndi-data-browser-v2 | feat(F-1b): broadcast treatments onto subject summary table (Agent A) |
+| `a560a41` | ndi-data-browser-v2 | fix(F-1b): extend subject enrichment with treatment_drug + treatment_transfer (cache v6→v7) |
+| `f89af4b` | ndi-cloud-app | fix(counts): wrapper-class filter parity (Bhar 12 → 11) |
+| `fd44603` | ndi-cloud-app | fix(css): mobile <375px sweep + loading skeleton harmonization (Agent B, cherry-pick) |
+| `870e215` | ndi-cloud-app | refactor(F-1b): remove JS treatment-broadcast pivot (net -172 LOC) |
+
+Live-verified: Bhar `/api/datasets/.../tables/subject` now returns **43 cols** (15 standard + 28 broadcast: EschericiaColiOP50Name/Ontology, ImazapyrName/Ontology, etc.) post-deploy.
 
 ### Deferred — pick up in priority order
 
 | Priority | Item | Effort | Why deferred |
 |---|---|---|---|
 | 1 | **Tools-along-boundaries canvas redesign** | 30min design Q&A + ~½ day code | User explicitly held for next session — needs spec-by-conversation before any code |
-| 2 | **F-1b** — treatment-broadcast cols pivot into `summary_table_service` | ~½ day backend + clean up `table-shell.tsx` JS workaround | Large; cloud-app JS workaround exists in `apps/web/app/(app)/datasets/[id]/tables/[className]/table-shell.tsx` (~lines 340-925). Move pivot into backend per ADR-001. Surfaces treatment cols on workspace SubjectsBrowser too |
-| 3 | **Mobile pass <375px thorough** | ~2h CSS sweep | Only minmax fix shipped; full mobile responsive audit owed |
-| 4 | **Card gap consistency thorough audit** | ~1-2h CSS sweep | Partial pass shipped; visual sweep + harmonize owed |
-| 5 | **F-4** — stable query keys + dedup on panel mutations | ~2-3h cloud-app | Low impact polish; canonical mutation contract |
-| 6 | **G2 Bhar full tutorial replay** (12 tasks) | ~1h Playwright | Treatment Gantt verified; rest needs exhaustive re-drive |
-| 7 | **G3 Haley full tutorial replay** (19 tasks) | ~1h Playwright | Pair-mode trajectory verified; rest needs exhaustive re-drive |
-| 8 | **Bhar 12 vs 11 class count** + **Haley Sessions=3 vs 2** | ~1h investigate | Minor parity gaps surfaced earlier |
-| 9 | **Cross-dataset session-drop investigation** | Safari/Chrome manual | Documented as Playwright artifact; not formally closed |
-| 10 | **React #418 hydration during multi-deploy** | Observation during next multi-deploy | Tied to B1 CDN-thrash hypothesis |
+| 2 | **F-4** — stable query keys + dedup on panel mutations | ~2-3h cloud-app | Low impact polish; needs scoped audit of which panels' useMutation chains re-fire on identical picks |
+| 3 | **G2 Bhar full tutorial replay** (12 tasks) | ~1h Playwright | Treatment Gantt + F-1b broadcast verified; rest needs exhaustive re-drive |
+| 4 | **G3 Haley full tutorial replay** (19 tasks) | ~1h Playwright | Pair-mode trajectory verified; rest needs exhaustive re-drive |
+| 5 | **Haley Sessions=3 vs 2** | ~1h investigate | Backend returns `counts.sessions: 3` from raw `session` class count; tutorial documents 2. Need raw session doc inspection (no projection on `session` class means `/tables/session` returns 0 rows) — likely one is a placeholder/calibration; needs user clarification or live data access |
+| 6 | **Cross-dataset session-drop investigation** | Safari/Chrome manual | Documented as Playwright artifact; not formally closed |
+| 7 | **React #418 hydration during multi-deploy** | Observation during next multi-deploy | Tied to B1 CDN-thrash hypothesis |
+
+### Closed this session
+
+- ~~F-1b (backend port + cloud-app cleanup)~~ — **shipped**, F-1b broadcast columns ship inline; JS pivot removed
+- ~~Mobile pass <375px thorough~~ — **shipped** (Agent B CSS sweep: 13 files, granular `px-7` → `px-4 sm:px-7` ramps + loading skeleton harmonization)
+- ~~Card gap consistency audit~~ — **shipped** as part of Agent B; the `gap-5` vs `gap-6` split is intentional (uniform dense tiles vs content-rich cards); only inconsistencies found were loading-skeleton wrong-shape mismatches, now fixed
+- ~~Bhar 12 vs 11 class count~~ — **shipped** in `f89af4b` via centralized `HIDDEN_WRAPPER_CLASSES` filter in `lib/data/class-counts.ts`, applied to `SnapshotSection.numClasses`, `StructureBrowser.totalClasses + deriveClassList`, `DocumentsPicker.deriveDocumentClasses`
 
 ### Explicitly held (per user direction)
 
@@ -45,9 +61,9 @@ what landed in the next sessions against the same branch.
 
 ### Branch state (latest)
 
-- **Cloud-app** `ndi-cloud-app` `feat/experimental-ask-chat` — HEAD `61d3fb9`
-- **Backend** `ndi-data-browser-v2` `feat/ndi-python-phase-a` — HEAD `8401286`
-- 2138 cloud-app unit tests + 885 backend unit tests all green
+- **Cloud-app** `ndi-cloud-app` `feat/experimental-ask-chat` — HEAD `870e215`
+- **Backend** `ndi-data-browser-v2` `feat/ndi-python-phase-a` — HEAD `a560a41`
+- 2152 cloud-app unit tests + 1000 backend unit tests all green
 - Both preview/experimental Vercel + Railway deploys Ready
 - **PR #160** stays draft per existing "[DO NOT MERGE — experimental]" title
 
