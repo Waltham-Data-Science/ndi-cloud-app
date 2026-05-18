@@ -78,25 +78,30 @@ The workspace is one page with three regions:
 
 ## 3. Try one real analysis (2 min)
 
-We'll run **Bhar's treatment timeline** — a Gantt chart of every
-treatment applied to every subject.
+We'll run **Francesconi's patch-clamp step family** — 21 voltage
+sweeps from a single neuron, overlaid with viridis coloring by
+sweep index. Striking visual; matches the published MATLAB figure
+to 2 decimal places.
 
-1. Open `/my/workspace/69bc5ca11d547b1f6d083761` (Bhar).
-2. In the picker rail (left), click the **Subjects** tab.
-3. Click any subject row (e.g. the first one). The selection bar at
-   the top of the canvas now shows `Subject: <id>`.
-4. Scroll the canvas down to the **Treatment Timeline** panel.
-5. The panel auto-runs and renders a Gantt chart. Hover any bar →
-   tooltip with the treatment name (e.g. `Eschericia coli OP50`),
-   ontology ID, and the start/stop times in seconds.
-6. Switch subjects in the rail → the Gantt re-renders for that
-   subject. No reload needed.
+1. Open `/my/workspace/67f723d574f5f79c6062389d` (Francesconi BNST).
+2. In the picker rail (left), click the **Documents** tab and filter
+   by class `daqreader_mfdaq_epochdata_ingested`. (Shortcut URL:
+   `/my/workspace/67f723d574f5f79c6062389d?pick=documents&docClass=daqreader_mfdaq_epochdata_ingested`.)
+3. Click the doc named **`ai_group1_seg.nbf_1`** (doc ID
+   `68d6e54703a03f5cfdac8ef7`).
+4. The canvas's **Patch-Clamp Step Family** panel runs and shows:
+   - 21 overlaid voltage traces (one per current step)
+   - Viridis color ramp (dark purple → bright yellow) by sweep
+     index
+   - Figcaption: `ch0 · 21 sweeps · 2–41 samples each`
+5. Hover any trace → tooltip with sweep number + amplitude.
 
-> **What you're looking at:** per-subject treatment events derived
-> from NDI's `treatment_drug` and `treatment_transfer` documents.
-> The same projection drives the Subjects tab's columns
-> (Eschericia coli OP50 Name, imazapyr Name, etc. — see "the data
-> broadcast" below).
+> **What you're looking at:** a current-clamp step protocol —
+> the cell was given 21 increasing current injections, and you're
+> seeing the voltage response (and spike thresholding) ramp up
+> with each step. Same data the Francesconi authors plotted in
+> MATLAB; the cloud-app's SVG renderer matches the published
+> figure.
 
 ---
 
@@ -124,21 +129,28 @@ treatment applied to every subject.
 
 1. Press **Cmd+K** (Mac) or click the floating ⌘ button bottom-right.
 2. The **Ask** drawer opens on the right side of the screen.
-3. Pick one of the suggested prompts, or type your own:
-   - "How many published datasets are in the Commons?"
-   - "What strains were used in the Bhar C. elegans memory dataset?"
-   - "What probe types were used in the Dabrowska BNST dataset?"
-   - "What datasets relate to memory or learning?"
+3. Click the suggested prompt **"What probe types were used in the
+   Dabrowska BNST dataset?"** (or type your own).
 4. Watch the response stream in. The chat will:
-   - **Search** the catalog (`semantic_search_datasets`)
-   - **Pull documents** from the dataset
-     (`query_documents`, `walk_provenance`)
-   - **Cite** every claim with a clickable footnote linking to the
-     source document.
-5. Follow up: "Show me the treatment timeline for subject S1." or
-   "How was the orientation tuning of cell X computed?" — the chat
-   walks the depends_on graph upstream/downstream to answer
-   provenance questions.
+   - **Search** the catalog (`semantic_search_datasets`) to locate
+     the Dabrowska dataset.
+   - **Query documents** (`query_documents`) for the `probe` class
+     (or `element` via alias).
+   - **Return a probe list**, each probe linked via a footnote `[^N]`
+     to its NDI document.
+5. Follow up with: *"How was the cell type determined for those
+   probes?"*
+   The chat calls `walk_provenance` upstream from a probe doc and
+   returns the graph: `probe` ← `probe_location` (CL: cell-type
+   ontology) ← original recording session. Click any footnote to
+   open the source document.
+
+> **What this demonstrates:** the chat isn't just answering from
+> embeddings — it's a tool-using agent grounded in the actual NDI
+> document graph. Every claim has a clickable citation; the
+> provenance walk follows the `depends_on` edges every NDI
+> document carries. That's what makes the catalog queryable as a
+> knowledge graph, not just a search index.
 
 > **The Ask drawer carries the current workspace context** — you
 > don't have to repeat "in the Bhar dataset"; the chat already
