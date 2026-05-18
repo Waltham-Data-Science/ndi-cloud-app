@@ -142,6 +142,26 @@ export function useDocument(
     enabled: !!datasetId && !!documentId,
     retry: 0,
     staleTime: DOCUMENTS_STALE_MS,
+    // 2026-05-19 (post-handoff) — normalize the backend's nested
+    // `data.document_class.class_name` into the top-level `className`
+    // every consumer expects per the `DocumentSummary` type. Without
+    // this, panels like `VideoPlaybackPanel` that check
+    // `doc.className === 'imageStack'` mis-classify every doc as
+    // unsupported because Railway's per-doc detail endpoint returns
+    // `{ id, data: { document_class: { class_name } } }` without
+    // duplicating the class at the top level. Verified live on Bhar
+    // imageStack `69eb91431a7ae83f29b19a62`. Idempotent — if the
+    // backend ever starts returning `className` directly the existing
+    // value wins.
+    select: (doc) => {
+      if (doc && !doc.className) {
+        const nested = (doc.data as { document_class?: { class_name?: string } } | undefined)?.document_class?.class_name;
+        if (typeof nested === 'string' && nested.length > 0) {
+          return { ...doc, className: nested };
+        }
+      }
+      return doc;
+    },
   });
 }
 
