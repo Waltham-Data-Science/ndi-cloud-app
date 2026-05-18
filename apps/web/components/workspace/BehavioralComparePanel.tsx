@@ -8,9 +8,16 @@
  * surfaces the backend's _meta.columns hint as one-click retry
  * buttons — the chat handled this in its prompt loop; we expose it
  * as UI.
+ *
+ * F-4 (2026-05-18): Converted from `useMutation` → `useQuery` keyed
+ * on the committed args. Two consecutive Runs with the same form
+ * values no longer re-hit the network — TanStack Query dedups by
+ * queryKey hash. The Run button forces an explicit refetch when args
+ * are unchanged; the empty-hint column-pick button stages a new
+ * groupBy + commits, so it always fires a new fetch.
  */
-import { useCallback, useMemo, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useCallback, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { BarChart3 } from 'lucide-react';
 
 import { ViolinChart } from '@/components/ndi/charts/ViolinChart';
@@ -97,9 +104,31 @@ function isErrorEnvelope(r: unknown): r is { error: string } {
   );
 }
 
+/**
+ * Compare two RunArgs structurally — used post-F-4 to decide whether
+ * an explicit Run press should refetch (same args, cache would hit)
+ * or commit new args (different args, useQuery fires automatically).
+ * groupOrder is compared element-wise.
+ */
+function runArgsEqual(a: RunArgs, b: RunArgs): boolean {
+  if (a.variableNameContains !== b.variableNameContains) return false;
+  if (a.groupBy !== b.groupBy) return false;
+  if (a.title !== b.title) return false;
+  const ao = a.groupOrder;
+  const bo = b.groupOrder;
+  if (ao === undefined && bo === undefined) return true;
+  if (ao === undefined || bo === undefined) return false;
+  if (ao.length !== bo.length) return false;
+  for (let i = 0; i < ao.length; i++) {
+    if (ao[i] !== bo[i]) return false;
+  }
+  return true;
+}
+
 async function runTabularQuery(
   datasetId: string,
   args: RunArgs,
+  signal?: AbortSignal,
 ): Promise<RunResult> {
   // Migrated 2026-05-15 (Stream 4.1): was a GET to the Vercel
   // rewrite at /api/datasets/:id/tabular_query (underscore-spelled
@@ -108,6 +137,9 @@ async function runTabularQuery(
   // the inbound x-request-id via toolContextFromRequest. The wrapper
   // calls the chat-side tabularQueryHandler so chat + workspace
   // render identical stats / chart payloads off one code path.
+  // F-4 (2026-05-18): accepts the TanStack Query `signal` so a
+  // cancelled / superseded query cancels its in-flight fetch instead
+  // of racing the next one.
   const url = `/api/datasets/${encodeURIComponent(datasetId)}/tabular-query`;
   const body: Record<string, unknown> = {
     variableNameContains: args.variableNameContains,
@@ -121,6 +153,7 @@ async function runTabularQuery(
   const res = await apiFetch<RunResult | { error: string }>(url, {
     method: 'POST',
     body,
+    signal,
   });
   if (isErrorEnvelope(res)) {
     // Map the wrapper's `{ error: "<msg>" }` envelope into a thrown
@@ -158,18 +191,37 @@ export function BehavioralComparePanel({
   // groups_summary rows (same shape from the chat-tool wrapper).
   const derived = useDerivedColumns();
 
-  const mutation = useMutation<RunResult, unknown, RunArgs>({
-    mutationFn: (args) => runTabularQuery(datasetId, args),
+  // F-4: committed args drive the useQuery key. handleRun stages the
+  // current form into committedArgs; useQuery auto-fires when args
+  // change. Two consecutive Runs with same args call refetch()
+  // explicitly so the network round-trip happens on demand.
+  const [committedArgs, setCommittedArgs] = useState<RunArgs | null>(null);
+
+  const query = useQuery<RunResult, Error>({
+    queryKey: [
+      'tabular-query',
+      datasetId,
+      committedArgs?.variableNameContains ?? null,
+      committedArgs?.groupBy ?? null,
+      committedArgs?.groupOrder ?? null,
+      committedArgs?.title ?? null,
+    ],
+    queryFn: ({ signal }) => runTabularQuery(datasetId, committedArgs!, signal),
+    enabled: committedArgs !== null,
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    retry: 0,
+    refetchOnWindowFocus: false,
   });
   // NB: stale-state reset on dataset change happens at the parent
   // (`workspace-client.tsx` keys the panel stack by `datasetId` so
   // React full-remounts the tree). No per-panel effect needed.
 
-  const lastArgs: RunArgs | null = useMemo(() => {
-    if (!mutation.data && !mutation.variables) return null;
-    return mutation.variables ?? null;
-  }, [mutation.data, mutation.variables]);
+  // lastArgs is now just the committed args — the panel renders the
+  // ShowCodeButton with whatever args produced the visible result.
+  const lastArgs: RunArgs | null = committedArgs;
 
+  const refetch = query.refetch;
   const handleRun = useCallback(() => {
     const trimmed = variableNameContains.trim();
     if (!trimmed) {
@@ -187,8 +239,14 @@ export function BehavioralComparePanel({
       ...(groupOrder.length > 0 ? { groupOrder } : {}),
       ...(title.trim() ? { title: title.trim() } : {}),
     };
-    mutation.mutate(args);
-  }, [variableNameContains, groupBy, groupOrderInput, title, mutation]);
+    // F-4: explicit Run → refetch when args are unchanged so the
+    // network call still fires; otherwise commit new args.
+    if (committedArgs !== null && runArgsEqual(committedArgs, args)) {
+      refetch();
+    } else {
+      setCommittedArgs(args);
+    }
+  }, [variableNameContains, groupBy, groupOrderInput, title, committedArgs, refetch]);
 
   const retryWithColumn = useCallback(
     (column: string) => {
@@ -199,26 +257,35 @@ export function BehavioralComparePanel({
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
-      mutation.mutate({
+      const args: RunArgs = {
         variableNameContains: trimmed,
         groupBy: column,
         ...(groupOrder.length > 0 ? { groupOrder } : {}),
         ...(title.trim() ? { title: title.trim() } : {}),
-      });
+      };
+      // Empty-hint pick is by construction a NEW column → args differ
+      // → new key, new fetch. Use refetch() as a safety net if it ever
+      // matches (e.g. user clicks the same pick twice).
+      if (committedArgs !== null && runArgsEqual(committedArgs, args)) {
+        refetch();
+      } else {
+        setCommittedArgs(args);
+      }
     },
-    [variableNameContains, groupOrderInput, title, mutation],
+    [variableNameContains, groupOrderInput, title, committedArgs, refetch],
   );
 
-  const showResult = mutation.isPending || mutation.isError || mutation.isSuccess;
+  const showResult =
+    query.isFetching || query.isError || query.isSuccess;
   const hasSuccess =
-    mutation.isSuccess &&
-    !!mutation.data &&
-    mutation.data.groups_summary.length > 0;
+    query.isSuccess &&
+    !!query.data &&
+    query.data.groups_summary.length > 0;
   const hasEmpty =
-    mutation.isSuccess &&
-    !!mutation.data &&
-    mutation.data.groups_summary.length === 0 &&
-    !!mutation.data.empty_hint;
+    query.isSuccess &&
+    !!query.data &&
+    query.data.groups_summary.length === 0 &&
+    !!query.data.empty_hint;
 
   return (
     <PanelCard
@@ -230,11 +297,11 @@ export function BehavioralComparePanel({
       pulse={pulse}
       footer={
         <>
-          <Button type="button" variant="primary" onClick={handleRun} disabled={mutation.isPending} data-testid="behavioral-compare-run">
-            {mutation.isPending ? 'Running…' : 'Run'}
+          <Button type="button" variant="primary" onClick={handleRun} disabled={query.isFetching} data-testid="behavioral-compare-run">
+            {query.isFetching ? 'Running…' : 'Run'}
           </Button>
           {hasSuccess && lastArgs && (
-            <ShowCodeButton toolName="tabular_query" args={{ datasetId, ...lastArgs }} result={mutation.data} />
+            <ShowCodeButton toolName="tabular_query" args={{ datasetId, ...lastArgs }} result={query.data} />
           )}
         </>
       }
@@ -288,23 +355,23 @@ export function BehavioralComparePanel({
 
       {showResult && (
         <div className="pt-2" data-testid="behavioral-compare-result">
-          {mutation.isPending && (
+          {query.isFetching && (
             <div aria-label="Loading behavioral comparison" className="space-y-2">
               <Skeleton className="h-[360px] w-full rounded-md" />
               <Skeleton className="h-5 w-1/3" />
               <Skeleton className="h-4 w-full" />
             </div>
           )}
-          {mutation.isError && <ErrorBox error={mutation.error} />}
-          {hasEmpty && mutation.data?.empty_hint && (
+          {!query.isFetching && query.isError && <ErrorBox error={query.error} />}
+          {!query.isFetching && hasEmpty && query.data?.empty_hint && (
             <EmptyHintBox
-              hint={mutation.data.empty_hint}
+              hint={query.data.empty_hint}
               onPick={retryWithColumn}
             />
           )}
-          {hasSuccess && mutation.data && (
+          {!query.isFetching && hasSuccess && query.data && (
             <SuccessView
-              result={mutation.data}
+              result={query.data}
               derivedColumns={derived.derivedColumns}
               onAddDerived={derived.add}
               onRemoveDerived={derived.remove}
