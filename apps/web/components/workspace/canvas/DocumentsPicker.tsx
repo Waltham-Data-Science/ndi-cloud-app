@@ -65,6 +65,7 @@ import {
 import { useClassCounts } from '@/lib/api/datasets';
 import { useDocuments, type DocumentSummary } from '@/lib/api/documents';
 import { cn } from '@/lib/cn';
+import { isHiddenWrapperClass } from '@/lib/data/class-counts';
 import { formatNumber } from '@/lib/format';
 import {
   SELECTION_TITLES,
@@ -81,6 +82,10 @@ interface DocumentsPickerProps {
  * Pure for testability — exported separately. Sort is count-desc with
  * a name-asc tiebreaker, matching `StructureBrowser.deriveClassList`'s
  * default mode.
+ *
+ * 2026-05-19 — wrapper classes (e.g. `session_in_a_dataset`) are
+ * filtered out so this picker matches the catalog sidebar and the
+ * structure browser. See `lib/data/class-counts.ts`.
  */
 export function deriveDocumentClasses(
   classCounts: Record<string, number>,
@@ -88,9 +93,10 @@ export function deriveDocumentClasses(
 ): Array<{ className: string; count: number }> {
   const normalisedFilter = filter.trim().toLowerCase();
   return Object.entries(classCounts)
-    .filter(([cls]) =>
-      normalisedFilter ? cls.toLowerCase().includes(normalisedFilter) : true,
-    )
+    .filter(([cls]) => {
+      if (isHiddenWrapperClass(cls)) return false;
+      return normalisedFilter ? cls.toLowerCase().includes(normalisedFilter) : true;
+    })
     .sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))
     .map(([className, count]) => ({ className, count }));
 }

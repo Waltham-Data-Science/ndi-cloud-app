@@ -31,37 +31,13 @@
 import Link from 'next/link';
 import { FileText } from 'lucide-react';
 
+import { isHiddenWrapperClass } from '@/lib/data/class-counts';
 import { formatNumber } from '@/lib/format';
 
-/**
- * 2026-04-29 — round-2 team review: "There is an extra session being
- * counted per dataset (at least for Bhar)". Investigation found this
- * came from the Document Explorer sidebar listing TWO adjacent class
- * rows for Bhar: `session: 2` and `session_in_a_dataset: 1`. The eye
- * scans both and reads "3 sessions". But `session_in_a_dataset` is an
- * internal NDI manifest/wrapper class — its data fields are pure
- * bookkeeping (`session_id`, `session_reference`, `session_creator`,
- * `session_creator_input1..6`, `is_linked`), one doc per dataset,
- * NOT a recording session in the user-facing sense. The overview
- * hero already excludes it (PR #129); the sidebar should too.
- *
- * Hiding it from the sidebar (rather than relabeling) is the right
- * move — the wrapper has no useful drilldown for an end user; the
- * Document Explorer's `?class=session_in_a_dataset` filter would
- * land them on a single doc full of internal references they can't
- * act on. Anyone who wants to inspect the wrapper directly can still
- * navigate via direct URL.
- *
- * The set is exhaustive against currently-observed wrapper classes
- * across all 8 published datasets; new wrappers would need an
- * explicit add. Intentionally NOT a regex / heuristic — we want a
- * deliberate, audited list rather than a class-name pattern that
- * might silently swallow content classes named with `_dataset`
- * suffix in the future.
- */
-const HIDDEN_WRAPPER_CLASSES: ReadonlySet<string> = new Set([
-  'session_in_a_dataset',
-]);
+// 2026-04-29 — wrapper-filter set originally lived here; centralized
+// 2026-05-19 to `lib/data/class-counts.ts` so the workspace surfaces
+// (`SnapshotSection`, `StructureBrowser`, `DocumentsPicker`) match
+// the catalog sidebar. See that module for the full rationale.
 
 export interface ClassCountsListProps {
   datasetId: string;
@@ -76,7 +52,7 @@ export function ClassCountsList({ datasetId, data }: ClassCountsListProps) {
   // and shouldn't suddenly diverge from what other UI surfaces show.
   // Only the per-class breakdown drops the wrapper entries.
   const filtered = Object.entries(data.classCounts).filter(
-    ([cls]) => !HIDDEN_WRAPPER_CLASSES.has(cls),
+    ([cls]) => !isHiddenWrapperClass(cls),
   );
   const sorted = filtered.sort((a, b) => b[1] - a[1]);
   const total = Math.max(1, data.totalDocuments);

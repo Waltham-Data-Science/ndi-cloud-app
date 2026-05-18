@@ -121,20 +121,33 @@ describe('deriveClassList', () => {
     const items = deriveClassList(SAMPLE, 'count-desc', '');
     expect(items[0]).toEqual({ className: 'openminds_subject', count: 28374 });
     expect(items[1]).toEqual({ className: 'treatment_drug', count: 24466 });
+    // 2026-05-19 — wrapper class `session_in_a_dataset` is now filtered
+    // out (parity with the catalog sidebar). The smallest visible row
+    // is `session: 2`, not the wrapper.
     expect(items[items.length - 1]).toEqual({
-      className: 'session_in_a_dataset',
-      count: 1,
+      className: 'session',
+      count: 2,
     });
   });
 
   it('sorts by count ascending', () => {
     const items = deriveClassList(SAMPLE, 'count-asc', '');
-    expect(items[0]).toEqual({ className: 'session_in_a_dataset', count: 1 });
-    expect(items[1]).toEqual({ className: 'session', count: 2 });
+    // 2026-05-19 — wrapper `session_in_a_dataset` filtered; smallest
+    // visible is `session: 2`, next is `generic_file: 20`.
+    expect(items[0]).toEqual({ className: 'session', count: 2 });
+    expect(items[1]).toEqual({ className: 'generic_file', count: 20 });
     expect(items[items.length - 1]).toEqual({
       className: 'openminds_subject',
       count: 28374,
     });
+  });
+
+  it('filters out wrapper classes (session_in_a_dataset)', () => {
+    const items = deriveClassList(SAMPLE, 'count-desc', '');
+    const names = items.map((i) => i.className);
+    expect(names).not.toContain('session_in_a_dataset');
+    // Real session class IS present.
+    expect(names).toContain('session');
   });
 
   it('sorts alphabetically (asc)', () => {

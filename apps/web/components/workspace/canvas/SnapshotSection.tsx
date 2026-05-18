@@ -36,6 +36,7 @@ import {
 import { Skeleton } from '@/components/ui/Skeleton';
 import { cn } from '@/lib/cn';
 import { useClassCounts, useDatasetSummary } from '@/lib/api/datasets';
+import { countDisplayClasses } from '@/lib/data/class-counts';
 import { formatNumber } from '@/lib/format';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 
@@ -88,8 +89,11 @@ function CanvasStatTiles({ datasetId }: CanvasStatTilesProps) {
   const isLoading = summary.isLoading || classCounts.isLoading;
   const counts = summary.data?.counts;
   const species = summary.data?.species;
+  // 2026-05-19 — count via countDisplayClasses to skip wrapper classes
+  // (e.g. `session_in_a_dataset`) for parity with the catalog sidebar's
+  // `ClassCountsList`. Resolves Bhar's "12 vs 11" gap.
   const numClasses = classCounts.data
-    ? Object.keys(classCounts.data.classCounts).length
+    ? countDisplayClasses(classCounts.data.classCounts)
     : null;
 
   if (isLoading) {

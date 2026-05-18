@@ -36,6 +36,10 @@ import { useMemo, useState } from 'react';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useClassCounts } from '@/lib/api/datasets';
 import { cn } from '@/lib/cn';
+import {
+  countDisplayClasses,
+  isHiddenWrapperClass,
+} from '@/lib/data/class-counts';
 import { formatNumber } from '@/lib/format';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 
@@ -55,6 +59,12 @@ const SORT_OPTIONS: ReadonlyArray<{ value: SortKey; label: string }> = [
 /**
  * Compute the displayed list given the raw class counts, the active
  * sort, and the filter text. Pure for testability.
+ *
+ * 2026-05-19 — wrapper classes (e.g. `session_in_a_dataset`) are
+ * filtered out so the workspace's structure browser matches the
+ * catalog sidebar's `ClassCountsList` (which has long filtered them).
+ * Resolves the Bhar "12 vs 11" parity gap surfaced in the 2026-05-19
+ * audit. See `lib/data/class-counts.ts` for the canonical wrapper set.
  */
 export function deriveClassList(
   classCounts: Record<string, number>,
@@ -62,9 +72,10 @@ export function deriveClassList(
   filter: string,
 ): Array<{ className: string; count: number }> {
   const normalisedFilter = filter.trim().toLowerCase();
-  const filtered = Object.entries(classCounts).filter(([cls]) =>
-    normalisedFilter ? cls.toLowerCase().includes(normalisedFilter) : true,
-  );
+  const filtered = Object.entries(classCounts).filter(([cls]) => {
+    if (isHiddenWrapperClass(cls)) return false;
+    return normalisedFilter ? cls.toLowerCase().includes(normalisedFilter) : true;
+  });
   const sorted = filtered.sort((a, b) => {
     switch (sort) {
       case 'count-desc':
@@ -119,7 +130,7 @@ export function StructureBrowser({ datasetId }: StructureBrowserProps) {
   }, [classCounts.data, sort, filter]);
 
   const totalClasses = classCounts.data
-    ? Object.keys(classCounts.data.classCounts).length
+    ? countDisplayClasses(classCounts.data.classCounts)
     : 0;
   const totalDocuments = classCounts.data?.totalDocuments ?? 0;
 
