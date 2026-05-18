@@ -701,7 +701,8 @@ function ColumnInfoTip({
  *   - `probeLocationName` ↔ `probeLocationOntology` (probe / probe_location grains)
  *   - `cellTypeName` ↔ `cellTypeOntology` (probe / element grains)
  *   - `<TreatmentName>Name` ↔ `<TreatmentName>Ontology` (dynamic
- *     treatment-join columns from `joinTreatmentsToSubjects`)
+ *     treatment-broadcast columns shipped server-side by F-1b's
+ *     `_broadcast_treatments_onto_subjects` in summary_table_service.py)
  *
  * Pure function. Returns the provider URL when:
  *   - The column key ends in `Name`

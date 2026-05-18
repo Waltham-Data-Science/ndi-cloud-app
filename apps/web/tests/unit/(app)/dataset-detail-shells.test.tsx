@@ -336,25 +336,22 @@ describe('TableShell', () => {
     ).not.toBeInTheDocument();
   });
 
-  it('joins treatments to subjects per-row without broadcasting (replaces PR #129 hide-by-default)', async () => {
-    // 2026-04-28 — Per-subject treatment join. PR #129 hid the
-    // discovered dynamic treatment columns by default to avoid the
-    // broadcast bug (every subject showing the same treatment
-    // values); this PR replaces that with a real per-subject join
-    // keyed off `subjectDocumentIdentifier`. Contract pinned by this
-    // test:
+  it('renders per-subject treatment broadcast columns inline from the backend (F-1b)', async () => {
+    // 2026-05-19 — F-1b ported the treatment broadcast to the backend
+    // (`summary_table_service.py::_broadcast_treatments_onto_subjects`).
+    // The cloud-app no longer fetches /tables/treatment separately or
+    // performs a client-side pivot. The subject API response ships
+    // the dynamic `<prefix>Name` + `<prefix>Ontology` columns inline.
+    //
+    // Contract pinned by this test:
     //  (a) row count stays at N (NOT N × treatments)
     //  (b) subject 1 carries its own treatment value, subject 2
     //      carries its own
     //  (c) subject 3 (no matching treatment) has empty treatment
     //      cells, NOT broadcast values
-    //
-    // TableShell + StandardTableContent register multiple useQuery
-    // hooks in the same render pass (`useClassCounts`,
-    // `useSummaryTable(subject)`, `useSummaryTable(treatment)`).
-    // TanStack Query may schedule those queryFns concurrently, so
-    // chained `mockResolvedValueOnce` calls do NOT reliably map to
-    // a specific endpoint. Dispatch by URL pattern instead.
+    //  (d) cloud-app does NOT fetch /tables/treatment (the per-tab
+    //      Treatments view still does, but this test exercises the
+    //      subject grain only — no extra request fires)
     mockedApiFetch.mockImplementation((url: string) => {
       if (url.includes('/class-counts')) {
         return Promise.resolve({
@@ -364,47 +361,49 @@ describe('TableShell', () => {
         });
       }
       if (url.includes('/tables/subject')) {
+        // Backend now ships the broadcast columns inline. The
+        // prefix `OptogeneticTetanusStimulationTargetLocation` is
+        // what F-1b's `_pascal_case_from_treatment_name` produces
+        // from the treatment name; the cells are per-subject
+        // populated.
         return Promise.resolve({
           columns: [
             { key: 'subjectDocumentIdentifier', label: 'Subject Doc ID' },
             { key: 'subjectLocalIdentifier', label: 'Local Identifier' },
-          ],
-          rows: [
-            { subjectDocumentIdentifier: 'sub-1', subjectLocalIdentifier: 'A@lab' },
-            { subjectDocumentIdentifier: 'sub-2', subjectLocalIdentifier: 'B@lab' },
-            { subjectDocumentIdentifier: 'sub-3', subjectLocalIdentifier: 'C@lab' },
-          ],
-        });
-      }
-      if (url.includes('/tables/treatment')) {
-        return Promise.resolve({
-          columns: [
-            { key: 'treatmentName', label: 'Treatment' },
-            { key: 'treatmentOntology', label: 'Treatment Ontology' },
-            { key: 'numericValue', label: 'Numeric Value' },
-            { key: 'stringValue', label: 'String Value' },
-            { key: 'subjectDocumentIdentifier', label: 'Subject Doc ID' },
-          ],
-          rows: [
             {
-              treatmentName: 'Optogenetic Tetanus Stimulation Target Location',
-              treatmentOntology: 'EMPTY:0000074',
-              numericValue: [],
-              stringValue: 'UBERON:0001930',
-              subjectDocumentIdentifier: 'sub-1',
+              key: 'OptogeneticTetanusStimulationTargetLocationName',
+              label: 'Optogenetic Tetanus Stimulation Target Location Name',
             },
             {
-              treatmentName: 'Optogenetic Tetanus Stimulation Target Location',
-              treatmentOntology: 'EMPTY:0000074',
-              numericValue: [],
-              stringValue: 'UBERON:0002034',
+              key: 'OptogeneticTetanusStimulationTargetLocationOntology',
+              label: 'Optogenetic Tetanus Stimulation Target Location Ontology',
+            },
+          ],
+          rows: [
+            {
+              subjectDocumentIdentifier: 'sub-1',
+              subjectLocalIdentifier: 'A@lab',
+              OptogeneticTetanusStimulationTargetLocationName: 'UBERON:0001930',
+              OptogeneticTetanusStimulationTargetLocationOntology: 'EMPTY:0000074',
+            },
+            {
               subjectDocumentIdentifier: 'sub-2',
+              subjectLocalIdentifier: 'B@lab',
+              OptogeneticTetanusStimulationTargetLocationName: 'UBERON:0002034',
+              OptogeneticTetanusStimulationTargetLocationOntology: 'EMPTY:0000074',
+            },
+            {
+              subjectDocumentIdentifier: 'sub-3',
+              subjectLocalIdentifier: 'C@lab',
+              OptogeneticTetanusStimulationTargetLocationName: null,
+              OptogeneticTetanusStimulationTargetLocationOntology: null,
             },
           ],
         });
       }
       // Any other URL leaves the query pending — no test should hit
-      // this branch, but a never-resolving promise is the safe default.
+      // this branch (the F-1b cleanup eliminated the secondary
+      // /tables/treatment fetch from the subject grain).
       return new Promise(() => {});
     });
 

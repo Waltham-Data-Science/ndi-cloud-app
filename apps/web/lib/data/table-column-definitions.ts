@@ -613,8 +613,10 @@ export function resolveDefaultColumns(
   // safety measure for the broadcast-treatment bug (reviewer flagged
   // "Treatments shown not attached to the subject don't have much
   // meaning"); that fix has been replaced by a real per-subject
-  // join in `table-shell.tsx::joinTreatmentsToSubjects` keyed off
-  // `subjectDocumentIdentifier`, so each subject row now carries
+  // join — originally in `table-shell.tsx::joinTreatmentsToSubjects`
+  // (frontend), then ported to backend's
+  // `_broadcast_treatments_onto_subjects` in F-1b (2026-05-19) keyed
+  // off `subjectDocumentIdentifier`, so each subject row now carries
   // only its OWN treatment values (or empty cells when none apply).
   // The columns are safe to show by default again.
   const dynamic = includeDynamic ? discoverDynamicColumns(rows, knownIds) : [];
