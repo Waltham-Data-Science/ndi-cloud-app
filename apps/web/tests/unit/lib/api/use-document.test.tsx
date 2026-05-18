@@ -26,13 +26,15 @@ vi.mock('@/lib/api/client', () => ({
 
 import { useDocument } from '@/lib/api/documents';
 
-function wrap(children: (qc: QueryClient) => ReactNode) {
+function wrap(_unused?: (qc: QueryClient) => ReactNode) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false, gcTime: 0 } },
   });
-  return ({ children: c }: { children: ReactNode }) => (
+  const Wrapper = ({ children: c }: { children: ReactNode }) => (
     <QueryClientProvider client={client}>{c}</QueryClientProvider>
   );
+  Wrapper.displayName = 'TestQueryClientWrapper';
+  return Wrapper;
 }
 
 beforeEach(() => apiFetchMock.mockReset());

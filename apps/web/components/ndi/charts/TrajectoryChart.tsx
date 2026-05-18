@@ -66,7 +66,26 @@ interface SignalResponse extends TimeseriesData {
 
 export interface TrajectoryChartProps {
   datasetId: string;
+  /**
+   * The X-axis source document. When ``yDocId`` is also set the chart
+   * runs in "pair mode": ``docId`` provides x, ``yDocId`` provides y.
+   * When ``yDocId`` is omitted (the default) the chart runs in
+   * "single mode": both x and y come from this one document (assumed
+   * to carry ≥2 channels per the ``xChannel`` / ``yChannel`` hints
+   * or the ``pickXYChannels`` heuristic).
+   */
   docId: string;
+  /**
+   * F-1d follow-up (2026-05-19). Optional Y-axis source document.
+   * When set the chart fetches BOTH docs and reads the first channel
+   * of each (or the named channel via ``xChannel`` / ``yChannel``)
+   * as the trajectory's x and y. Unblocks datasets like Haley
+   * (``682e7772cdf3f24938176fac``) that store X and Y position as
+   * SEPARATE single-channel element_epoch documents instead of one
+   * 2-channel document. When unset, behaviour is unchanged from the
+   * pre-pair-mode single-document path.
+   */
+  yDocId?: string;
   /**
    * Max samples per channel returned by the backend. The trajectory
    * chart can comfortably render up to ~5000 segments before SVG
@@ -81,9 +100,10 @@ export interface TrajectoryChartProps {
   title?: string;
   /**
    * Optional explicit channel names to use as x and y. When omitted,
-   * the chart auto-picks the first two channels in document order.
-   * Useful when a document carries (x, y, z) or (x, y, theta) and the
-   * caller wants a specific pair.
+   * the chart auto-picks the first two channels in document order
+   * (single mode) or the first channel of each fetched document
+   * (pair mode). Useful when a document carries (x, y, z) or
+   * (x, y, theta) and the caller wants a specific pair.
    */
   xChannel?: string;
   yChannel?: string;
@@ -103,6 +123,7 @@ const MAX_RENDER_POINTS = 2000;
 export function TrajectoryChart({
   datasetId,
   docId,
+  yDocId,
   downsample = 2000,
   t0,
   t1,
@@ -111,21 +132,78 @@ export function TrajectoryChart({
   xChannel,
   yChannel,
 }: TrajectoryChartProps) {
-  const url = useMemo(() => {
-    const qs = new URLSearchParams({ downsample: String(downsample) });
-    if (typeof t0 === 'number') qs.set('t0', String(t0));
-    if (typeof t1 === 'number') qs.set('t1', String(t1));
-    if (typeof file === 'string' && file.length > 0) qs.set('file', file);
-    return `/api/datasets/${datasetId}/documents/${docId}/signal?${qs.toString()}`;
-  }, [datasetId, docId, downsample, t0, t1, file]);
+  const pairMode = typeof yDocId === 'string' && yDocId.length > 0;
 
-  const { data, isLoading, isError, error } = useQuery({
-    queryKey: ['trajectory-chart', datasetId, docId, downsample, t0, t1, file],
-    queryFn: ({ signal }) => apiFetch<SignalResponse>(url, { signal }),
+  const buildUrl = useMemo(
+    () =>
+      (sourceDocId: string) => {
+        const qs = new URLSearchParams({ downsample: String(downsample) });
+        if (typeof t0 === 'number') qs.set('t0', String(t0));
+        if (typeof t1 === 'number') qs.set('t1', String(t1));
+        if (typeof file === 'string' && file.length > 0) qs.set('file', file);
+        return `/api/datasets/${datasetId}/documents/${sourceDocId}/signal?${qs.toString()}`;
+      },
+    [datasetId, downsample, t0, t1, file],
+  );
+
+  const xQuery = useQuery({
+    queryKey: ['trajectory-chart', 'x', datasetId, docId, downsample, t0, t1, file],
+    queryFn: ({ signal }) => apiFetch<SignalResponse>(buildUrl(docId), { signal }),
     staleTime: STALE_MS,
     gcTime: STALE_MS * 5,
     retry: 0,
   });
+  const yQuery = useQuery({
+    queryKey: ['trajectory-chart', 'y', datasetId, yDocId, downsample, t0, t1, file],
+    queryFn: ({ signal }) => apiFetch<SignalResponse>(buildUrl(yDocId!), { signal }),
+    enabled: pairMode,
+    staleTime: STALE_MS,
+    gcTime: STALE_MS * 5,
+    retry: 0,
+  });
+
+  // Pair mode: aggregate both queries into the SignalResponse shape the
+  // existing body code expects. We concat the channels under their
+  // declared (or detected) names. Loading/error states OR across both.
+  const data = useMemo<SignalResponse | undefined>(() => {
+    if (!pairMode) return xQuery.data;
+    if (!xQuery.data || !yQuery.data) return undefined;
+    const xName = xChannel ?? Object.keys(xQuery.data.channels)[0] ?? 'x';
+    const yName = yChannel ?? Object.keys(yQuery.data.channels)[0] ?? 'y';
+    // Disambiguate when both source docs name their channel `ch0`.
+    const labelledX = yName === xName ? `${xName}_x` : xName;
+    const labelledY = yName === xName ? `${yName}_y` : yName;
+    return {
+      channels: {
+        [labelledX]: Object.values(xQuery.data.channels)[0] ?? [],
+        [labelledY]: Object.values(yQuery.data.channels)[0] ?? [],
+      },
+      sample_count: Math.min(
+        xQuery.data.sample_count ?? 0,
+        yQuery.data.sample_count ?? 0,
+      ),
+      original_sample_count:
+        xQuery.data.original_sample_count ?? xQuery.data.sample_count,
+      downsampled: xQuery.data.downsampled,
+      format: xQuery.data.format,
+      error: xQuery.data.error ?? yQuery.data.error ?? null,
+      source: xQuery.data.source,
+    } as SignalResponse;
+  }, [pairMode, xQuery.data, yQuery.data, xChannel, yChannel]);
+
+  const isLoading = pairMode
+    ? xQuery.isLoading || yQuery.isLoading
+    : xQuery.isLoading;
+  const isError = pairMode
+    ? xQuery.isError || yQuery.isError
+    : xQuery.isError;
+  const error = xQuery.error ?? yQuery.error;
+
+  // Pass `xChannel` / `yChannel` only in single mode — in pair mode we
+  // construct the channels dict with deterministic names so the body
+  // doesn't need to guess.
+  const effectiveXChannel = pairMode ? undefined : xChannel;
+  const effectiveYChannel = pairMode ? undefined : yChannel;
 
   const ariaLabel =
     title ?? data?.source?.doc_name ?? 'XY trajectory chart';
@@ -135,11 +213,17 @@ export function TrajectoryChart({
       className="my-4 p-3 rounded-md border border-gray-200 bg-white"
       aria-label={ariaLabel}
       data-testid="trajectory-chart"
+      data-pair-mode={pairMode ? 'true' : 'false'}
     >
       <figcaption className="mb-2 flex items-baseline gap-2 text-[13px]">
         <span className="font-semibold text-gray-900 truncate flex-1 min-w-0">
           {title ?? data?.source?.doc_name ?? 'XY trajectory'}
         </span>
+        {pairMode && (
+          <span className="px-1.5 py-0.5 rounded bg-brand-blue/10 text-[10px] font-mono text-brand-blue shrink-0">
+            pair
+          </span>
+        )}
         {data?.format && (
           <span className="px-1.5 py-0.5 rounded bg-gray-100 text-[10px] font-mono text-gray-600 shrink-0">
             {data.format}
@@ -152,17 +236,19 @@ export function TrajectoryChart({
         isLoading={isLoading}
         isError={isError}
         error={error}
-        xChannel={xChannel}
-        yChannel={yChannel}
+        xChannel={effectiveXChannel}
+        yChannel={effectiveYChannel}
       />
 
       <div className="mt-2 flex items-center justify-between text-[11px] text-gray-500">
         <span className="truncate">
-          {data?.downsampled && data.original_sample_count
-            ? `Downsampled from ${data.original_sample_count.toLocaleString()} samples to ${data.sample_count.toLocaleString()}`
-            : data?.sample_count
-              ? `${data.sample_count.toLocaleString()} samples`
-              : ''}
+          {pairMode
+            ? `Paired: 2 source documents`
+            : data?.downsampled && data.original_sample_count
+              ? `Downsampled from ${data.original_sample_count.toLocaleString()} samples to ${data.sample_count.toLocaleString()}`
+              : data?.sample_count
+                ? `${data.sample_count.toLocaleString()} samples`
+                : ''}
         </span>
         <Link
           href={documentExplorerUrl(datasetId, docId)}

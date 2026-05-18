@@ -131,7 +131,7 @@ describe('BehavioralTrackPanel', () => {
       </Wrapper>,
     );
 
-    expect(screen.getByLabelText(/document id/i)).toBeInTheDocument();
+    expect(screen.getByLabelText(/document id \(x axis\)/i)).toBeInTheDocument();
     expect(screen.getByLabelText(/downsample/i)).toBeInTheDocument();
     expect(screen.queryByTestId('trajectory-chart-mock')).not.toBeInTheDocument();
     expect(screen.queryByTestId('code-export-mock')).not.toBeInTheDocument();
@@ -174,7 +174,7 @@ describe('BehavioralTrackPanel', () => {
       </Wrapper>,
     );
 
-    await user.type(screen.getByLabelText(/document id/i), 'short');
+    await user.type(screen.getByLabelText(/document id \(x axis\)/i), 'short');
     await user.click(screen.getByRole('button', { name: /run/i }));
 
     expect(screen.getByText(/24-char hex string/i)).toBeInTheDocument();
@@ -189,7 +189,7 @@ describe('BehavioralTrackPanel', () => {
       </Wrapper>,
     );
 
-    await user.type(screen.getByLabelText(/document id/i), VALID_DOC_ID);
+    await user.type(screen.getByLabelText(/document id \(x axis\)/i), VALID_DOC_ID);
     await user.clear(screen.getByLabelText(/downsample/i));
     await user.type(screen.getByLabelText(/downsample/i), '1500');
     await user.type(screen.getByLabelText(/t0/i), '0');
@@ -212,7 +212,7 @@ describe('BehavioralTrackPanel', () => {
       </Wrapper>,
     );
 
-    await user.type(screen.getByLabelText(/document id/i), VALID_DOC_ID);
+    await user.type(screen.getByLabelText(/document id \(x axis\)/i), VALID_DOC_ID);
     await user.type(screen.getByLabelText(/^x channel/i), 'pos_x');
     await user.type(screen.getByLabelText(/^y channel/i), 'pos_y');
     await user.click(screen.getByRole('button', { name: /run/i }));
@@ -230,7 +230,7 @@ describe('BehavioralTrackPanel', () => {
       </Wrapper>,
     );
 
-    await user.type(screen.getByLabelText(/document id/i), VALID_DOC_ID);
+    await user.type(screen.getByLabelText(/document id \(x axis\)/i), VALID_DOC_ID);
     await user.clear(screen.getByLabelText(/downsample/i));
     await user.type(screen.getByLabelText(/downsample/i), '99');
     await user.click(screen.getByRole('button', { name: /run/i }));
@@ -247,7 +247,7 @@ describe('BehavioralTrackPanel', () => {
       </Wrapper>,
     );
 
-    await user.type(screen.getByLabelText(/document id/i), VALID_DOC_ID);
+    await user.type(screen.getByLabelText(/document id \(x axis\)/i), VALID_DOC_ID);
     await user.click(screen.getByRole('button', { name: /run/i }));
 
     const exportBtn = screen.getByTestId('code-export-mock');
@@ -266,7 +266,7 @@ describe('BehavioralTrackPanel — selection auto-fill', () => {
       </Wrapper>,
     );
 
-    const input = screen.getByLabelText(/document id/i) as HTMLInputElement;
+    const input = screen.getByLabelText(/document id \(x axis\)/i) as HTMLInputElement;
     expect(input.value).toBe(VALID_DOC_ID);
     expect(screen.getByTestId('behavioral-track-auto-hint')).toBeInTheDocument();
   });
@@ -304,7 +304,7 @@ describe('BehavioralTrackPanel — selection auto-fill', () => {
 
     expect(screen.getByTestId('behavioral-track-auto-hint')).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText(/document id/i), 'x');
+    await user.type(screen.getByLabelText(/document id \(x axis\)/i), 'x');
 
     expect(screen.queryByTestId('behavioral-track-auto-hint')).not.toBeInTheDocument();
   });
@@ -316,7 +316,7 @@ describe('BehavioralTrackPanel — selection auto-fill', () => {
       </Wrapper>,
     );
 
-    const inputBefore = screen.getByLabelText(/document id/i) as HTMLInputElement;
+    const inputBefore = screen.getByLabelText(/document id \(x axis\)/i) as HTMLInputElement;
     expect(inputBefore.value).toBe('');
 
     selectionStub = { ...selectionStub, session: VALID_DOC_ID_2 };
@@ -327,7 +327,7 @@ describe('BehavioralTrackPanel — selection auto-fill', () => {
       </Wrapper>,
     );
 
-    const inputAfter = screen.getByLabelText(/document id/i) as HTMLInputElement;
+    const inputAfter = screen.getByLabelText(/document id \(x axis\)/i) as HTMLInputElement;
     expect(inputAfter.value).toBe(VALID_DOC_ID_2);
     expect(screen.getByTestId('behavioral-track-auto-hint')).toBeInTheDocument();
   });

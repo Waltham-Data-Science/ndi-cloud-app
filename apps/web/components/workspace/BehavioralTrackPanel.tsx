@@ -62,6 +62,14 @@ interface BehavioralTrackPanelProps {
 interface ChartPayload {
   datasetId: string;
   docId: string;
+  /**
+   * 2026-05-19 pair-mode follow-up. When set, the chart treats `docId`
+   * as the X-axis source and this id as the Y-axis source — needed
+   * for datasets like Haley that store X and Y in SEPARATE element_epoch
+   * documents instead of two channels of one document. Unset = single
+   * mode (existing behaviour).
+   */
+  yDocId?: string;
   downsample: number;
   t0?: number;
   t1?: number;
@@ -87,6 +95,11 @@ export function BehavioralTrackPanel({ datasetId }: BehavioralTrackPanelProps) {
   const pulse = usePanelChangeIndicator([selection.session]);
 
   const [docId, setDocId] = useState<string>(selection.session ?? '');
+  // 2026-05-19 pair-mode follow-up. Optional Y-axis document for
+  // datasets that store X+Y in separate single-channel element_epoch
+  // documents (Haley etc.). Empty = single-mode (chart picks 2
+  // channels from `docId`); set = pair-mode.
+  const [yDocId, setYDocId] = useState('');
   const [downsample, setDownsample] = useState('2000');
   const [t0, setT0] = useState('');
   const [t1, setT1] = useState('');
@@ -94,7 +107,8 @@ export function BehavioralTrackPanel({ datasetId }: BehavioralTrackPanelProps) {
   const [title, setTitle] = useState('');
   // Explicit x/y channel selection — leave blank to let the chart
   // pick automatically (prefers literal "x"/"y" names, falls back to
-  // first two in document order).
+  // first two in document order). In pair-mode the chart uses the
+  // first channel of each fetched document.
   const [xChannel, setXChannel] = useState('');
   const [yChannel, setYChannel] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -127,9 +141,11 @@ export function BehavioralTrackPanel({ datasetId }: BehavioralTrackPanelProps) {
     const handle = setTimeout(() => {
       lastAutoRunRef.current = id;
       setError(null);
+      const yIdTrimmed = yDocId.trim();
       setPayload({
         datasetId,
         docId: id,
+        yDocId: yIdTrimmed && HEX_24.test(yIdTrimmed) ? yIdTrimmed : undefined,
         downsample: ds,
         t0: parseFloatOrUndefined(t0),
         t1: parseFloatOrUndefined(t1),
@@ -143,6 +159,7 @@ export function BehavioralTrackPanel({ datasetId }: BehavioralTrackPanelProps) {
   }, [
     isAutoFilled,
     docId,
+    yDocId,
     downsample,
     t0,
     t1,
@@ -172,10 +189,16 @@ export function BehavioralTrackPanel({ datasetId }: BehavioralTrackPanelProps) {
       setError('Downsample must be between 100 and 5000 points per channel.');
       return;
     }
+    const yIdTrimmed = yDocId.trim();
+    if (yIdTrimmed && !HEX_24.test(yIdTrimmed)) {
+      setError('Y document ID must be a 24-char hex string (or leave it blank).');
+      return;
+    }
     lastAutoRunRef.current = id;
     setPayload({
       datasetId,
       docId: id,
+      yDocId: yIdTrimmed || undefined,
       downsample: ds ?? 2000,
       t0: parseFloatOrUndefined(t0),
       t1: parseFloatOrUndefined(t1),
@@ -238,13 +261,21 @@ export function BehavioralTrackPanel({ datasetId }: BehavioralTrackPanelProps) {
           </summary>
           <div className="mt-3 space-y-3">
             <Field
-              label="Document ID"
+              label="Document ID (X axis)"
               name="docId"
               value={docId}
               onChange={(e) => onDocIdChange(e.target.value)}
               placeholder="e.g. 68d6e54703a03f5cfdac8eff"
-              hint="A 24-char hex NDI document ID. Position-bearing documents typically come from element_epoch / behaviorPlate signals with 2+ channels."
+              hint="A 24-char hex NDI document ID. In single mode this doc provides both X and Y (2-channel position trace). In pair mode (Y ID below set) this doc provides X only."
               required
+            />
+            <Field
+              label="Y document ID (optional, pair mode)"
+              name="yDocId"
+              value={yDocId}
+              onChange={(e) => setYDocId(e.target.value)}
+              placeholder="leave blank for single-doc mode"
+              hint="Optional. When set, this doc supplies the Y axis and the doc above supplies X. Needed for datasets like Haley where X and Y position are stored as SEPARATE single-channel element_epoch documents."
             />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <Field
@@ -337,7 +368,7 @@ export function BehavioralTrackPanel({ datasetId }: BehavioralTrackPanelProps) {
       {payload && (
         <div className="rounded-md border border-border-subtle bg-bg-canvas p-3">
           <TrajectoryChart
-            key={`${payload.docId}-${payload.downsample}-${payload.t0 ?? ''}-${payload.t1 ?? ''}-${payload.file ?? ''}-${payload.xChannel ?? ''}-${payload.yChannel ?? ''}`}
+            key={`${payload.docId}-${payload.yDocId ?? ''}-${payload.downsample}-${payload.t0 ?? ''}-${payload.t1 ?? ''}-${payload.file ?? ''}-${payload.xChannel ?? ''}-${payload.yChannel ?? ''}`}
             {...payload}
           />
         </div>

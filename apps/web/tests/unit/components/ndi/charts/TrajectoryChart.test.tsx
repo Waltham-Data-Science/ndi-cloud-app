@@ -276,3 +276,97 @@ describe('TrajectoryChart rendering', () => {
     expect(url).toContain('file=position.nbf');
   });
 });
+
+
+/*
+ * 2026-05-19 (post-handoff) — pair-mode tests. When `yDocId` is set
+ * the chart fetches TWO documents (one for X, one for Y) and stitches
+ * the first channel of each into a synthetic 2-channel response.
+ * Unblocks Haley-style datasets that store X and Y in separate
+ * single-channel element_epoch documents.
+ */
+describe('TrajectoryChart — pair mode (yDocId set)', () => {
+  it('fetches both x and y docs and renders an SVG', async () => {
+    apiFetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/X_DOC/')) return buildResponse({ ch0: [0, 1, 2, 3] });
+      if (url.includes('/Y_DOC/')) return buildResponse({ ch0: [4, 5, 6, 7] });
+      throw new Error(`unexpected url ${url}`);
+    });
+    render(
+      <Wrapper>
+        <TrajectoryChart datasetId="ds1" docId="X_DOC" yDocId="Y_DOC" />
+      </Wrapper>,
+    );
+    await waitFor(() => {
+      // both queries fired
+      expect(
+        apiFetchMock.mock.calls.some(([u]) => (u as string).includes('/X_DOC/')),
+      ).toBe(true);
+      expect(
+        apiFetchMock.mock.calls.some(([u]) => (u as string).includes('/Y_DOC/')),
+      ).toBe(true);
+    });
+    const fig = await screen.findByTestId('trajectory-chart');
+    expect(fig.getAttribute('data-pair-mode')).toBe('true');
+    // Should render at least one polyline (path) for the 4-sample trajectory
+    expect(fig.querySelectorAll('polyline,line').length).toBeGreaterThan(0);
+  });
+
+  it('disambiguates channel names when both source docs name their channel ch0', async () => {
+    apiFetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/X_DOC/')) return buildResponse({ ch0: [0, 1] });
+      if (url.includes('/Y_DOC/')) return buildResponse({ ch0: [2, 3] });
+      throw new Error(`unexpected url ${url}`);
+    });
+    render(
+      <Wrapper>
+        <TrajectoryChart datasetId="ds1" docId="X_DOC" yDocId="Y_DOC" />
+      </Wrapper>,
+    );
+    // Wait for render — if disambiguation didn't work, the chart would
+    // render the empty state (only 1 channel after dict merge).
+    await waitFor(() => {
+      const fig = screen.queryByTestId('trajectory-chart');
+      expect(fig).not.toBeNull();
+      expect(fig!.getAttribute('data-pair-mode')).toBe('true');
+    });
+    // Empty state shouldn't show in pair mode for valid 1+1 channels.
+    expect(screen.queryByTestId('trajectory-empty')).toBeNull();
+  });
+
+  it('shows pair badge in figcaption + footer note', async () => {
+    apiFetchMock.mockImplementation(async (url: string) => {
+      if (url.includes('/X_DOC/')) return buildResponse({ ch0: [0, 1] });
+      return buildResponse({ ch0: [2, 3] });
+    });
+    render(
+      <Wrapper>
+        <TrajectoryChart datasetId="ds1" docId="X_DOC" yDocId="Y_DOC" />
+      </Wrapper>,
+    );
+    await waitFor(() => {
+      // Both the figcaption badge ("pair") and the footer text
+      // ("Paired: 2 source documents") should render.
+      const fig = screen.getByTestId('trajectory-chart');
+      expect(fig.querySelector('figcaption')?.textContent).toMatch(/pair/i);
+      expect(screen.getByText(/Paired: 2 source documents/i)).toBeInTheDocument();
+    });
+  });
+
+  it('single mode (yDocId unset) keeps the legacy single-fetch path', async () => {
+    apiFetchMock.mockResolvedValue(buildResponse({ x: [0, 1], y: [2, 3] }));
+    render(
+      <Wrapper>
+        <TrajectoryChart datasetId="ds1" docId="X_DOC" />
+      </Wrapper>,
+    );
+    await waitFor(() => expect(apiFetchMock).toHaveBeenCalled());
+    // Only ONE fetch in single mode.
+    const xCalls = apiFetchMock.mock.calls.filter(([u]) =>
+      (u as string).includes('/X_DOC/'),
+    );
+    expect(xCalls.length).toBe(1);
+    const fig = await screen.findByTestId('trajectory-chart');
+    expect(fig.getAttribute('data-pair-mode')).toBe('false');
+  });
+});
