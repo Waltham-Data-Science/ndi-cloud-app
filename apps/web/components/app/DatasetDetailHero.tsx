@@ -55,7 +55,9 @@ export async function DatasetDetailHero({ datasetId }: { datasetId: string }) {
       style={{ background: 'var(--grad-depth)' }}
       aria-labelledby="dataset-hero-h1"
     >
-      <div className="relative mx-auto max-w-[1200px] px-7 py-10">
+      {/* `px-7` desktop; `px-4` below sm: so the hero title + byline +
+          fact strip can use more of the 320px-iPhone-SE viewport. */}
+      <div className="relative mx-auto max-w-[1200px] px-4 sm:px-7 py-10">
         <Link
           href="/datasets"
           className="inline-flex items-center gap-1 text-[12.5px] text-white/70 hover:text-white transition-colors mb-3"
@@ -338,7 +340,9 @@ export function DatasetDetailHeroSkeleton() {
       aria-busy="true"
       aria-label="Loading dataset hero"
     >
-      <div className="relative mx-auto max-w-[1200px] px-7 py-10">
+      {/* `px-7` desktop; `px-4` below sm: so the hero title + byline +
+          fact strip can use more of the 320px-iPhone-SE viewport. */}
+      <div className="relative mx-auto max-w-[1200px] px-4 sm:px-7 py-10">
         <div className="inline-flex items-center gap-1 text-[12.5px] text-white/70 mb-3">
           <ChevronLeft className="h-3.5 w-3.5" aria-hidden />
           Back to Data Commons

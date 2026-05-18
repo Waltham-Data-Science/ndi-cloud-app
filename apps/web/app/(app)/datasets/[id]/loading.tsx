@@ -40,8 +40,15 @@ import { Skeleton } from '@/components/ui/Skeleton';
 
 export default function DatasetDetailLoading() {
   return (
-    <div className="grid gap-6 md:grid-cols-3" aria-busy="true" aria-label="Loading dataset overview">
-      <div className="md:col-span-2 space-y-3">
+    // Shape mirrors `<OverviewContent>` (overview-content.tsx) and the
+    // overview leaf `loading.tsx`: `gap-5` (matches the gap), `md:` (768px)
+    // breakpoint (was `lg:` — flipped during high-zoom audit), and the
+    // 1fr/360px column split (was generic md:grid-cols-3, the col-span-2
+    // alias yielding ~2/3 + 1/3 that did NOT match the page). Now the
+    // skeleton dimensions match what the page actually renders, so the
+    // layout doesn't reflow on data resolve.
+    <div className="grid gap-5 md:grid-cols-[1fr_360px]" aria-busy="true" aria-label="Loading dataset overview">
+      <div className="space-y-3">
         <Skeleton className="h-5 w-1/3" />
         <Skeleton className="h-4 w-full" />
         <Skeleton className="h-4 w-full" />

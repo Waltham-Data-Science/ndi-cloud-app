@@ -62,9 +62,12 @@ export function AuthSplitLayout({
 }: AuthSplitLayoutProps) {
   return (
     <main className="flex min-h-[calc(100vh-51px)] w-full max-[900px]:flex-col max-[900px]:min-h-0">
-      {/* Marketing panel — left half on desktop, top band on mobile. */}
+      {/* Marketing panel — left half on desktop, top band on mobile.
+          On phones <375px the `px-8` (32px each side) collapse was
+          too generous and pushed the h2 inward; ramp to `px-5` so the
+          eyebrow + h2 + feature list use more of the narrow viewport. */}
       <section
-        className="relative flex-1 flex flex-col justify-center text-white px-14 py-16 overflow-hidden max-[900px]:px-8 max-[900px]:py-12"
+        className="relative flex-1 flex flex-col justify-center text-white px-14 py-16 overflow-hidden max-[900px]:px-8 max-[900px]:py-12 max-[375px]:px-5"
         style={{ background: 'var(--grad-depth)' }}
       >
         {/* Brandmark pattern overlay (.authMarketingSide::before). */}
@@ -130,8 +133,14 @@ export function AuthSplitLayout({
         </div>
       </section>
 
-      {/* Form panel — right half on desktop, bottom on mobile. */}
-      <section className="flex-1 flex flex-col items-center justify-center px-8 py-12 bg-bg-surface max-[900px]:px-6 max-[900px]:py-10">
+      {/* Form panel — right half on desktop, bottom on mobile. Padding
+          ramps tighter on phones <375px so the inline form fields have
+          adequate horizontal room: `px-6` (24px each side) at <900px
+          was eating ~48px of the 320px viewport, leaving the password
+          eye-toggle uncomfortably close to the email field's right
+          edge. `px-4` below 375px frees usable space without touching
+          the desktop split. */}
+      <section className="flex-1 flex flex-col items-center justify-center px-8 py-12 bg-bg-surface max-[900px]:px-6 max-[900px]:py-10 max-[375px]:px-4">
         <div className="w-full max-w-[22rem]">{children}</div>
       </section>
     </main>

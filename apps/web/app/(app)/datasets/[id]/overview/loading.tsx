@@ -10,8 +10,13 @@ import { Skeleton } from '@/components/ui/Skeleton';
 
 export default function OverviewLoading() {
   return (
+    // Breakpoint sync with `<OverviewContent>` (overview-content.tsx
+    // dropped from `lg:` → `md:` 2026-04-28 to keep the abstract +
+    // sidecar side-by-side from 768px upward at high-zoom levels);
+    // the loading skeleton matches so the layout doesn't reflow when
+    // the data resolves.
     <div
-      className="grid gap-5 lg:grid-cols-[1fr_360px]"
+      className="grid gap-5 md:grid-cols-[1fr_360px]"
       aria-busy="true"
       aria-label="Loading dataset overview"
     >

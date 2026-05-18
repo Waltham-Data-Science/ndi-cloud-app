@@ -22,8 +22,15 @@ export type AuthCardProps = {
 
 export function AuthCard({ heading, description, children, footer }: AuthCardProps) {
   return (
-    <main className="flex justify-center px-7 py-20 min-h-[calc(100vh-160px)] bg-bg-canvas">
-      <div className="w-full max-w-[480px] bg-bg-surface rounded-xl shadow-md p-10 mt-8 max-[640px]:p-6">
+    // Outer padding ramps down on very narrow phones (<375px) so the
+    // inner card has more breathing room: `px-7` (28px each side, 56px
+    // total) was eating ~17% of the 320px-iPhone-SE viewport. `px-4`
+    // below 375px frees up a usable amount; `py-20` (80px) stays
+    // generous since vertical space isn't constrained.
+    <main className="flex justify-center px-4 sm:px-7 py-20 min-h-[calc(100vh-160px)] bg-bg-canvas">
+      {/* Inner card padding: p-5 on phones <375px (was p-6 below 640px);
+          p-6 between 375 and 640; p-10 on tablet+. */}
+      <div className="w-full max-w-[480px] bg-bg-surface rounded-xl shadow-md p-5 sm:p-6 md:p-10 mt-8">
         <h1 className="text-2xl font-bold text-fg-primary leading-tight mb-3 m-0">
           {heading}
         </h1>
