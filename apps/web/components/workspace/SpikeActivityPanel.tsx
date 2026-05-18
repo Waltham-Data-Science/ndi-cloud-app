@@ -48,6 +48,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/Input';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ApiError, apiFetch } from '@/lib/api/client';
+import { isValidDocId } from '@/lib/workspace/doc-id-validation';
 import { usePanelChangeIndicator } from '@/lib/workspace/use-panel-change-indicator';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 import type {
@@ -88,7 +89,6 @@ const DEFAULT_FORM_BASE: Omit<FormState, 'unitDocId'> = {
 };
 
 const MAX_UNITS_HARD = 50;
-const HEX_24 = /^[0-9a-fA-F]{24}$/;
 
 // Tool-result envelope OR error envelope — the workspace endpoint
 // returns both shapes under a 200 response. `ToolError` shape is
@@ -273,7 +273,7 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
   useEffect(() => {
     if (!isAutoFilled) return;
     const unit = form.unitDocId.trim();
-    if (!HEX_24.test(unit)) return;
+    if (!isValidDocId(unit)) return;
     const handle = setTimeout(() => {
       const built = buildRequestBody({ ...form, unitDocId: unit });
       if ('error' in built) return;
@@ -472,7 +472,7 @@ function ParameterForm({
           <div className="mt-3 space-y-3">
             <TextField
               label="Unit document ID"
-              hint="24-character hex id — fetches a single vmspikesummary document."
+              hint="Mongo _id (24 hex) or NDI ndiId (16+16 hex) — fetches a single vmspikesummary document."
               value={form.unitDocId}
               onChange={onUnitChange}
               placeholder="optional"

@@ -46,6 +46,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { SignalChart } from '@/components/ndi/charts/SignalChart';
 import { Field } from '@/components/marketing/AuthForm';
 import { MarketingButton } from '@/components/marketing/Button';
+import { isValidDocId } from '@/lib/workspace/doc-id-validation';
 import { usePanelChangeIndicator } from '@/lib/workspace/use-panel-change-indicator';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 
@@ -82,8 +83,6 @@ function parseFloatOrUndefined(v: string): number | undefined {
   const n = Number(v);
   return Number.isFinite(n) ? n : undefined;
 }
-
-const HEX_24 = /^[0-9a-fA-F]{24}$/;
 
 export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
   const { selection } = useWorkspaceSelection();
@@ -150,7 +149,7 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
   useEffect(() => {
     if (!isAutoFilled) return;
     const id = docId.trim();
-    if (!HEX_24.test(id)) return;
+    if (!isValidDocId(id)) return;
     if (lastAutoRunRef.current === id) return;
     const ds = parseFloatOrUndefined(downsample) ?? 2000;
     const handle = setTimeout(() => {
@@ -175,11 +174,15 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
     setError(null);
     const id = docId.trim();
     if (!id) {
-      setError('Document ID is required. Paste a 24-char hex ID from the Document Explorer.');
+      setError(
+        'Document ID is required. Paste a Mongo _id (24 hex) or NDI ndiId (16+16 hex) from the Document Explorer.',
+      );
       return;
     }
-    if (!HEX_24.test(id)) {
-      setError('Document ID must be a 24-char hex string.');
+    if (!isValidDocId(id)) {
+      setError(
+        'Document ID must be a 24-char hex Mongo id OR a 16+16 hex NDI id.',
+      );
       return;
     }
     const ds = parseFloatOrUndefined(downsample);
@@ -269,7 +272,7 @@ export function SignalViewerPanel({ datasetId }: SignalViewerPanelProps) {
               value={docId}
               onChange={(e) => onDocIdChange(e.target.value)}
               placeholder="e.g. 68d6e54703a03f5cfdac8eff"
-              hint="A 24-char hex NDI document ID. Common classes: element_epoch, daqreader_*_epochdata_ingested."
+              hint="An NDI document ID — Mongo _id (24 hex) or NDI ndiId (16+16 hex). Common classes: element_epoch, daqreader_*_epochdata_ingested."
               required
             />
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

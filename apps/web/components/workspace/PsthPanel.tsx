@@ -42,6 +42,7 @@ import { MarketingButton } from '@/components/marketing/Button';
 import { PsthChart } from '@/components/ndi/charts/PsthChart';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { ApiError, apiFetch } from '@/lib/api/client';
+import { isValidDocId } from '@/lib/workspace/doc-id-validation';
 import { usePanelChangeIndicator } from '@/lib/workspace/use-panel-change-indicator';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 import type { PsthToolResult } from '@/lib/ndi/tools/psth';
@@ -78,8 +79,6 @@ const DEFAULT_FORM_NO_SELECTION: FormState = {
   binSizeMs: '20',
 };
 
-const HEX_24 = /^[0-9a-fA-F]{24}$/;
-
 // Endpoint envelope: success carries chart_payload; the soft-error
 // shape is `{ error: string }` returned under a 200 by the wrapper
 // route when zod validation fails. The PsthToolResult success shape
@@ -100,21 +99,29 @@ function isErrorEnvelope(r: EndpointResponse): r is { error: string } {
 function buildRequestBody(form: FormState): RequestBody | { error: string } {
   const unitDocId = form.unitDocId.trim();
   if (!unitDocId) {
-    return { error: 'Unit document ID is required (24-character hex id).' };
+    return {
+      error:
+        'Unit document ID is required (Mongo _id 24 hex or NDI ndiId 16+16 hex).',
+    };
   }
-  if (!HEX_24.test(unitDocId)) {
-    return { error: 'Unit document ID must be a 24-character hex string.' };
+  if (!isValidDocId(unitDocId)) {
+    return {
+      error:
+        'Unit document ID must be a 24-character hex Mongo id OR a 16+16 hex NDI id.',
+    };
   }
 
   const stimulusDocId = form.stimulusDocId.trim();
   if (!stimulusDocId) {
     return {
-      error: 'Stimulus document ID is required (24-character hex id).',
+      error:
+        'Stimulus document ID is required (Mongo _id 24 hex or NDI ndiId 16+16 hex).',
     };
   }
-  if (!HEX_24.test(stimulusDocId)) {
+  if (!isValidDocId(stimulusDocId)) {
     return {
-      error: 'Stimulus document ID must be a 24-character hex string.',
+      error:
+        'Stimulus document ID must be a 24-character hex Mongo id OR a 16+16 hex NDI id.',
     };
   }
 
@@ -302,7 +309,7 @@ export function PsthPanel({ datasetId }: PsthPanelProps) {
     if (!isAutoFilled) return;
     const unit = form.unitDocId.trim();
     const stim = form.stimulusDocId.trim();
-    if (!HEX_24.test(unit) || !HEX_24.test(stim)) return;
+    if (!isValidDocId(unit) || !isValidDocId(stim)) return;
     const handle = setTimeout(() => {
       const built = buildRequestBody({
         ...form,
@@ -430,7 +437,7 @@ export function PsthPanel({ datasetId }: PsthPanelProps) {
               value={form.unitDocId}
               onChange={(e) => onUnitChange(e.target.value)}
               placeholder="e.g. 68d6e54703a03f5cfdac8eff"
-              hint="A 24-char hex vmspikesummary document ID (the unit you want to bin)."
+              hint="A vmspikesummary document ID — Mongo _id (24 hex) or NDI ndiId (16+16 hex). The unit you want to bin."
               required
             />
             <Field
@@ -439,7 +446,7 @@ export function PsthPanel({ datasetId }: PsthPanelProps) {
               value={form.stimulusDocId}
               onChange={(e) => onStimulusChange(e.target.value)}
               placeholder="e.g. 68d6e54703a03f5cfdac8f00"
-              hint="A 24-char hex stimulus_presentation or stimulus_response document ID."
+              hint="A stimulus_presentation or stimulus_response document ID — Mongo _id (24 hex) or NDI ndiId (16+16 hex)."
               required
             />
           </div>

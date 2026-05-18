@@ -44,6 +44,7 @@ import { useQuery } from '@tanstack/react-query';
 import { Field } from '@/components/marketing/AuthForm';
 import { MarketingButton } from '@/components/marketing/Button';
 import { apiFetch } from '@/lib/api/client';
+import { isValidDocId } from '@/lib/workspace/doc-id-validation';
 import {
   longestSweep,
   segmentByNanGaps,
@@ -80,8 +81,6 @@ interface SignalResponse {
   source?: { doc_class: string | null; doc_name: string | null };
 }
 
-const HEX_24 = /^[0-9a-fA-F]{24}$/;
-
 function parseIntOrUndefined(v: string): number | undefined {
   if (!v) return undefined;
   const n = Number(v);
@@ -117,7 +116,7 @@ export function PatchClampStepFamilyPanel({
   useEffect(() => {
     if (!isAutoFilled) return;
     const id = docId.trim();
-    if (!HEX_24.test(id)) return;
+    if (!isValidDocId(id)) return;
     if (lastAutoRunRef.current === id) return;
     const ds = parseIntOrUndefined(downsample) ?? 2000;
     const handle = setTimeout(() => {
@@ -142,8 +141,10 @@ export function PatchClampStepFamilyPanel({
       setError('Document ID is required.');
       return;
     }
-    if (!HEX_24.test(id)) {
-      setError('Document ID must be a 24-char hex string.');
+    if (!isValidDocId(id)) {
+      setError(
+        'Document ID must be a 24-char hex Mongo id OR a 16+16 hex NDI id.',
+      );
       return;
     }
     const ds = parseIntOrUndefined(downsample);
@@ -185,7 +186,7 @@ export function PatchClampStepFamilyPanel({
           required
           value={docId}
           onChange={(e) => onDocIdChange(e.target.value)}
-          placeholder="24-char hex from Document Explorer"
+          placeholder="Mongo _id (24 hex) or NDI ndiId (16+16 hex)"
           data-testid="patch-clamp-docid-input"
         />
         {isAutoFilled && selection.session && (
