@@ -184,7 +184,11 @@ describe('SignalViewerPanel', () => {
     await user.type(screen.getByLabelText(/document id/i), 'short');
     await user.click(screen.getByRole('button', { name: /run/i }));
 
-    expect(screen.getByText(/24-char hex string/i)).toBeInTheDocument();
+    expect(
+      screen.getByText(
+        /24-char hex Mongo id OR a 16\+16 hex NDI id/i,
+      ),
+    ).toBeInTheDocument();
     expect(screen.queryByTestId('signal-chart-mock')).not.toBeInTheDocument();
   });
 

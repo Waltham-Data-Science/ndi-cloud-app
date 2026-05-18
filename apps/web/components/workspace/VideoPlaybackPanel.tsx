@@ -60,6 +60,7 @@ import { MarketingButton } from '@/components/marketing/Button';
 import { Skeleton } from '@/components/ui/Skeleton';
 import { useDocument } from '@/lib/api/documents';
 import { isVideoFormat } from '@/lib/imageStack/format';
+import { isValidDocId } from '@/lib/workspace/doc-id-validation';
 import { usePanelChangeIndicator } from '@/lib/workspace/use-panel-change-indicator';
 import { useWorkspaceSelection } from '@/lib/workspace/use-workspace-selection';
 
@@ -70,8 +71,6 @@ import { ShowCodeButton } from './ShowCodeButton';
 interface VideoPlaybackPanelProps {
   datasetId: string;
 }
-
-const HEX_24 = /^[0-9a-fA-F]{24}$/;
 
 interface PlaybackPayload {
   datasetId: string;
@@ -116,7 +115,7 @@ export function VideoPlaybackPanel({ datasetId }: VideoPlaybackPanelProps) {
   useEffect(() => {
     if (!isAutoFilled) return;
     const id = docId.trim();
-    if (!HEX_24.test(id)) return;
+    if (!isValidDocId(id)) return;
     if (lastAutoRunRef.current === id) return;
     const handle = setTimeout(() => {
       lastAutoRunRef.current = id;
@@ -131,11 +130,15 @@ export function VideoPlaybackPanel({ datasetId }: VideoPlaybackPanelProps) {
     setError(null);
     const id = docId.trim();
     if (!id) {
-      setError('Document ID is required. Pick a session in the rail or paste a 24-char hex ID.');
+      setError(
+        'Document ID is required. Pick a session in the rail or paste a Mongo _id (24 hex) or NDI ndiId (16+16 hex).',
+      );
       return;
     }
-    if (!HEX_24.test(id)) {
-      setError('Document ID must be a 24-char hex string.');
+    if (!isValidDocId(id)) {
+      setError(
+        'Document ID must be a 24-char hex Mongo id OR a 16+16 hex NDI id.',
+      );
       return;
     }
     lastAutoRunRef.current = id;
@@ -216,7 +219,7 @@ export function VideoPlaybackPanel({ datasetId }: VideoPlaybackPanelProps) {
               value={docId}
               onChange={(e) => onDocIdChange(e.target.value)}
               placeholder="e.g. 68d6e54703a03f5cfdac8eff"
-              hint="A 24-char hex NDI document ID for an imageStack-class document whose formatOntology flags it as video (NCIT:C190180)."
+              hint="An NDI document ID — Mongo _id (24 hex) or NDI ndiId (16+16 hex) — for an imageStack-class document whose formatOntology flags it as video (NCIT:C190180)."
               required
             />
           </div>
