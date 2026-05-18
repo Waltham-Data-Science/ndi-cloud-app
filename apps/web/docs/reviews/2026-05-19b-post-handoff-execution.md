@@ -27,19 +27,24 @@ Live-verified: Bhar `/api/datasets/.../tables/subject` now returns **43 cols** (
 | Priority | Item | Effort | Why deferred |
 |---|---|---|---|
 | 1 | **Tools-along-boundaries canvas redesign** | 30min design Q&A + ~½ day code | User explicitly held for next session — needs spec-by-conversation before any code |
-| 2 | **F-4** — stable query keys + dedup on panel mutations | ~2-3h cloud-app | Low impact polish; needs scoped audit of which panels' useMutation chains re-fire on identical picks |
-| 3 | **G2 Bhar full tutorial replay** (12 tasks) | ~1h Playwright | Treatment Gantt + F-1b broadcast verified; rest needs exhaustive re-drive |
-| 4 | **G3 Haley full tutorial replay** (19 tasks) | ~1h Playwright | Pair-mode trajectory verified; rest needs exhaustive re-drive |
-| 5 | **Haley Sessions=3 vs 2** | ~1h investigate | Backend returns `counts.sessions: 3` from raw `session` class count; tutorial documents 2. Need raw session doc inspection (no projection on `session` class means `/tables/session` returns 0 rows) — likely one is a placeholder/calibration; needs user clarification or live data access |
-| 6 | **Cross-dataset session-drop investigation** | Safari/Chrome manual | Documented as Playwright artifact; not formally closed |
-| 7 | **React #418 hydration during multi-deploy** | Observation during next multi-deploy | Tied to B1 CDN-thrash hypothesis |
+| 2 | **NEW: BehavioralTrack auto-fill id-format mismatch** | ~1h | When a Session is picked in the rail, BehavioralTrack panel rejects auto-fill: "Document ID must be a 24-char hex string". Selection bar sets the NDI-format id (`41269431...`) but the panel wants Mongo `_id`. Fix: panel should accept either format and resolve internally, OR the selection should normalize. Surfaced by G3 Haley agent. |
+| 3 | **NEW: Probes picker empty for Haley despite F-1c alias** | ~1h backend | `summary.counts.probes=4156` but workspace Probes picker shows "No probes". F-1c probe→element alias applies to the snapshot count but not to the picker's `useDocuments('probe')` call. Add alias resolution to the documents listing path. |
+| 4 | **NEW: Haley parent-session filter (counts.sessions=3 vs 2)** | ~½ day | G3 agent confirmed: Haley's 3 raw session docs are 2 leaf recordings (`haley_2025_Celegans`, `haley_2025_Ecoli`) + 1 parent/aggregate (`haley_2025`, ingested 10h later). MATLAB enumerates the 2 leaves. Needs backend filter: probably "exclude sessions with zero downstream references" — but the heuristic is brittle; needs design pass. |
+| 5 | **NEW: Treatment timeline empty for Haley despite 56 `treatment` docs** | ~1h backend | F-1e treatment_timeline scope appears to focus on `treatment_drug` + `treatment_transfer`; Haley uses literal `treatment` (food-restriction onset times). Verify F-1e fallback covers literal treatment too, fix if not. |
+| 6 | **G2 Bhar full tutorial replay** (rest of 12 tasks) | ~1h Playwright | Tasks A confirmed PASS; D NEEDS-DATA. Rest needs exhaustive re-drive. |
+| 7 | **G3 Haley full tutorial replay** (rest of 19 tasks) | ~1h Playwright | ~6 tasks PASS, several PARTIAL/NEEDS-DATA. Cross-table joins (H5/H8/H13/H15/H17) all blocked on backend S5.3. |
+| 8 | **Cross-dataset session-drop investigation** | Safari/Chrome manual | Reproduced in Playwright this session; needs Safari verify to confirm it's not just headless-Chromium artifact |
+| 9 | **React #418 hydration during multi-deploy** | Observation during next multi-deploy | Tied to B1 CDN-thrash hypothesis |
 
 ### Closed this session
 
 - ~~F-1b (backend port + cloud-app cleanup)~~ — **shipped**, F-1b broadcast columns ship inline; JS pivot removed
+- ~~F-1b-UI (auto-hide-empty hides sparse server-discovered cols)~~ — **shipped** in `28a02eb`. `staticallyExpectedColumnIds(grain)` distinguishes statically-expected (defaults+hidden) from server-discovered (passthrough/dynamic) cols; auto-hide-empty only applies to the former. F-1b broadcast cols now render even when sparse.
+- ~~F-4 (stable query keys + panel mutation dedup)~~ — **shipped** in `67d6999`. All 4 panels (Psth, SpikeActivity, BehavioralCompare, TreatmentTimeline) converted from useMutation → stable-keyed useQuery. Identical picks dedup; manual Run button still re-hits via `query.refetch()`.
 - ~~Mobile pass <375px thorough~~ — **shipped** (Agent B CSS sweep: 13 files, granular `px-7` → `px-4 sm:px-7` ramps + loading skeleton harmonization)
 - ~~Card gap consistency audit~~ — **shipped** as part of Agent B; the `gap-5` vs `gap-6` split is intentional (uniform dense tiles vs content-rich cards); only inconsistencies found were loading-skeleton wrong-shape mismatches, now fixed
 - ~~Bhar 12 vs 11 class count~~ — **shipped** in `f89af4b` via centralized `HIDDEN_WRAPPER_CLASSES` filter in `lib/data/class-counts.ts`, applied to `SnapshotSection.numClasses`, `StructureBrowser.totalClasses + deriveClassList`, `DocumentsPicker.deriveDocumentClasses`
+- ~~Sessions=3 vs 2 root cause~~ — **identified**: Haley's 3rd session is a parent/aggregate doc (`session.reference="haley_2025"`, no suffix) ingested 10h after the two leaves (`_Celegans`, `_Ecoli`). Backend filter NOT yet shipped — heuristic is brittle and needs design pass; documented as P-4 above.
 
 ### Explicitly held (per user direction)
 
@@ -61,9 +66,9 @@ Live-verified: Bhar `/api/datasets/.../tables/subject` now returns **43 cols** (
 
 ### Branch state (latest)
 
-- **Cloud-app** `ndi-cloud-app` `feat/experimental-ask-chat` — HEAD `870e215`
+- **Cloud-app** `ndi-cloud-app` `feat/experimental-ask-chat` — HEAD `28a02eb`
 - **Backend** `ndi-data-browser-v2` `feat/ndi-python-phase-a` — HEAD `a560a41`
-- 2152 cloud-app unit tests + 1000 backend unit tests all green
+- 2153 cloud-app unit tests + 1000 backend unit tests all green
 - Both preview/experimental Vercel + Railway deploys Ready
 - **PR #160** stays draft per existing "[DO NOT MERGE — experimental]" title
 
