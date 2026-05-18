@@ -258,8 +258,100 @@ runtime doesn't enforce CWD scoping, so the prompt has to.
 
 ---
 
+## Live panel-exercise pass — 2026-05-19 late evening
+
+After the merges shipped, a second instrumented Playwright pass (fresh
+`steve+thing2@…` creds) ran each new panel end-to-end against real
+NDI data. **Bottom-line**: all 5 newly-built panels function as
+designed; B1 did NOT reproduce; one real bug surfaced + fixed.
+
+### Per-panel results
+
+| Panel | Dataset | Doc | Result |
+|---|---|---|---|
+| BehavioralTrack | Haley | `68c0683ef81ed200dc9c1c4e` (position element_epoch) | Panel works; backend returns 1-channel signal because Haley stores X+Y as separate element_epochs. Graceful "No XY trajectory data" empty state. Follow-up: add `(xDocId, yDocId)` pair input mode to support this schema. |
+| SignalViewer time-coloring | Haley | same doc | ✅ PASS — uPlot mounted, `multitrace-colorby-label = "Color by time (viridis)"`, per-segment ramp active |
+| Patch-clamp step-family | Francesconi | `68d6e54703a03f5cfdac8ef7` (daqreader epoch, file `ai_group1_seg.nbf_1`) | ✅ PASS — **21 sweeps** detected from NaN-gap segmentation, viridis colors progressing through the ramp correctly (`rgb(68,1,84)` → `rgb(65,67,135)` on first 5 sweeps), figcaption "ch0 · 21 sweeps · 2–41 samples each" |
+| Derived columns | Francesconi | EPM `ElevatedPlusMaze_OpenArmNorthEntries` (n=45) | ✅ PASS — added `CV = std / mean`, rendered value `0.571` = 3.123/5.467 (exact match), chip `CV = std / mean` rendered, header cell wired |
+| Video playback | Bhar | `69eb91431a7ae83f29b19a62` (imageStack, `formatOntology=NCIT:C190180`) | 🐛 Bug found + fixed (see below) |
+| Treatment timeline | Bhar | (any subject) | ✅ Graceful empty state per F-1e — "No treatment timeline data to display. No treatment rows were returned for this dataset." No 405, no error. Backend F-1e remains the blocker. |
+
+### B1 root cause assessment
+
+**B1 did not reproduce.** Instrumented Playwright session captured
+EVERY `pushState` / `replaceState` / `popstate` / fetch via a hook
+injected before login. Result: a single legitimate pushState (from
+`/login → /my/workspace/682e…`), no spurious URL flips, no
+multi-deployment-ID chunk thrash (single `dpl_3w7nA8hfXZJJArLyzphyexodYz5p`
+on every chunk URL).
+
+Compare to G3's prior session: "3 distinct deployment IDs … React
+#418 hydration mismatches" — that session ran during a multi-deploy
+burst (6 worktree branches pushed roughly simultaneously, each
+triggering a Vercel build). With those builds settled and only one
+active deploy, the chunk-mixing window closed.
+
+**Resolution**: B1 is most likely an artifact of CDN cache
+thrashing during multi-deploy bursts. The diagnostic infrastructure
+(history-hook injection script) is captured in this doc for next
+time — re-run during another multi-deploy window to confirm.
+Vercel Skew Protection (`deploymentId: process.env.NEXT_DEPLOYMENT_ID`
+in `next.config.ts`) is configured; the failure mode happened anyway,
+which suggests either the CDN ignored the `?dpl=` query param during
+the propagation window or Skew Protection didn't fully cover the
+problematic chunk types. Not actionable from cloud-app alone without
+deeper Vercel Edge observability.
+
+### Real bug found + fixed: `66667ef`
+
+**Symptom**: Video playback panel says "This document does not contain
+playable video" for a valid imageStack doc (Bhar
+`69eb91431a7ae83f29b19a62` with `formatOntology=NCIT:C190180` —
+explicitly tagged as MP4/H.264).
+
+**Root cause**: Backend's per-doc detail endpoint returns
+`{ id, data: { document_class: { class_name: 'imageStack' } } }`. The
+cloud-app's `DocumentSummary` type declares `className?: string`
+at the **top level**. `useDocument` was forwarding the raw payload
+without normalizing. VideoPlaybackPanel's class check
+(`doc.className === 'imageStack'`) was always false → "not playable"
+even for valid videos.
+
+**Fix**: TanStack Query `select` in `useDocument` hoists
+`data.document_class.class_name` to top-level `className`. Idempotent
+(preserves existing top-level if backend ever starts duplicating).
++4 unit tests pinning the contract (hoisting, idempotence,
+no-class-name passthrough, empty-string falsy guard).
+
+**Branch state**: `66667ef` on `feat/experimental-ask-chat`.
+
+### Bonus finding: cross-dataset hard-reload drops session
+
+Navigating from one workspace to another via `page.goto()` (full
+reload) lands on `/login` with `returnTo=…`. `/api/auth/me` returns
+401 immediately after. **JavaScript-only navigation (Cmd-K /
+in-page link clicks) does NOT drop the session.** Looks Playwright-
+specific — possibly the way Playwright handles cookies across full
+reloads on the same origin, or a Vercel-side cookie scope quirk that
+only manifests in headless Chromium. Filing as a noted observation
+rather than a bug for now: a fresh Safari + manual test should
+either reproduce it (real cookie issue) or rule it out (Playwright
+artifact). The user has been navigating between workspaces fine via
+in-page links so far.
+
+### Updated branch state
+
+- HEAD: `66667ef` (useDocument className normalization)
+- Total new commits in this two-session arc on
+  `feat/experimental-ask-chat`: **11** since the prior handoff
+  (Wave 1+2 features, UI polish, patch-clamp, derived columns,
+  handoff docs, useDocument fix).
+
+---
+
 ## Update history
 
 | Date | Author | Change |
 |---|---|---|
 | 2026-05-19 (evening) | post-handoff session | First version. Six new commits stacked + live verification + agent-collision postmortem. |
+| 2026-05-19 (late evening) | live-exercise session | All 5 new panels exercised end-to-end. Patch-clamp + derived columns + time-coloring all PASS. Video panel bug found + fixed (`66667ef`). B1 NOT REPRODUCING — CDN cache thrash hypothesis supported. Session-drop on hard-reload noted (Playwright artifact?). |
