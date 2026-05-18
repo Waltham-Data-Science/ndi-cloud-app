@@ -1,8 +1,55 @@
-# Post-handoff execution — 2026-05-19 (evening)
+# Post-handoff execution — 2026-05-19 (evening through overnight)
 
 Companion to `2026-05-19-session-handoff.md`. That doc captured the
 state at the end of the audit + UI sweep arc; this doc captures
-what landed in the next session against the same branch.
+what landed in the next sessions against the same branch.
+
+---
+
+## 🚦 IF YOU'RE THE POST-COMPACTION SESSION — START HERE
+
+**The big stuff (all backend F-* tickets that block visible features, 6 cloud-app capability gaps, BehavioralTrack pair-mode, useDocument className normalization) is DONE AND LIVE-VERIFIED.** Read on for the comprehensive log + table of all 13+ commits. But what's still LEFT for you:
+
+### Deferred — pick up in priority order
+
+| Priority | Item | Effort | Why deferred |
+|---|---|---|---|
+| 1 | **Tools-along-boundaries canvas redesign** | 30min design Q&A + ~½ day code | User explicitly held for next session — needs spec-by-conversation before any code |
+| 2 | **F-1b** — treatment-broadcast cols pivot into `summary_table_service` | ~½ day backend + clean up `table-shell.tsx` JS workaround | Large; cloud-app JS workaround exists in `apps/web/app/(app)/datasets/[id]/tables/[className]/table-shell.tsx` (~lines 340-925). Move pivot into backend per ADR-001. Surfaces treatment cols on workspace SubjectsBrowser too |
+| 3 | **Mobile pass <375px thorough** | ~2h CSS sweep | Only minmax fix shipped; full mobile responsive audit owed |
+| 4 | **Card gap consistency thorough audit** | ~1-2h CSS sweep | Partial pass shipped; visual sweep + harmonize owed |
+| 5 | **F-4** — stable query keys + dedup on panel mutations | ~2-3h cloud-app | Low impact polish; canonical mutation contract |
+| 6 | **G2 Bhar full tutorial replay** (12 tasks) | ~1h Playwright | Treatment Gantt verified; rest needs exhaustive re-drive |
+| 7 | **G3 Haley full tutorial replay** (19 tasks) | ~1h Playwright | Pair-mode trajectory verified; rest needs exhaustive re-drive |
+| 8 | **Bhar 12 vs 11 class count** + **Haley Sessions=3 vs 2** | ~1h investigate | Minor parity gaps surfaced earlier |
+| 9 | **Cross-dataset session-drop investigation** | Safari/Chrome manual | Documented as Playwright artifact; not formally closed |
+| 10 | **React #418 hydration during multi-deploy** | Observation during next multi-deploy | Tied to B1 CDN-thrash hypothesis |
+
+### Explicitly held (per user direction)
+
+- **S-1 through S-4** — NDI-python / NDI-matlab SDK upstream asks
+- **Binary domain-format viewers** (`.dna`, `.xlsx`) — open externally
+- **Phase 8 archiving** — waits for 30-day burn-in (~2026-06-10)
+- **CSP enforce flip** — deferred indefinitely
+- **DNS for `app.ndi-cloud.com`** — deferred (no current DNS)
+
+### Three test creds available (rotate to beat rate-limit, ~5 logins per email)
+
+| Email | Password | Notes |
+|---|---|---|
+| `audri+test@walthamdatascience.com` | `remhuz-ruwfy4-jiGcen` | Original test acct (per CLAUDE.md) |
+| `steve+thing1@walthamdatascience.com` | `tcP4bftD9efSBPk!` | Added 2026-05-19 |
+| `steve+thing2@walthamdatascience.com` | `wj2eBNqJpdppLF6!` | Added 2026-05-19 |
+
+⚠️ All three may be at/near rate-limit by start-of-next-session. Wait ~1h after the last login attempt OR ask user for fresh creds. **Playwright form-fill ONLY — never write to disk, never echo in chat output.**
+
+### Branch state (latest)
+
+- **Cloud-app** `ndi-cloud-app` `feat/experimental-ask-chat` — HEAD `61d3fb9`
+- **Backend** `ndi-data-browser-v2` `feat/ndi-python-phase-a` — HEAD `8401286`
+- 2138 cloud-app unit tests + 885 backend unit tests all green
+- Both preview/experimental Vercel + Railway deploys Ready
+- **PR #160** stays draft per existing "[DO NOT MERGE — experimental]" title
 
 ---
 
