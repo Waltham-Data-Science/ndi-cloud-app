@@ -8,7 +8,24 @@ what landed in the next sessions against the same branch.
 
 ## 🚦 IF YOU'RE THE POST-COMPACTION SESSION — START HERE
 
-**Status as of 2026-05-18 post-compaction work:** F-1b shipped end-to-end (backend port + cloud-app JS cleanup). Mobile <375px + card gap CSS sweep shipped. Bhar class-count parity fixed. 2152 cloud-app + 1000 backend tests green.
+**Status as of 2026-05-18 (post-compaction work +"bug-blast" turn):** All 7 P0/P1 bugs surfaced by the audit are shipped and live-verified. **2199 cloud-app + 1036 backend tests green.** Only B6 (Haley parent-session filter) stays deferred with a full design spec at `apps/web/docs/specs/2026-05-18-b6-parent-session-filter.md`. Ready to run the exhaustive test matrix post-compaction.
+
+### THIS TURN (the "implement all the bugs" arc)
+
+| Commit | Repo | What it fixes |
+|---|---|---|
+| `e03d470` | ndb-v2 | fix(signal): smart default file pick — skip channel_list.bin (Francesconi patch-clamp demo unblocked) |
+| `4181c12` | ndb-v2 | **B2** fix(documents): apply class-alias chain in /documents listing (Haley Probes picker now returns 4156 element docs) |
+| `5034249` | ndb-v2 | **B3** fix(treatment-timeline): parse MATLAB datestr in stringValue (Haley `temporal_source`: "ordinal" → "explicit", real wall-time onsets) |
+| `48b9ce7` | ndb-v2 | **B5** fix(binary): smart default file pick on image decode paths (image.py + binary.py get_image; sweep audit confirms /signal, /psth benefit transitively) |
+| `73d2c4d` | cloud-app | docs(B6): full design spec for parent/aggregate session filter |
+| `05487ec` | cloud-app | **B4** fix: resolveDocName fallback chain in Documents picker (no more blank Name cells on daqreader_*, imageStack, ontologyTableRow) |
+| `1af8b41` | cloud-app | **B1+B7** fix: panel Document ID inputs accept Mongo `_id` OR NDI-format `<16hex>_<16hex>` (Selection-bar auto-fill no longer rejected) |
+
+**Live-verified post-deploy (curl checks):**
+- Haley `/documents?class=probe` → 4156 element docs (B2)
+- Haley `/treatment-timeline` → 56 items, 28 subjects, `temporal_source="explicit"` (B3)
+- Francesconi `/signal?downsample=200` → `format=nbf_compressed`, 1 channel, 1M original samples (signal + B5)
 
 ### What landed this session (chronological)
 
@@ -26,25 +43,31 @@ Live-verified: Bhar `/api/datasets/.../tables/subject` now returns **43 cols** (
 
 | Priority | Item | Effort | Why deferred |
 |---|---|---|---|
-| 1 | **Tools-along-boundaries canvas redesign** | 30min design Q&A + ~½ day code | User explicitly held for next session — needs spec-by-conversation before any code |
-| 2 | **NEW: BehavioralTrack auto-fill id-format mismatch** | ~1h | When a Session is picked in the rail, BehavioralTrack panel rejects auto-fill: "Document ID must be a 24-char hex string". Selection bar sets the NDI-format id (`41269431...`) but the panel wants Mongo `_id`. Fix: panel should accept either format and resolve internally, OR the selection should normalize. Surfaced by G3 Haley agent. |
-| 3 | **NEW: Probes picker empty for Haley despite F-1c alias** | ~1h backend | `summary.counts.probes=4156` but workspace Probes picker shows "No probes". F-1c probe→element alias applies to the snapshot count but not to the picker's `useDocuments('probe')` call. Add alias resolution to the documents listing path. |
-| 4 | **NEW: Haley parent-session filter (counts.sessions=3 vs 2)** | ~½ day | G3 agent confirmed: Haley's 3 raw session docs are 2 leaf recordings (`haley_2025_Celegans`, `haley_2025_Ecoli`) + 1 parent/aggregate (`haley_2025`, ingested 10h later). MATLAB enumerates the 2 leaves. Needs backend filter: probably "exclude sessions with zero downstream references" — but the heuristic is brittle; needs design pass. |
-| 5 | **NEW: Treatment timeline empty for Haley despite 56 `treatment` docs** | ~1h backend | F-1e treatment_timeline scope appears to focus on `treatment_drug` + `treatment_transfer`; Haley uses literal `treatment` (food-restriction onset times). Verify F-1e fallback covers literal treatment too, fix if not. |
-| 6 | **G2 Bhar full tutorial replay** (rest of 12 tasks) | ~1h Playwright | Tasks A confirmed PASS; D NEEDS-DATA. Rest needs exhaustive re-drive. |
-| 7 | **G3 Haley full tutorial replay** (rest of 19 tasks) | ~1h Playwright | ~6 tasks PASS, several PARTIAL/NEEDS-DATA. Cross-table joins (H5/H8/H13/H15/H17) all blocked on backend S5.3. |
-| 8 | **Cross-dataset session-drop investigation** | Safari/Chrome manual | Reproduced in Playwright this session; needs Safari verify to confirm it's not just headless-Chromium artifact |
-| 9 | **React #418 hydration during multi-deploy** | Observation during next multi-deploy | Tied to B1 CDN-thrash hypothesis |
+| 1 | **Exhaustive live test matrix** | ~2h Playwright across 8 datasets × ~10 panels × 17 chat tools | THIS IS THE NEXT STEP. Bugs blocking it are all closed (B1/B2/B3/B4/B5/B7 + signal codec). User wants to compact first then run. |
+| 2 | **B6 — Haley parent-session filter (counts.sessions=3 vs 2)** | ~½ day backend | Design spec written at `apps/web/docs/specs/2026-05-18-b6-parent-session-filter.md`. Heuristic: "session is real iff ≥1 other doc carries depends_on.value pointing at it." Needs reverse-dep helper in cloud client + fail-open semantics + cross-dataset audit. |
+| 3 | **Tools-along-boundaries canvas redesign** | 30min design Q&A + ~½ day code | User explicitly held — needs spec-by-conversation before code |
+| 4 | **Cross-dataset session-drop investigation** | Safari/Chrome manual | Reproduced in Playwright; needs Safari verify to confirm not Playwright artifact |
+| 5 | **React #418 hydration during multi-deploy** | Observation during next multi-deploy burst | Tied to B1 CDN-thrash hypothesis |
+| 6 | **Backend S5.3 cross-table joins** | ~1-2 days backend | Blocks BehavioralCompare's true cross-table value (currently single-class views only) |
+| 7 | **Backend S4.9: aggregate_documents → FastAPI** | ~1 day backend | ADR-001 Heart-on-Railway compliance; currently in cloud-app |
 
 ### Closed this session
 
-- ~~F-1b (backend port + cloud-app cleanup)~~ — **shipped**, F-1b broadcast columns ship inline; JS pivot removed
-- ~~F-1b-UI (auto-hide-empty hides sparse server-discovered cols)~~ — **shipped** in `28a02eb`. `staticallyExpectedColumnIds(grain)` distinguishes statically-expected (defaults+hidden) from server-discovered (passthrough/dynamic) cols; auto-hide-empty only applies to the former. F-1b broadcast cols now render even when sparse.
-- ~~F-4 (stable query keys + panel mutation dedup)~~ — **shipped** in `67d6999`. All 4 panels (Psth, SpikeActivity, BehavioralCompare, TreatmentTimeline) converted from useMutation → stable-keyed useQuery. Identical picks dedup; manual Run button still re-hits via `query.refetch()`.
-- ~~Mobile pass <375px thorough~~ — **shipped** (Agent B CSS sweep: 13 files, granular `px-7` → `px-4 sm:px-7` ramps + loading skeleton harmonization)
-- ~~Card gap consistency audit~~ — **shipped** as part of Agent B; the `gap-5` vs `gap-6` split is intentional (uniform dense tiles vs content-rich cards); only inconsistencies found were loading-skeleton wrong-shape mismatches, now fixed
-- ~~Bhar 12 vs 11 class count~~ — **shipped** in `f89af4b` via centralized `HIDDEN_WRAPPER_CLASSES` filter in `lib/data/class-counts.ts`, applied to `SnapshotSection.numClasses`, `StructureBrowser.totalClasses + deriveClassList`, `DocumentsPicker.deriveDocumentClasses`
-- ~~Sessions=3 vs 2 root cause~~ — **identified**: Haley's 3rd session is a parent/aggregate doc (`session.reference="haley_2025"`, no suffix) ingested 10h after the two leaves (`_Celegans`, `_Ecoli`). Backend filter NOT yet shipped — heuristic is brittle and needs design pass; documented as P-4 above.
+**Bug-blast arc (this turn):**
+- ~~B1+B7 (panel id-format)~~ — **shipped** in `1af8b41`. New `lib/workspace/doc-id-validation.ts` accepts Mongo 24-hex OR NDI 16+16-hex. All 6 panels with Document ID inputs updated + 21 unit tests.
+- ~~B2 (probes picker alias)~~ — **shipped** in `4181c12`. Shared `class_aliases.py` + `DocumentService.list_by_class` walks the chain. Haley's `/documents?class=probe` returns 4156 element docs.
+- ~~B3 (treatment timeline MATLAB datestr)~~ — **shipped** in `5034249`. Root cause wasn't a class-fallback gap — it was `_parse_iso_datetime` failing on Haley's MATLAB datestr format (`"03-Nov-2023 07:53:00"`). `temporal_source` now "explicit" for Haley, 56 items/28 subjects.
+- ~~B4 (Doc picker blank names)~~ — **shipped** in `05487ec`. `lib/workspace/doc-name-fallback.ts::resolveDocName(row)` chains: canonical → data.base.name → class-specific synthesis (daqreader_*, ontologyTableRow) → `<class> · <abbrev id>`. 25 unit tests.
+- ~~B5 (binary-file-pick sweep)~~ — **shipped** in `48b9ce7`. Image-decode paths (`get_image` × 2) now use `_pick_default_image_ref`. Signal/PSTH already benefited transitively from earlier `e03d470` fix. 10 new tests + audit-disposition log.
+- ~~Signal codec channel_list.bin pick~~ — **shipped** in `e03d470` (earlier this turn). Francesconi patch-clamp 21-sweep demo unblocked.
+
+**Prior-arc closures (carried forward):**
+- ~~F-1b (backend port + cloud-app cleanup)~~ — F-1b broadcast columns ship inline; JS pivot removed
+- ~~F-1b-UI (auto-hide-empty hides sparse server-discovered cols)~~ — `staticallyExpectedColumnIds(grain)` distinguishes static defaults from server-discovered cols; auto-hide only applies to static.
+- ~~F-4 (stable query keys + panel mutation dedup)~~ — 4 panels converted to stable-keyed useQuery.
+- ~~Mobile pass + card gap audit~~ — 13 files; graduated px-7→px-4 sm:px-7 ramps.
+- ~~Bhar 12 vs 11 class count~~ — centralized `HIDDEN_WRAPPER_CLASSES` filter.
+- ~~Sessions=3 vs 2 root cause~~ — IDed as parent/aggregate doc. Filter design spec at `apps/web/docs/specs/2026-05-18-b6-parent-session-filter.md`.
 
 ### Explicitly held (per user direction)
 
@@ -66,11 +89,40 @@ Live-verified: Bhar `/api/datasets/.../tables/subject` now returns **43 cols** (
 
 ### Branch state (latest)
 
-- **Cloud-app** `ndi-cloud-app` `feat/experimental-ask-chat` — HEAD `28a02eb`
-- **Backend** `ndi-data-browser-v2` `feat/ndi-python-phase-a` — HEAD `a560a41`
-- 2153 cloud-app unit tests + 1000 backend unit tests all green
-- Both preview/experimental Vercel + Railway deploys Ready
+- **Cloud-app** `ndi-cloud-app` `feat/experimental-ask-chat` — HEAD `1af8b41`
+- **Backend** `ndi-data-browser-v2` `feat/ndi-python-phase-a` — HEAD `48b9ce7`
+- 2199 cloud-app unit tests + 1036 backend unit tests all green
+- Both preview/experimental Vercel + Railway deploys Ready (latest Railway deploy `df2861ea` 19:10 UTC)
 - **PR #160** stays draft per existing "[DO NOT MERGE — experimental]" title
+
+### Exhaustive test matrix — design
+
+Post-compaction the next session should run this matrix. 8 published datasets:
+
+| ID | Lab | Type |
+|---|---|---|
+| `69bc5ca11d547b1f6d083761` | Bhar | C. elegans memory transfer (no spike data) |
+| `682e7772cdf3f24938176fac` | Haley | C. elegans worm-tracking (XY position) |
+| `67f723d574f5f79c6062389d` | Francesconi | BNST patch-clamp |
+| `6896c654583596300a5b1b17` | Dabrowska | BNST CRF neurons |
+| `68839b1fbf243809c0800a01` | (Sophie?) | premature vision development |
+| `668b0539f13096e04f1feccd` | ? | carbon fiber microelectrodes |
+| `66140c237dbc358954ddffb9` | ? | LGN receptive fields |
+| `6546c5097895c9702d9fc744` | ? | gustatory cortex / taste behavior |
+
+Per-dataset coverage:
+- Open workspace → snapshot tiles render correct counts
+- Subjects, Sessions, Probes, Stimuli pickers — populate or graceful empty
+- Each applicable analysis panel — Run with a real doc ID, expect a non-empty render
+- Documents picker — clickable rows with non-blank names (post-B4)
+
+Per-chat-tool coverage (17 tools):
+- 1 representative question per tool category, against the most-relevant dataset
+- Verify tool actually fires (chat shows tool usage) + citations are present
+
+Recommended approach: dispatch 2 parallel Playwright agents post-compaction, each handling 4 datasets, with the test creds (audri+test, steve+thing1, steve+thing2) split across them.
+
+Output: a PASS/FAIL grid + a "known-good demo doc IDs" appendix for the team-tutorial handout.
 
 ---
 
