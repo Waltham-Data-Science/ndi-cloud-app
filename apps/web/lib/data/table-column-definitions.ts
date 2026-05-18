@@ -652,3 +652,37 @@ export const SUBJECT_KNOWN_SUPERSET_IDS: readonly string[] = [
   ...SUBJECT_DEFAULT_COLUMNS.map((c) => c.id),
   ...SUBJECT_HIDDEN_BY_DEFAULT.map((c) => c.id),
 ];
+
+/**
+ * Per-grain "statically expected" column IDs — `defaults + hidden` only,
+ * NOT `passthrough` or `dynamic`. SummaryTableView's auto-hide-empty
+ * logic uses this so only statically-expected columns can auto-hide;
+ * server-discovered columns (F-1b broadcast cols, future backend
+ * additions) stay visible even when sparse in the current view.
+ *
+ * 2026-05-19 — F-1b post-deploy fix. Before this set existed, ~24 of
+ * the 28 broadcast columns on Bhar's subject table auto-hid on the
+ * first 200-row paint because most subjects don't get every treatment.
+ */
+export function staticallyExpectedColumnIds(grain: string): ReadonlySet<string> {
+  const normalized = grain === 'epoch' ? 'element_epoch'
+    : grain === 'element' ? 'probe'
+    : grain;
+  switch (normalized) {
+    case 'subject':
+      return new Set([
+        ...SUBJECT_DEFAULT_COLUMNS.map((c) => c.id),
+        ...SUBJECT_HIDDEN_BY_DEFAULT.map((c) => c.id),
+      ]);
+    case 'probe':
+      return new Set(PROBE_DEFAULT_COLUMNS.map((c) => c.id));
+    case 'element_epoch':
+      return new Set(EPOCH_DEFAULT_COLUMNS.map((c) => c.id));
+    case 'openminds_subject':
+      return new Set(OPENMINDS_SUBJECT_DEFAULT_COLUMNS.map((c) => c.id));
+    default:
+      // Grains without a canonical default list — every column is
+      // server-discovered; nothing should auto-hide on sparsity alone.
+      return new Set();
+  }
+}

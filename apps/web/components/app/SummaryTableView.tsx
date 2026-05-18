@@ -82,6 +82,7 @@ import { ExternalLink } from 'lucide-react';
 import {
   getColumnDefinition,
   resolveDefaultColumns,
+  staticallyExpectedColumnIds,
   type ColumnDefault,
   type ColumnFormatter,
 } from '@/lib/data/table-column-definitions';
@@ -238,10 +239,28 @@ export function SummaryTableView({
 
   // Auto-hide columns whose values are all empty (null / undefined / '' /
   // 0 is kept — rows frequently legitimately use 0 as devTime).
+  //
+  // 2026-05-19 — Only auto-hide STATICALLY-EXPECTED columns. F-1b
+  // broadcast columns (e.g. `EschericiaColiOP50Name`) are server-
+  // discovered and sparse by construction: one column per distinct
+  // treatment in the dataset, populated only on the subjects who
+  // received that treatment. Auto-hiding them on the visible-page
+  // sparsity check would silently swallow 24 of the 28 broadcast
+  // columns on Bhar's subject table — defeating the purpose of
+  // F-1b. Statically-expected columns (the 15 canonical
+  // SUBJECT_DEFAULT_COLUMNS + SUBJECT_HIDDEN_BY_DEFAULT) can still
+  // auto-hide because they're guaranteed to exist on every dataset's
+  // subject grain and an all-empty column there really IS noise.
+  const staticallyExpectedKeys = useMemo(
+    () => (tableType ? staticallyExpectedColumnIds(tableType) : new Set<string>()),
+    [tableType],
+  );
   const autoHiddenColumns = useMemo(() => {
     const hidden: VisibilityState = {};
     if (data.rows.length === 0) return hidden;
     for (const col of orderedColumns) {
+      // Skip server-discovered columns; they're intentional even if sparse.
+      if (!staticallyExpectedKeys.has(col.key)) continue;
       const allEmpty = data.rows.every((row) => {
         const v = row[col.key];
         return v === null || v === undefined || v === '';
@@ -249,7 +268,7 @@ export function SummaryTableView({
       if (allEmpty) hidden[col.key] = false;
     }
     return hidden;
-  }, [orderedColumns, data.rows]);
+  }, [orderedColumns, data.rows, staticallyExpectedKeys]);
 
   /** B6a: canonical-default-visibility — columns that are `visible: false`
    * in the canonical list (e.g. `sessionDocumentIdentifier` on the subject
