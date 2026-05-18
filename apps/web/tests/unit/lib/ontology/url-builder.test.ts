@@ -19,13 +19,16 @@ describe('ontologyUrl', () => {
     );
   });
 
-  it('maps NCBITaxon to the NCBI Taxonomy Browser', () => {
-    // 6239 = C. elegans, 10090 = Mus musculus
+  it('maps NCBITaxon to the NCBI Datasets Taxonomy browser', () => {
+    // 6239 = C. elegans, 10090 = Mus musculus, 10116 = Rattus norvegicus
     expect(ontologyUrl('NCBITaxon:6239')).toBe(
-      'https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=6239',
+      'https://www.ncbi.nlm.nih.gov/datasets/taxonomy/browser/?taxon=6239',
     );
     expect(ontologyUrl('NCBITaxon:10090')).toBe(
-      'https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=10090',
+      'https://www.ncbi.nlm.nih.gov/datasets/taxonomy/browser/?taxon=10090',
+    );
+    expect(ontologyUrl('NCBITaxon:10116')).toBe(
+      'https://www.ncbi.nlm.nih.gov/datasets/taxonomy/browser/?taxon=10116',
     );
   });
 
@@ -96,7 +99,7 @@ describe('ontologyUrl', () => {
       'https://wormbase.org/species/c_elegans/strain/WBStrain00000001',
     );
     expect(ontologyUrl('NCBITAXON:6239')).toBe(
-      'https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=6239',
+      'https://www.ncbi.nlm.nih.gov/datasets/taxonomy/browser/?taxon=6239',
     );
     expect(ontologyUrl('uberon:0002436')).toBe(
       'https://www.ebi.ac.uk/ols4/ontologies/uberon/classes?obo_id=UBERON%3A0002436',

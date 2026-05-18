@@ -184,7 +184,7 @@ describe('SummaryTableView — name cells link to ontology provider (round-3 fol
     );
     expect(link).not.toBeNull();
     expect(link?.getAttribute('href')).toBe(
-      'https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=6239',
+      'https://www.ncbi.nlm.nih.gov/datasets/taxonomy/browser/?taxon=6239',
     );
   });
 
@@ -493,12 +493,13 @@ describe('SummaryTableView — B6a canonical column defaults (subject grain)', (
 
   // 2026-04-28 — dynamic treatment columns are visible-by-default
   // again. PR #129 set `visible: false` as a safety measure for the
-  // broadcast-treatment bug; the per-subject join in
-  // `table-shell.tsx::joinTreatmentsToSubjects` (this PR) replaces
-  // that with a real frontend join so the columns can come back
-  // visible with correct per-subject values. This test pins the
-  // visible-by-default contract: when the data already carries a
-  // dynamic treatment column, it appears in the header row.
+  // broadcast-treatment bug; that fix was replaced by a per-subject
+  // join, originally in `table-shell.tsx::joinTreatmentsToSubjects`
+  // (frontend) and then ported to backend's
+  // `_broadcast_treatments_onto_subjects` in F-1b (2026-05-19).
+  // This test pins the visible-by-default contract: when the data
+  // already carries a dynamic treatment column, it appears in the
+  // header row.
   it('shows the discovered dynamic treatment column in the default visible headers (subject grain)', () => {
     render(withProviders(<SummaryTableView data={francesconiSubjectTable} tableType="subject" />));
     const tableEl = document.querySelector('table');

@@ -83,7 +83,12 @@ export default async function DatasetsPage() {
        */}
       <DatasetsHero />
 
-      <div className="px-7 py-8 bg-bg-canvas">
+      {/* `px-7` (28px) on desktop, `px-4` (16px) below sm: so the
+          catalog cards have more usable horizontal room on phones —
+          at 320px width the page padding alone consumed ~17% of the
+          viewport. The 1200px max width applies once content gets
+          that wide. */}
+      <div className="px-4 sm:px-7 py-8 bg-bg-canvas">
         <div className="mx-auto max-w-[1200px]">
           <DatasetsListClient page={1} pageSize={PAGE_SIZE} />
         </div>

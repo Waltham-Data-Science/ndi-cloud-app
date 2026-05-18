@@ -44,6 +44,7 @@ import {
 import { DatasetOverviewCard } from '@/components/datasets/DatasetOverviewCard';
 import { DatasetProvenanceCard } from '@/components/datasets/DatasetProvenanceCard';
 import { DatasetSummaryCard } from '@/components/datasets/DatasetSummaryCard';
+import { WorkspaceCTA } from '@/components/datasets/WorkspaceCTA';
 import { ErrorState } from '@/components/errors/ErrorState';
 import { CardSkeleton } from '@/components/ui/Skeleton';
 import { enrichDegradedSummary, isDegraded } from '@/lib/data/summary-fallback';
@@ -129,6 +130,12 @@ export function OverviewContent({ datasetId }: { datasetId: string }) {
     // pills. `md:` keeps abstract + sidecar side-by-side from 768px
     // upward, restoring v2's effective behavior at high-zoom levels.
     <div className="space-y-4 min-w-0">
+    {/* Sign-up / workspace CTA — Task-3 follow-up gap #4. Sits above
+        the abstract + sidecar so visitors see the next-action path
+        before they finish reading the dataset details. Routes signed-
+        in users straight to /my/workspace/[id]; signed-out users
+        to /login with returnTo back to the workspace URL. */}
+    <WorkspaceCTA datasetId={datasetId} />
     <div className="grid gap-5 md:grid-cols-[1fr_360px] min-w-0">
       {/* ── Main column: details (abstract + authors + pubs + cite) ── */}
       <div className="space-y-4 min-w-0 order-2 md:order-1">

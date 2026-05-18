@@ -22,6 +22,7 @@ export function mockAuthUser(overrides: Partial<AuthUser> = {}): AuthUser {
     email_hash: '0123456789abcdef',
     organizationIds: [],
     isAdmin: false,
+    canUseAsk: true,
     issuedAt: NOW_SECONDS,
     lastActive: NOW_SECONDS,
     expiresAt: NOW_SECONDS + 3600,

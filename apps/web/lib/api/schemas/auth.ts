@@ -41,6 +41,15 @@ export const MeResponseSchema = z.object({
   lastActive: z.number(),
   /** Cloud access-token expiry (unix seconds) — NOT the session cookie's expiry. */
   expiresAt: z.number(),
+  /**
+   * Stream 3.4 (2026-05-15): true when this user is allowed to use
+   * the /ask chat. Defaults to true for forward-compat — older
+   * FastAPI builds that haven't shipped the gate yet still return
+   * a working session shape. The /api/ask route re-checks
+   * server-side via the same FastAPI flag, so an outdated frontend
+   * can't bypass the gate.
+   */
+  canUseAsk: z.boolean().optional().default(true),
 });
 
 export type MeResponse = z.infer<typeof MeResponseSchema>;

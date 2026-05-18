@@ -32,8 +32,34 @@ vi.mock('@/lib/api/auth', () => ({
 }));
 
 const pushMock = vi.fn();
+const replaceMock = vi.fn();
 vi.mock('next/navigation', () => ({
-  useRouter: () => ({ push: pushMock }),
+  useRouter: () => ({ push: pushMock, replace: replaceMock }),
+}));
+
+// Default mock for useSession: an authenticated user so the form
+// renders. Individual tests override this for the auth-gate behavior.
+type MockUser = {
+  userId: string;
+  email_hash: string;
+  organizationIds: string[];
+  isAdmin: boolean;
+  sessionIssuedAt: number;
+};
+type MockSession = { user: MockUser | null; isLoading: boolean; error: Error | null };
+const sessionMock = vi.fn<() => MockSession>(() => ({
+  user: {
+    userId: 'u-test',
+    email_hash: 'h',
+    organizationIds: [],
+    isAdmin: false,
+    sessionIssuedAt: 0,
+  },
+  isLoading: false,
+  error: null,
+}));
+vi.mock('@/lib/auth/use-session', () => ({
+  useSession: () => sessionMock(),
 }));
 
 import { changePassword as changePwMock } from '@/lib/api/auth';
@@ -53,6 +79,19 @@ function withClient() {
 
 beforeEach(() => {
   pushMock.mockClear();
+  replaceMock.mockClear();
+  sessionMock.mockClear();
+  sessionMock.mockImplementation(() => ({
+    user: {
+      userId: 'u-test',
+      email_hash: 'h',
+      organizationIds: [],
+      isAdmin: false,
+      sessionIssuedAt: 0,
+    },
+    isLoading: false,
+    error: null,
+  }));
   mockedChange.mockReset();
 });
 
@@ -205,5 +244,67 @@ describe('ResetPasswordForm — submission', () => {
     await user.click(screen.getByRole('button', { name: /update password/i }));
 
     expect(await screen.findByText(/network error/i)).toBeInTheDocument();
+  });
+});
+
+describe('ResetPasswordForm — anonymous auth gate (P0-1 a63c agent fix, 2026-05-14)', () => {
+  it('redirects anonymous users to /login with returnTo set', async () => {
+    sessionMock.mockImplementation(() => ({
+      user: null,
+      isLoading: false,
+      error: null,
+    }));
+
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <ResetPasswordForm />
+      </Wrapper>,
+    );
+
+    // The redirect fires inside a useEffect, so wait for it.
+    await waitFor(() => {
+      expect(replaceMock).toHaveBeenCalledWith('/login?returnTo=/reset-password');
+    });
+    // While auth is being resolved / redirect is in flight, the form
+    // is replaced by a loading placeholder — NOT the in-account form.
+    expect(screen.queryByLabelText(/current password/i)).not.toBeInTheDocument();
+  });
+
+  it('shows a loading placeholder while useSession is still resolving', () => {
+    sessionMock.mockImplementation(() => ({
+      user: null,
+      isLoading: true,
+      error: null,
+    }));
+
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <ResetPasswordForm />
+      </Wrapper>,
+    );
+
+    expect(screen.getByText(/loading/i)).toBeInTheDocument();
+    expect(screen.queryByLabelText(/current password/i)).not.toBeInTheDocument();
+    // No redirect yet — useSession still resolving.
+    expect(replaceMock).not.toHaveBeenCalled();
+  });
+
+  it('renders the form with a "Reset via email" escape hatch for authenticated users', () => {
+    const Wrapper = withClient();
+    render(
+      <Wrapper>
+        <ResetPasswordForm />
+      </Wrapper>,
+    );
+
+    // Form visible.
+    expect(screen.getByLabelText(/current password/i)).toBeInTheDocument();
+    // Escape hatch link visible — for users who realize they can't
+    // remember the current password, link them to the forgot-password
+    // flow rather than leaving them stuck.
+    const link = screen.getByRole('link', { name: /reset it via email/i });
+    expect(link).toHaveAttribute('href', '/forgot-password');
   });
 });

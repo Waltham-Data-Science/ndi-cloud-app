@@ -93,9 +93,15 @@ export function DatasetDetailChromeGate({
         so the document-detail body renders full-bleed even before
         hydration removes this section entirely.
       */}
+      {/* Section padding: `px-7` is the desktop chrome value but at
+          <375px viewports it consumes ~17% of the 320px viewport.
+          `px-4` below `sm:` (640px) gives the dataset-detail body
+          (overview cards, summary tables, document explorer) usable
+          horizontal real estate on phones without changing the
+          desktop layout. */}
       <section
         data-dataset-chrome-section
-        className="mx-auto max-w-[1200px] px-7 py-7 min-w-0"
+        className="mx-auto max-w-[1200px] px-4 sm:px-7 py-7 min-w-0"
       >
         {children}
       </section>

@@ -4,6 +4,10 @@
     {
       "path": "/api/cron/warm-cache",
       "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/dataset-health",
+      "schedule": "23 7 * * *"
     }
   ],
   "headers": [

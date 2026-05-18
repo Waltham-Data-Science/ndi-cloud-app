@@ -1,0 +1,45 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Lab-and-dataset disambiguation aliases for the /ask chat. Extracted from system-prompt.ts (Stream 4.11, 2026-05-15) so the curated mapping can evolve as datasets are ingested without touching the prompt code path. The SYSTEM_PROMPT template reads this at module load and renders a deterministic 'DISAMBIGUATION:' section. New labs / datasets land here; the prompt picks them up on next build.\n\nLab keys are case-insensitive. The chat uses these to route ambiguous PI mentions ('Dabrowska BNST', 'the Fitzpatrick tree shrew') to a default dataset ID with sibling fallbacks for explicit other-dataset queries.",
+  "version": "1.0.0",
+  "last_reviewed": "2026-05-15",
+  "labs": {
+    "dabrowska": {
+      "lab_label": "Dr. Joanna Dabrowska's lab (BNST work)",
+      "default": {
+        "dataset_id": "67f723d574f5f79c6062389d",
+        "first_author": "Francesconi-et-al",
+        "short_description": "BNST patch-clamp + EPM behavioral tables + Saline/CNO treatment assignments",
+        "tutorial_truth": "215 subjects; 606 probes (stimulator / patch-Vm / patch-I); 4887 epochs; EPM 45 rows x 51 cols"
+      },
+      "siblings": [
+        {
+          "dataset_id": "6896c654583596300a5b1b17",
+          "first_author": "Chudoba-et-al",
+          "short_description": "CRF neurons / sex differences / reproductive cycle work",
+          "status": "currently in ingest; zero published documents",
+          "route_terms": [
+            "Chudoba",
+            "CRF neurons",
+            "sex differences",
+            "reproductive cycle"
+          ]
+        }
+      ]
+    },
+    "fitzpatrick": {
+      "lab_label": "Fitzpatrick lab (tree-shrew V1)",
+      "siblings_only": true,
+      "siblings": [
+        {
+          "short_description": "LGN to V1 transformation",
+          "route_terms": ["LGN", "lateral geniculate", "thalamocortical"]
+        },
+        {
+          "short_description": "Premature vision V1 development",
+          "route_terms": ["premature", "development", "developmental"]
+        }
+      ]
+    }
+  }
+}

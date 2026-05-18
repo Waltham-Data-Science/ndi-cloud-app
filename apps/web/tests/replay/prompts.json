@@ -1,0 +1,116 @@
+{
+  "_doc": "Demo-prompt replay fixtures for the experimental /ask chat. Each entry drives one POST to /api/ask via the replay harness in replay.spec.ts. The harness streams the AI SDK UI message response, captures every tool call + assistant text + reference, then asserts the expected tool path was followed. Catches LLM-routing regressions (e.g. the treatment_group bug fixed in Day 4) that unit tests on individual tool handlers can never catch — because they target the LLM's tool selection, not the tools themselves.",
+  "_schema": {
+    "id": "kebab-case slug, also test title",
+    "prompt": "natural-language question sent verbatim as a single user UIMessage",
+    "expected_tools": "array of tool names that must fire, order-sensitive (allows extra exploratory calls in between as long as each expected tool appears in this order somewhere in the trace)",
+    "forbidden_tools": "array of tool names that must NOT fire (catches misroutes — e.g. for behavioral comparison prompts, forbid query_documents because tabular_query is the right path)",
+    "expected_chart_fence": "the fenced code-block language tag the assistant must emit (violin-chart, signal-chart, or null)",
+    "expected_text_contains": "array of case-insensitive substrings the final assistant text must contain (use sparingly — over-specific assertions are brittle when the model rewords)",
+    "expected_references_min": "minimum number of [^N] footnote definitions in the answer's ### Sources section",
+    "notes": "explanation of what this prompt is testing"
+  },
+  "prompts": [
+    {
+      "id": "catalog-count",
+      "prompt": "How many published datasets does NDI have?",
+      "expected_tools": ["list_published_datasets"],
+      "forbidden_tools": ["semantic_search_datasets", "ndi_query", "query_documents", "fetch_signal", "tabular_query"],
+      "expected_chart_fence": null,
+      "expected_text_contains": ["published"],
+      "expected_references_min": 1,
+      "notes": "Catalog count — system prompt explicitly says 'How many datasets?' -> list_published_datasets with pageSize=1 and read totalNumber. Should NOT semantic-search."
+    },
+    {
+      "id": "dataset-lookup-by-pi",
+      "prompt": "Tell me about the Dabrowska BNST dataset.",
+      "expected_tools": ["semantic_search_datasets"],
+      "forbidden_tools": ["list_published_datasets"],
+      "expected_chart_fence": null,
+      "expected_text_contains": ["Dabrowska", "BNST"],
+      "expected_references_min": 1,
+      "notes": "PI-name query. System prompt says ANYTIME a user names a PI -> semantic_search_datasets FIRST because catalog title doesn't carry PI last name. Catches regressions where the model reaches for list_published_datasets and fails (PI name won't substring-match)."
+    },
+    {
+      "id": "cross-dataset-strain-count",
+      "prompt": "Across all public datasets, how many subjects are Sprague-Dawley rats?",
+      "expected_tools": ["ndi_query"],
+      "forbidden_tools": ["query_documents", "tabular_query"],
+      "expected_chart_fence": null,
+      "expected_text_contains": ["Sprague"],
+      "expected_references_min": 1,
+      "notes": "Cross-dataset structured count -> ndi_query with scope='public'. Catches regressions where the model defaults to query_documents (single-dataset only) or list_published_datasets."
+    },
+    {
+      "id": "within-dataset-probes",
+      "prompt": "What probes were used in the Dabrowska BNST dataset?",
+      "expected_tools": ["query_documents"],
+      "forbidden_tools": ["fetch_signal", "walk_provenance", "tabular_query"],
+      "expected_chart_fence": null,
+      "expected_text_contains": ["probe"],
+      "expected_references_min": 1,
+      "notes": "Within-dataset document-level question. Per the system prompt, 'what probes were used in dataset X' -> query_documents with className=probe. Multi-step: model needs to find the dataset ID first (semantic_search or list_published) then query_documents."
+    },
+    {
+      "id": "behavioral-comparison-violin",
+      "prompt": "Compare elevated plus maze open-arm north entries between Saline and CNO in the Dabrowska BNST dataset.",
+      "expected_tools": ["tabular_query"],
+      "forbidden_tools": ["query_documents", "aggregate_documents", "ndi_query"],
+      "expected_chart_fence": "violin-chart",
+      "expected_text_contains": ["Saline", "CNO"],
+      "expected_references_min": 1,
+      "notes": "The treatment_group regression we already fixed. Forbids query_documents to catch the bug where the LLM would pivot to query_documents after the first tabular_query miss instead of using empty_hint.retry_with. Must emit violin-chart fence — the chat UI gates rendering on this fence."
+    },
+    {
+      "id": "signal-plot",
+      "prompt": "Show me a voltage trace from the Dabrowska BNST dataset.",
+      "expected_tools": ["semantic_search_datasets", "fetch_signal"],
+      "forbidden_tools": [],
+      "expected_chart_fence": "signal-chart",
+      "expected_text_contains": ["trace"],
+      "expected_references_min": 1,
+      "notes": "Signal-plot shortcut path. The Dabrowska metadata sidecar has binarySignalExample with docId + filename, so the model should pull that from semantic_search and call fetch_signal directly without exploring class_counts/query_documents. Must emit signal-chart fence."
+    },
+    {
+      "id": "provenance-walk",
+      "prompt": "How was the vmspikesummary class computed? Find an example and walk its provenance.",
+      "expected_tools": ["walk_provenance"],
+      "forbidden_tools": ["tabular_query", "fetch_signal"],
+      "expected_chart_fence": null,
+      "expected_text_contains": ["depends"],
+      "expected_references_min": 1,
+      "notes": "Provenance walk. System prompt: 'how was this computed' -> walk_provenance with direction=upstream. Allows ndi_query or query_documents first to find a vmspikesummary doc, then walk_provenance must fire."
+    },
+    {
+      "id": "aggregation-average",
+      "prompt": "What is the average subject weight in the Dabrowska BNST dataset?",
+      "expected_tools": ["aggregate_documents"],
+      "forbidden_tools": ["tabular_query", "fetch_signal"],
+      "expected_chart_fence": null,
+      "expected_text_contains": ["weight"],
+      "expected_references_min": 1,
+      "notes": "Aggregation — system prompt: 'average/mean/median of X' -> aggregate_documents. Catches regressions where the model tries to do arithmetic itself on a query_documents result."
+    },
+    {
+      "id": "ontology-resolution",
+      "prompt": "What does NCBITaxon:10116 mean?",
+      "expected_tools": ["lookup_ontology"],
+      "forbidden_tools": ["list_published_datasets", "ndi_query", "semantic_search_datasets"],
+      "expected_chart_fence": null,
+      "expected_text_contains": ["Rattus"],
+      "expected_text_contains_doc": "NCBITaxon:10116 is Rattus norvegicus (rat). Catches regressions where the model guesses (system prompt says DO NOT GUESS what a CURIE means).",
+      "expected_references_min": 0,
+      "notes": "Direct CURIE lookup -> lookup_ontology. References-min=0 because OLS lookups don't always carry our internal references contract."
+    },
+    {
+      "id": "out-of-scope-deflection",
+      "prompt": "Should I use Adam or SGD as the optimizer when training my neural net?",
+      "expected_tools": [],
+      "forbidden_tools": ["list_published_datasets", "semantic_search_datasets", "ndi_query", "query_documents", "fetch_signal", "tabular_query", "aggregate_documents", "walk_provenance", "lookup_ontology", "get_dataset", "get_dataset_summary", "get_dataset_class_counts", "get_facets"],
+      "expected_chart_fence": null,
+      "expected_text_contains": ["/datasets"],
+      "expected_references_min": 0,
+      "notes": "Out-of-scope deflection. System prompt explicitly says: 'general neuroscience advice, code generation, opinions' -> redirect. Must NOT call any NDI tool. Must redirect to /datasets (or /platform). Catches the regression where the LLM tries to be helpful and starts searching for ML datasets in NDI."
+    }
+  ]
+}

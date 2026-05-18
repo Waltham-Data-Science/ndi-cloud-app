@@ -62,26 +62,36 @@ type NavLink = {
   external?: boolean;
 };
 
-const navLinks: NavLink[] = [
-  // Data Commons used to be cross-domain at https://app.ndi-cloud.com/datasets;
-  // post-unification it's same-origin /datasets. Same-tab navigation is
-  // unchanged because the apex was the goal of the migration.
+// Data Commons used to be cross-domain at https://app.ndi-cloud.com/datasets;
+// post-unification it's same-origin /datasets. Same-tab navigation is
+// unchanged because the apex was the goal of the migration.
+//
+// 2026-04-28 — "For Labs" (/products/private-cloud) hidden from the
+// top nav pre-launch (team review feedback). The page describes the
+// future Data Browser product, but the working pipeline still runs
+// on Nansen, so the team flagged the page as misleading-by-promise.
+// The page itself stays reachable at /products/private-cloud (still
+// works for direct links / search-engine crawls), it's just not
+// promoted from the marketing nav. The home-page bridge row that
+// pointed at it is also disabled with a "Coming soon" badge — see
+// BridgeRow in `app/(marketing)/page.tsx`. Restore this line when
+// the product is ready to ship.
+const baseNavLinks: NavLink[] = [
   { label: 'Data Commons', href: commonsSearchUrl() },
-  // 2026-04-28 — "For Labs" (/products/private-cloud) hidden from the
-  // top nav pre-launch (team review feedback). The page describes the
-  // future Data Browser product, but the working pipeline still runs
-  // on Nansen, so the team flagged the page as misleading-by-promise.
-  // The page itself stays reachable at /products/private-cloud (still
-  // works for direct links / search-engine crawls), it's just not
-  // promoted from the marketing nav. The home-page bridge row that
-  // pointed at it is also disabled with a "Coming soon" badge — see
-  // BridgeRow in `app/(marketing)/page.tsx`. Restore this line when
-  // the product is ready to ship.
   { label: 'LabChat', href: '/products/labchat' },
   { label: 'Platform', href: '/platform' },
   { label: 'About', href: '/about' },
   { label: 'Docs', href: 'https://vh-lab.github.io/NDI-matlab/', external: true },
 ];
+
+// 2026-05-18 — "Ask" removed from the top nav per user feedback.
+// The chat lives inside the workspace as the AskPanel (open via
+// the workspace ⌘K or the floating Ask trigger). The standalone
+// `/ask` route was a marketing-side preview that just redirected
+// anonymous users to /login, which is friction without product
+// value. Keep the route alive for any inbound deep-links but drop
+// it from the nav so users find the panel-based chat instead.
+const navLinks: NavLink[] = baseNavLinks;
 
 export function Header() {
   const { user } = useSession();
@@ -191,6 +201,35 @@ export function Header() {
                 <Link
                   key={link.label}
                   href={link.href}
+                  // `/ask` is the experimental chat preview. Its static
+                  // chunk imports the AI SDK + chat components (~104 KB
+                  // gz), which Next's default Link prefetch would
+                  // download on every page where this nav link is
+                  // rendered — including all marketing + data-browser
+                  // pages. For users who never click /ask that's pure
+                  // bandwidth waste. Disable prefetch for /ask only;
+                  // every other nav link's destination chunk stays
+                  // eligible for prefetch. (Caught by bundle/perf
+                  // audit, 2026-05-14.)
+                  prefetch={link.href === '/ask' ? false : undefined}
+                  // Defensive: reject synthetic clicks. The visual-UX
+                  // audit observed dataset detail pages auto-redirecting
+                  // to /ask after 3-10s dwell on the experimental
+                  // preview (PR #160). Real user clicks set
+                  // `event.isTrusted = true`; synthetic JS-dispatched
+                  // clicks (React event-queue replay during hydration,
+                  // a11y framework auto-activations, etc.) set it to
+                  // `false`. Blocking them on the /ask Link only — the
+                  // single nav target that's plausibly the symptom's
+                  // destination — costs nothing for real users.
+                  // (P0-D defense-in-depth, 2026-05-14.)
+                  onClick={
+                    link.href === '/ask'
+                      ? (e) => {
+                          if (!e.isTrusted) e.preventDefault();
+                        }
+                      : undefined
+                  }
                   className={clsx(
                     'text-[13.5px] font-medium px-3 py-2 rounded-md no-underline transition-all duration-(--duration-base) ease-(--ease-out)',
                     isActive(link.href)

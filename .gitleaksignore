@@ -1,0 +1,26 @@
+# gitleaks per-commit allowlist
+# https://github.com/gitleaks/gitleaks#gitleaksignore
+#
+# All entries below are findings in HISTORICAL commits that are no
+# longer reachable from any branch HEAD after the 2026-05-15 BFG
+# history scrub (see SECURITY-INCIDENT-2026-05-14.md for the
+# incident write-up). They remain reachable only via the
+# `gitleaks-pre-scrub-2026-05-15-rollback` tag, which is the
+# emergency-rollback safety belt and will be deleted ~7 days after
+# the scrub once production has burned in cleanly.
+#
+# The findings are test stubs — fake keys shaped like the Voyage AI
+# `pa-` prefix but with literal fixture values like
+# `pa-test-key-1234567890`. Inline `// gitleaks:allow` annotations
+# have been added to the live versions of those test files, so the
+# fingerprints below stop being findings once the rollback tag is
+# deleted.
+
+# voyage-client.test.ts (line 18 of commit 080b66b0) — test stub
+080b66b0262dd6ef68775547873747bf3653b913:apps/web/tests/unit/ai/voyage-client.test.ts:generic-api-key:18
+
+# semantic-search-tool.test.ts (line 40 of commit 080b66b0) — test stub
+080b66b0262dd6ef68775547873747bf3653b913:apps/web/tests/unit/ai/semantic-search-tool.test.ts:generic-api-key:40
+
+# semantic-search-tool.test.ts (line 96 of commit ae20dd72) — test stub
+ae20dd7245310a1a4694db9f2657a70e4f2b1353:apps/web/tests/unit/ai/semantic-search-tool.test.ts:generic-api-key:96

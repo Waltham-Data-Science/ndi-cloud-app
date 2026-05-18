@@ -66,6 +66,24 @@ export function DocumentDetailShell({
   const docClass = doc.data?.className;
   const eyebrowTail =
     docClass ?? (docId.length > 24 ? `${docId.slice(0, 24)}…` : docId);
+  // Smarter H1 fallback chain — many NDI doc classes (epoch, vmspikesummary,
+  // element_epoch, ontologyTableRow, treatment timeline) have no useful
+  // `name` field. Some return the literal "Document" placeholder, others
+  // return undefined. Before the fix both paths rendered as just
+  // "Document" in the H1 (visual-UX audit, a395 P0 #5, 2026-05-14).
+  //
+  // Treat the literal "Document" (any casing) as equivalent to no name —
+  // it carries no information beyond what the eyebrow already shows.
+  // The H1 then falls back to "<className> <truncatedId>" so each
+  // document has a distinguishable headline.
+  const shortDocId =
+    docId.length > 16 ? `${docId.slice(0, 8)}…${docId.slice(-4)}` : docId;
+  const isGenericPlaceholderName =
+    !docName || docName.trim().toLowerCase() === 'document';
+  const h1Fallback = docClass
+    ? `${docClass} ${shortDocId}`
+    : `Document ${shortDocId}`;
+  const h1Text = isGenericPlaceholderName ? h1Fallback : docName;
 
   return (
     <>
@@ -85,7 +103,9 @@ export function DocumentDetailShell({
             opacity: 0.05,
           }}
         />
-        <div className="relative mx-auto max-w-[1200px] px-7 py-10 md:py-12">
+        {/* Match the mobile px ramp on the body section below: `px-4`
+            on phones, `px-7` from sm: upward. */}
+        <div className="relative mx-auto max-w-[1200px] px-4 sm:px-7 py-10 md:py-12">
           <div className="mb-3">
             <Link
               href={`/datasets/${datasetId}`}
@@ -115,9 +135,9 @@ export function DocumentDetailShell({
           ) : (
             <h1
               id="doc-detail-hero"
-              className="text-white font-display font-extrabold tracking-tight leading-tight text-[2rem] md:text-[2.25rem] mb-2 max-w-4xl"
+              className="text-white font-display font-extrabold tracking-tight leading-tight text-[2rem] md:text-[2.25rem] mb-2 max-w-4xl break-words"
             >
-              {docName ?? 'Document'}
+              {h1Text}
             </h1>
           )}
 
@@ -141,7 +161,10 @@ export function DocumentDetailShell({
         visual). Side-by-side keeps both above the fold on most
         desktops + makes the page feel materially richer.
       */}
-      <section className="mx-auto max-w-[1200px] px-7 py-7">
+      {/* `px-7` desktop; `px-4` below sm: matches the dataset chrome
+          gate's mobile padding so the document-detail body uses the
+          same content width as the surrounding tab UI. */}
+      <section className="mx-auto max-w-[1200px] px-4 sm:px-7 py-7">
         <div className="space-y-4">
           <Link
             href={`/datasets/${datasetId}/documents`}

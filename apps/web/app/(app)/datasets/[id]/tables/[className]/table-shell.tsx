@@ -101,10 +101,11 @@ const ALWAYS_VISIBLE_CLASSES = new Set(['ontology']);
  *
  * Team review round-2 feedback: "I don't think we need treatment or
  * openminds subject tables. They are redundant with the subject
- * summary." (Treatment columns are now per-subject-joined onto the
- * Subjects tab — see `joinTreatmentsToSubjects` below — so the standalone
- * Treatments tab no longer adds information; OpenMINDS Subjects has the
- * same identifying fields the regular Subjects tab carries.) "The
+ * summary." (Treatment columns are per-subject-joined onto the
+ * Subjects tab server-side via backend's F-1b broadcast in
+ * `_broadcast_treatments_onto_subjects` — so the standalone
+ * Treatments tab no longer adds information; OpenMINDS Subjects has
+ * the same identifying fields the regular Subjects tab carries.) "The
  * combined table doesn't seem to have anything meaningful in it. Maybe
  * drop for now?" (Combined is the Cartesian-style join across grains;
  * with treatments now folded into Subjects, the join produces little
@@ -332,35 +333,21 @@ function StandardTableContent({
   const query = useSummaryTable(datasetId, className);
   const router = useRouter();
 
-  // 2026-04-28 — Per-subject treatment join (replaces PR #129's
-  // hide-by-default safety measure). The reviewer flagged that
-  // dynamic treatment columns were broadcasting the SAME values onto
-  // every subject row regardless of `depends_on.subject_id` — a
-  // 5-subject × 3-treatment dataset rendered 5 rows where every
-  // treatment value showed up on every subject. PR #129 made the
-  // discovered dynamic columns hidden-by-default; this PR replaces
-  // that with a real frontend join so the columns can come back
-  // visible with correct per-subject values.
+  // 2026-05-19 — F-1b ported to backend. `summary_table_service.py`'s
+  // `_project_for_class("subject", ...)` now broadcasts per-subject
+  // treatment columns server-side (one `<prefix>Name` +
+  // `<prefix>Ontology` pair per distinct treatmentName). The cloud-app
+  // gets the broadcast columns inline in the subject summary response;
+  // no frontend join needed. See ADR-009 and
+  // backend `a560a41` (subject enrichment fetches treatment_drug +
+  // treatment_transfer in addition to literal treatment so subclass-
+  // only datasets like Bhar get the broadcast).
   //
-  // Approach: when `className === 'subject'`, fetch the dataset's
-  // treatment summary table (already keyed by
-  // `subjectDocumentIdentifier` per row — see
-  // `_row_treatment` in summary_table_service.py). Group the rows
-  // by subject, derive a dynamic column key from each row's
-  // `treatmentName` (PascalCase + `Name`/`Ontology` suffix —
-  // matches the convention TREATMENT_COLUMN_PATTERN already
-  // recognizes), and inject those columns onto the matching subject
-  // row. Subjects with no matching treatment leave the cells empty
-  // (no broadcast).
-  //
-  // The treatment query is guarded by `enabled: className === 'subject'`
-  // so non-subject grains pay zero network cost. Same TanStack cache
-  // scope as the dedicated `Treatments` tab — visiting either
-  // primes both.
-  const treatmentQuery = useSummaryTable(
-    className === 'subject' ? datasetId : undefined,
-    className === 'subject' ? 'treatment' : undefined,
-  );
+  // Pre-2026-05-19 history: this used to fetch the dataset's treatment
+  // summary table separately and join client-side. The ~100-line
+  // `joinTreatmentsToSubjects` + `pascalCaseFromTreatmentName`
+  // helpers and the matching treatment query hook are removed in
+  // this commit.
 
   // 2026-04-28 (round 3) — Strain-name lookup. The team-review feedback
   // surfaced a separate strain-display bug from the round-1 NDI-ref
@@ -412,7 +399,6 @@ function StandardTableContent({
   // sub-property — listing `query` keeps the dep stable across
   // re-fetches that change the data identity.
   const queryData = query.data;
-  const treatmentData = treatmentQuery.data;
   const openmindsDocs = useMemo<DocumentSummary[] | undefined>(() => {
     if (className !== 'subject') return undefined;
     if (!openmindsDocsQuery.data) return undefined;
@@ -434,16 +420,12 @@ function StandardTableContent({
     // openminds_subject docs are still in flight we leave the row
     // alone — the user briefly sees the ID, then it flips to the
     // human name once data lands.
-    const strainNamed = openmindsDocs
+    return openmindsDocs
       ? joinStrainNamesToSubjects(strainRewritten, openmindsDocs)
       : strainRewritten;
-    // Third: join treatments to subjects when the treatment table
-    // has resolved. While treatment is still loading we render the
-    // subject table without the dynamic columns rather than block
-    // the whole view; columns appear once the join is ready.
-    if (!treatmentData) return strainNamed;
-    return joinTreatmentsToSubjects(strainNamed, treatmentData);
-  }, [queryData, className, treatmentData, openmindsDocs]);
+    // (Treatment broadcast columns ship inline from the backend per F-1b;
+    // no client-side join needed.)
+  }, [queryData, className, openmindsDocs]);
 
   // Wire row-click navigation to `/datasets/[id]/documents/[ndiId]`.
   // Any `*DocumentIdentifier` cell value IS the ndiId — the cloud's
@@ -749,175 +731,18 @@ function rewriteStrainNdiRefToOntology(
 }
 
 /**
- * Convert a human-readable `treatmentName` like
- * `"Optogenetic Tetanus Stimulation Target Location"` into a PascalCase
- * column-key prefix (`OptogeneticTetanusStimulationTargetLocation`).
+ * 2026-05-19 — pascalCaseFromTreatmentName + joinTreatmentsToSubjects
+ * REMOVED. Treatment broadcast columns now ship inline from the
+ * backend per F-1b (see `summary_table_service.py` ::
+ * `_broadcast_treatments_onto_subjects` +
+ * `_pascal_case_from_treatment_name`). The cloud-app's subject
+ * summary response carries `<prefix>Name` + `<prefix>Ontology`
+ * columns ready to render — no client-side pivot needed. The
+ * workspace's SubjectsBrowser also gets them for free now.
  *
- * The shape mirrors `discoverDynamicColumns`'s expected key naming —
- * `TREATMENT_COLUMN_PATTERN` accepts both raw `...Location` keys and
- * `...LocationName`/`...LocationOntology` suffixed pairs, so the join
- * emits a `<prefix>Name` column (the treatment value) and a
- * `<prefix>Ontology` column (the treatment's `treatmentOntology`).
- *
- * Whitespace is collapsed, then each word is upper-cased on the first
- * letter. Non-alphanumeric characters are stripped — these are not
- * expected in canonical treatment names, and including them would
- * produce illegal column-key characters that break header rendering.
- * Empty / null / non-string input returns `null` (caller skips).
+ * Historical helpers preserved in git history at commit fd44603
+ * if anyone needs the JS reference; the Python port lives in
+ * backend/services/summary_table_service.py.
  */
-function pascalCaseFromTreatmentName(s: unknown): string | null {
-  if (typeof s !== 'string') return null;
-  const trimmed = s.trim();
-  if (!trimmed) return null;
-  const parts = trimmed.split(/\s+/).map((word) => {
-    const clean = word.replace(/[^a-zA-Z0-9]/g, '');
-    if (!clean) return '';
-    return clean.charAt(0).toUpperCase() + clean.slice(1);
-  });
-  const joined = parts.join('');
-  return joined || null;
-}
-
-/**
- * 2026-04-28 — Per-subject treatment join. Replaces PR #129's
- * hide-by-default safety measure with a real join keyed off
- * `subjectDocumentIdentifier` so each subject row carries only its
- * OWN treatment values (or empty cells when none apply).
- *
- * Inputs:
- *   - `subjectTable` — the rows + columns from
- *     `useSummaryTable(datasetId, 'subject')`. Already strain-rewritten.
- *   - `treatmentTable` — the rows + columns from
- *     `useSummaryTable(datasetId, 'treatment')`. Each row carries
- *     `subjectDocumentIdentifier`, `treatmentName`, `treatmentOntology`,
- *     `numericValue`, `stringValue` per the v2 backend's
- *     `_row_treatment` projection. The `subjectDocumentIdentifier`
- *     join key matches the same field on subject rows.
- *
- * Output: a new `TableResponse` where:
- *   - Every subject row has every dynamic-treatment column key
- *     present (set to `null` when the subject has no treatment of
- *     that kind) — important for the column-discovery pass in
- *     `discoverDynamicColumns`, which scans the union of all rows.
- *   - The matching subject's row is augmented with the per-subject
- *     treatment value (`stringValue` for the `Name` column;
- *     `treatmentOntology` for the `Ontology` column).
- *   - `data.columns` gains one `{key, label}` entry per discovered
- *     dynamic column (`Name` + `Ontology` pair) so
- *     `SummaryTableView`'s ordered-columns step picks them up.
- *   - Subject row count is unchanged — N treatments do NOT
- *     multiply rows; the bug PR #129 patched was caused by the
- *     opposite path.
- *
- * If a subject has multiple treatments of the same kind, the values
- * collect into an array (the existing `csvJoinFormatter` then
- * renders `"a, b, c"` exactly as it does for multi-valued species
- * etc.). Treatment rows whose `treatmentName` doesn't yield a
- * legal PascalCase key are skipped — the user still sees their
- * treatment via the dedicated Treatments tab.
- *
- * Pure function — does not mutate `subjectTable` or `treatmentTable`.
- */
-function joinTreatmentsToSubjects(
-  subjectTable: TableResponse,
-  treatmentTable: TableResponse,
-): TableResponse {
-  // Group treatments by subjectDocumentIdentifier and dynamic column
-  // key. Outer key = subjectDocumentIdentifier; inner = column key
-  // (e.g. `OptogeneticTetanusStimulationTargetLocationName`); value =
-  // collected array of values across multiple treatments of the same
-  // kind on the same subject.
-  const bySubject = new Map<string, Map<string, unknown[]>>();
-  // Track every distinct dynamic column key we discover, so we can
-  // surface them in `data.columns` even if no subject row has been
-  // written for them yet (avoids missing headers).
-  const discoveredKeys = new Map<string, string>(); // key -> human label
-
-  for (const tRow of treatmentTable.rows) {
-    const subjectId = tRow.subjectDocumentIdentifier;
-    if (typeof subjectId !== 'string' || !subjectId) continue;
-    const prefix = pascalCaseFromTreatmentName(tRow.treatmentName);
-    if (!prefix) continue;
-
-    const nameKey = `${prefix}Name`;
-    const ontologyKey = `${prefix}Ontology`;
-    const nameLabel = typeof tRow.treatmentName === 'string'
-      ? `${tRow.treatmentName} Name`
-      : nameKey;
-    const ontologyLabel = typeof tRow.treatmentName === 'string'
-      ? `${tRow.treatmentName} Ontology`
-      : ontologyKey;
-
-    discoveredKeys.set(nameKey, nameLabel);
-    discoveredKeys.set(ontologyKey, ontologyLabel);
-
-    let perSubject = bySubject.get(subjectId);
-    if (!perSubject) {
-      perSubject = new Map<string, unknown[]>();
-      bySubject.set(subjectId, perSubject);
-    }
-    // Treatment value: prefer `stringValue` (e.g. `UBERON:0001930`
-    // for a Location-typed treatment); fall back to `numericValue`
-    // for dose / duration / onset variants. Empty arrays from the
-    // backend (`numeric_value: []`) are skipped — the cell stays
-    // empty for that subject.
-    const stringVal = tRow.stringValue;
-    const numericVal = tRow.numericValue;
-    const value = (typeof stringVal === 'string' && stringVal)
-      || (typeof stringVal === 'number' ? stringVal : null)
-      || (typeof numericVal === 'number' ? numericVal : null)
-      || (Array.isArray(numericVal) && numericVal.length > 0 ? numericVal : null);
-    if (value !== null) {
-      const arr = perSubject.get(nameKey) ?? [];
-      arr.push(value);
-      perSubject.set(nameKey, arr);
-    }
-    const ontology = tRow.treatmentOntology;
-    if (typeof ontology === 'string' && ontology) {
-      const arr = perSubject.get(ontologyKey) ?? [];
-      arr.push(ontology);
-      perSubject.set(ontologyKey, arr);
-    }
-  }
-
-  // No discovered dynamic columns → return the strain-rewritten
-  // table unchanged (avoid a needless allocation that would also
-  // change column object identity for the column-toggle picker).
-  if (discoveredKeys.size === 0) return subjectTable;
-
-  // Inject per-subject values onto each row. Subjects with no
-  // treatments leave the dynamic cells `null` (NOT broadcast). Use
-  // `null` rather than omitting the key so `discoverDynamicColumns`
-  // sees the column on every row when scanning for the union of
-  // keys, keeping the column-picker entry correctly registered.
-  const newRows = subjectTable.rows.map((row) => {
-    const subjectId = row.subjectDocumentIdentifier;
-    const perSubject = typeof subjectId === 'string' ? bySubject.get(subjectId) : undefined;
-    const out: Record<string, unknown> = { ...row };
-    for (const key of discoveredKeys.keys()) {
-      const collected = perSubject?.get(key);
-      if (!collected || collected.length === 0) {
-        out[key] = null;
-      } else if (collected.length === 1) {
-        out[key] = collected[0];
-      } else {
-        out[key] = collected;
-      }
-    }
-    return out;
-  });
-
-  // Append the discovered columns to `data.columns` so SummaryTableView's
-  // ordered-columns build picks them up. Skip any keys the backend
-  // already emits (defensive — current backend doesn't, but a future
-  // backend join would).
-  const existingKeys = new Set(subjectTable.columns.map((c) => c.key));
-  const newColumns = [
-    ...subjectTable.columns,
-    ...[...discoveredKeys.entries()]
-      .filter(([key]) => !existingKeys.has(key))
-      .map(([key, label]) => ({ key, label })),
-  ];
-
-  return { columns: newColumns, rows: newRows };
-}
+// (pascalCaseFromTreatmentName + joinTreatmentsToSubjects deleted —
+// ported to backend in F-1b. See block comment above.)

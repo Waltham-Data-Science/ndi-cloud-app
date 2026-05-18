@@ -26,12 +26,12 @@ import { pickPlotSuggestions } from '@/lib/viewer/pickPlotSuggestions';
 import { formatPythonSnippet } from '@/lib/viewer/pythonSnippet';
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card';
 import { ErrorState } from '@/components/errors/ErrorState';
-import { ViolinPlot, type ViolinGroup } from './ViolinPlot';
-import { BoxPlot } from './BoxPlot';
-import { Histogram } from './Histogram';
-import { BarChartByGroup } from './BarChartByGroup';
-import { ScatterPlot } from './ScatterPlot';
-import { LinePlot } from './LinePlot';
+import { ViolinPlot, type ViolinGroup } from '@/components/ndi/charts/inline/ViolinPlot';
+import { BoxPlot } from '@/components/ndi/charts/inline/BoxPlot';
+import { Histogram } from '@/components/ndi/charts/inline/Histogram';
+import { BarChartByGroup } from '@/components/ndi/charts/inline/BarChartByGroup';
+import { ScatterPlot } from '@/components/ndi/charts/inline/ScatterPlot';
+import { LinePlot } from '@/components/ndi/charts/inline/LinePlot';
 import { QuickPlotControls } from './QuickPlotControls';
 
 interface QuickPlotProps {

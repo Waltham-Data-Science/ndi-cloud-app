@@ -86,7 +86,15 @@ export function Footer() {
 
 function FooterColumn({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div>
+    // `min-w-0` lets the grid item shrink below the intrinsic
+    // min-content width of long unbreakable strings (notably the
+    // mailto link `info@walthamdatascience.com`). Without it, CSS
+    // Grid expands the column to fit the longest word, overflowing
+    // the viewport at <~400px wide. Surfaced 2026-05-12 by a new
+    // e2e mobile-viewport overflow assertion on /ask — the same
+    // overflow has actually been present on every marketing page
+    // on mobile since launch, just never caught by a test.
+    <div className="min-w-0">
       {/* Phase 6.6 PR-G a11y polish: was `<h5>` (heading-order
        * violation — page had h1 + h2; jumping to h5 here skips h3+h4).
        * Footer column labels aren't navigation milestones; they're
@@ -115,8 +123,11 @@ function FooterLink({ href, children, target, rel }: FooterLinkProps) {
   // navigation. External / mailto / target="_blank" links use a raw <a>
   // since <Link> doesn't add value for those.
   const isInternal = href.startsWith('/') && !target;
+  // `break-words` allows the long mailto link to wrap when the
+  // column is too narrow to fit it on one line (paired with the
+  // FooterColumn `min-w-0` change above).
   const className =
-    'block py-1 text-[13.5px] text-white/65 no-underline hover:text-white transition-colors duration-(--duration-base) ease-(--ease-out)';
+    'block py-1 text-[13.5px] text-white/65 no-underline hover:text-white transition-colors duration-(--duration-base) ease-(--ease-out) break-words';
 
   if (isInternal) {
     return (

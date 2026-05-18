@@ -61,9 +61,18 @@ export function ontologyUrl(termId: string): string | null {
       // `WBStrain:00000001` → `.../strain/WBStrain00000001`.
       return `https://wormbase.org/species/c_elegans/strain/WBStrain${suffix}`;
     case 'ncbitaxon':
-      // NCBI Taxonomy Browser. The numeric suffix IS the taxon ID
-      // (e.g. 6239 = C. elegans, 10090 = Mus musculus).
-      return `https://www.ncbi.nlm.nih.gov/Taxonomy/Browser/wwwtax.cgi?id=${suffix}`;
+      // NCBI Datasets Taxonomy browser. The numeric suffix IS the
+      // taxon ID (e.g. 6239 = C. elegans, 10090 = Mus musculus,
+      // 10116 = Rattus norvegicus).
+      //
+      // Switched from the legacy `/Taxonomy/Browser/wwwtax.cgi?id=`
+      // URL to the new `/datasets/taxonomy/browser/?taxon=` path on
+      // 2026-05-14 — the legacy CGI page still works, but NCBI's
+      // unified Datasets surface (the same browser the user lands
+      // on from `https://www.ncbi.nlm.nih.gov/datasets/`) has
+      // genome/assembly/SRA cross-references inline and is the URL
+      // NCBI now promotes externally.
+      return `https://www.ncbi.nlm.nih.gov/datasets/taxonomy/browser/?taxon=${suffix}`;
     case 'uberon':
       return `https://www.ebi.ac.uk/ols4/ontologies/uberon/classes?obo_id=UBERON%3A${suffix}`;
     case 'pato':

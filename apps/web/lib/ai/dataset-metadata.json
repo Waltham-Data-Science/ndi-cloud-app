@@ -1,0 +1,307 @@
+{
+  "_doc": "Hand-curated metadata sidecar for the experimental /ask chat's RAG layer. Mirrors the vh-lab/shrek-lab `grant_metadata.json` pattern: a place to add facts the catalog API does NOT expose so they end up in retrievable chunks. Refresh `pnpm build-ask-index` after editing — the index reads this file at build time.",
+
+  "_schema_doc": {
+    "keys": "Dataset ID (the same id you'd pass to /api/datasets/:id).",
+    "displayName": "Optional alternative name used in chunk text alongside the catalog name. Helps when the catalog name is terse (e.g., 'Cohort 3') but the dataset is colloquially known as something more memorable.",
+    "highlights": "Array of one-line bullet points the demo should surface for this dataset. These are the 'pitch' lines for sales/demo (e.g., 'novel awake-behaving paradigm', 'first publicly available tree shrew recordings').",
+    "keywords": "Extra search terms the LLM should associate with this dataset. Use for: alternate spellings, sibling terminology, common-name → scientific-name links (e.g., add 'mouse' to a Mus musculus dataset).",
+    "notableMethods": "Distinctive techniques used. Helps semantic queries like 'studies using extracellular probes' surface even when the description doesn't say it verbatim.",
+    "piContext": "PI background that helps the model contextualize answers — affiliations, lab focus, anything useful for a 'who is X?' follow-up. Keep brief; this is augmentation, not biography."
+  },
+
+  "69bc5ca11d547b1f6d083761": {
+    "displayName": "Bhar / Babu — C. elegans memory transfer via IL2 extracellular vesicles",
+    "highlights": [
+      "Demonstrates inter-organism transfer of long-term associative memory via extracellular vesicles",
+      "IL2 neuron-dependent EV release during heat + isoamyl-alcohol (IAA) conditioning",
+      "9 C. elegans strains spanning wild-type N2 and 8 lab-engineered lines (BAB9001-5, PT3602, TM5848)",
+      "Published with a MATLAB Live Script tutorial walking subject metadata, treatment provenance, and EV markers"
+    ],
+    "keywords": [
+      "C. elegans",
+      "Caenorhabditis elegans",
+      "nematode",
+      "worm",
+      "long-term associative memory",
+      "LTAM",
+      "extracellular vesicles",
+      "EVs",
+      "IL2 neurons",
+      "isoamyl alcohol",
+      "IAA",
+      "heat conditioning",
+      "memory transfer",
+      "behavioral conditioning",
+      "drug treatment provenance"
+    ],
+    "notableMethods": [
+      "behavioral conditioning (heat + IAA)",
+      "chemotaxis assay",
+      "extracellular vesicle isolation",
+      "strain comparison",
+      "drug treatment with provenance tracking"
+    ],
+    "piContext": "Kavita Babu lab (IISc Bangalore) — C. elegans behavioral neuroscience, EV biology. Lead author Monmita Bhar. Funded by India Alliance Wellcome/DBT, MoE STARS, ANRF, KVPY/CSIR fellowships."
+  },
+
+  "682e7772cdf3f24938176fac": {
+    "displayName": "Haley — C. elegans accept-reject foraging on bacterial patches",
+    "highlights": [
+      "Quantitative ethology of accept-reject decision-making during free foraging",
+      "Tracks 2D trajectories + distance-to-patch + on-patch dwell time at high spatial resolution",
+      "Pairs animal behavior with bacterial-patch growth (OP50 vs OP50-GFP strains) to test food-quality effects",
+      "Encounter tables with 20K+ rows linking acceptance vs rejection to patch context",
+      "Published with a MATLAB Live Script tutorial showing position timeseries (VHSB binary format) and ontology-grounded behavior tables"
+    ],
+    "keywords": [
+      "C. elegans",
+      "Caenorhabditis elegans",
+      "foraging",
+      "decision-making",
+      "accept-reject",
+      "bacterial patches",
+      "OP50",
+      "OP50-GFP",
+      "E. coli",
+      "trajectory tracking",
+      "position timeseries",
+      "behavioral video",
+      "patch encounter",
+      "VHSB format",
+      "PR811 strain",
+      "N2 wild-type",
+      "ethology"
+    ],
+    "notableMethods": [
+      "behavioral video tracking",
+      "patch detection + spatial mapping",
+      "ontology-grounded analysis tables (OTR)",
+      "phase-contrast + fluorescence microscopy of bacterial growth"
+    ],
+    "piContext": "Haley lab — C. elegans foraging behavior, decision-making, food-environment interactions. Pairs animal-level behavior with bacterial-food microscopy in a single integrated NDI dataset."
+  },
+
+  "67f723d574f5f79c6062389d": {
+    "displayName": "Dabrowska — BNST vasopressin / oxytocin patch-clamp electrophysiology",
+    "binarySignalExample": {
+      "docId": "68d6e54703a03f5cfdac8eff",
+      "filename": "ai_group1_seg.nbf_1",
+      "description": "Analog-input voltage trace (patch-Vm), epoch 1 group 1, segment 1. NBF binary, ~10 kHz sample rate"
+    },
+    "highlights": [
+      "Whole-cell patch-clamp recordings from identified neurons in the bed nucleus of the stria terminalis (BNST)",
+      "Optogenetic activation of CRF, OTR, AVP, and CRF-Cre lines lets the recording isolate cell-type-specific responses",
+      "Paired with elevated plus maze (EPM) + startle behavior to link cellular changes to anxiety phenotypes",
+      "606 probes (202 each of patch-Vm voltage, patch-I current, and stimulator) across 215 subjects",
+      "Published with a MATLAB Live Script tutorial demonstrating raw voltage/current trace retrieval (NBF binary format) and current-step sweep analysis"
+    ],
+    "keywords": [
+      "rat",
+      "Rattus norvegicus",
+      "bed nucleus of the stria terminalis",
+      "BNST",
+      "vasopressin",
+      "AVP",
+      "oxytocin",
+      "OTR",
+      "corticotropin-releasing factor",
+      "CRF",
+      "patch-clamp",
+      "whole-cell",
+      "intracellular recording",
+      "electrophysiology",
+      "elevated plus maze",
+      "EPM",
+      "acoustic startle",
+      "anxiety",
+      "stress response",
+      "optogenetics",
+      "NBF format",
+      "patch-Vm",
+      "patch-I",
+      "current step protocol"
+    ],
+    "notableMethods": [
+      "whole-cell patch-clamp electrophysiology",
+      "optogenetic stimulation",
+      "current-step injection protocol",
+      "elevated plus maze (EPM) behavioral assay",
+      "acoustic startle",
+      "Cre-driver line targeting (CRF-Cre, OTR-IRES-Cre, AVP-Cre)"
+    ],
+    "piContext": "Joanna Dabrowska lab — limbic neuropeptide signaling, stress/anxiety circuits, paraventricular and BNST microcircuitry. Combines targeted cell-type recordings with behavioral phenotyping. NOTE: This is the FULL Dabrowska BNST dataset (~14,644 documents, 215 subjects, with Elevated Plus Maze + acoustic startle + CNO/Saline behavioral data). It is the right Dabrowska dataset for behavioral/EPM/Saline/CNO/anxiety questions. There is ALSO a separate, much smaller dataset on CRF neurons in BNST (id 6896c654583596300a5b1b17) which is currently still being processed and has NO documents — do not route behavioral questions there."
+  },
+
+  "6896c654583596300a5b1b17": {
+    "displayName": "Dabrowska — CRF+ BNST neurons (DATASET BEING PROCESSED)",
+    "highlights": [
+      "Companion paper to the main Dabrowska BNST dataset (67f723d574f5f79c6062389d) focusing specifically on CRF (corticotropin-releasing factor) neurons in dorsolateral BNST",
+      "Investigates sex-by-reproductive-state interactions with anxiety circuits — explores why PTSD/anxiety prevalence differs in women",
+      "DATASET CURRENTLY BEING PROCESSED — no NDI documents available yet. For Dabrowska BNST behavioral/EPM/Saline/CNO/anxiety data, use the FULL Dabrowska dataset at 67f723d574f5f79c6062389d instead"
+    ],
+    "keywords": [
+      "rat",
+      "Rattus norvegicus",
+      "bed nucleus of the stria terminalis",
+      "BNST",
+      "BNSTDL",
+      "corticotropin-releasing factor",
+      "CRF",
+      "anxiety",
+      "PTSD",
+      "post-traumatic stress disorder",
+      "hypervigilance",
+      "fear reactivity",
+      "unpredictable threat",
+      "sex differences",
+      "reproductive cycle",
+      "estrous cycle",
+      "Dabrowska"
+    ],
+    "notableMethods": [
+      "CRF-neuron-targeted recordings",
+      "sex/reproductive-state phenotyping"
+    ],
+    "piContext": "Joanna Dabrowska lab — same lab as the main BNST patch-clamp dataset (67f723d574f5f79c6062389d). DISAMBIGUATION GUIDANCE: when a user mentions 'Dabrowska BNST' without further specifier, they almost certainly mean the FULL patch-clamp dataset (67f723d574f5f79c6062389d) — it contains the behavioral data, EPM/Saline/CNO measurements, AND patch-clamp recordings. Only route to THIS dataset (6896c654583596300a5b1b17) when the user explicitly asks about the CRF-neuron / sex-differences / reproductive-cycle paper AND understands it's still being processed."
+  },
+
+  "68839b1fbf243809c0800a01": {
+    "displayName": "Haley / Fitzpatrick — Premature vision aberrant V1 development in tree shrew",
+    "highlights": [
+      "Tests the consequences of premature visual experience on V1 development — opens the eyes early to disrupt the normal pre-vs-post natal sequence",
+      "Tree shrew model (Tupaia belangeri) — the closest non-primate to primates for visual system studies; rare publicly available primate-like V1 data",
+      "Pairs altered-rearing protocols with extracellular V1 recordings to measure how receptive field properties develop",
+      "Companion / sibling dataset to the Fitzpatrick lab LGN→V1 transformation dataset (66140c237dbc358954ddffb9)"
+    ],
+    "keywords": [
+      "tree shrew",
+      "Tupaia belangeri",
+      "primary visual cortex",
+      "V1",
+      "premature vision",
+      "early eye opening",
+      "altered visual development",
+      "receptive field development",
+      "spontaneous retinal activity",
+      "experience-dependent plasticity",
+      "extracellular recordings",
+      "primate-like vision",
+      "rearing protocol",
+      "Fitzpatrick lab"
+    ],
+    "notableMethods": [
+      "controlled premature eye opening",
+      "extracellular V1 single-unit recordings",
+      "receptive field mapping",
+      "tree shrew electrophysiology"
+    ],
+    "piContext": "David Fitzpatrick lab (Max Planck Florida Institute) — comparative vision neuroscience, tree shrew V1 development, receptive field plasticity. The tree shrew is closer to primates than to rodents, making this dataset rare + valuable for translational visual neuroscience."
+  },
+
+  "668b0539f13096e04f1feccd": {
+    "displayName": "Carbon Fiber Microelectrode Arrays — construction + chronic/acute in vivo recordings",
+    "highlights": [
+      "Methods + validation paper for a custom carbon-fiber multi-electrode array — small cross-diameter (~7 µm) lets the probe sit in tissue with minimal damage",
+      "Compares chronic vs acute recordings — long-term stability is the headline win",
+      "Useful as a methodology reference rather than a single biological-question dataset",
+      "Includes raw and processed waveform data from validation recordings"
+    ],
+    "keywords": [
+      "carbon fiber",
+      "microelectrode array",
+      "multi-electrode array",
+      "MEA",
+      "chronic recording",
+      "acute recording",
+      "in vivo recording",
+      "extracellular probe",
+      "electrode design",
+      "neural interface",
+      "long-term recording",
+      "tissue damage",
+      "biocompatibility"
+    ],
+    "notableMethods": [
+      "carbon-fiber probe fabrication",
+      "chronic in vivo electrophysiology",
+      "spike sorting validation",
+      "histology + probe-track recovery"
+    ],
+    "piContext": "Methodology / instrumentation paper. Useful when users ask about probe design, chronic-recording stability, or carbon-fiber arrays. Not a behavioral or circuit-mapping dataset — questions about anxiety, BNST, memory, foraging etc. should NOT route here."
+  },
+
+  "66140c237dbc358954ddffb9": {
+    "displayName": "Fitzpatrick — LGN → V1 receptive field transformation in tree shrew",
+    "highlights": [
+      "Maps how receptive field properties transform from lateral geniculate nucleus (LGN) input layers to V1 layer 4 and on to layer 2/3",
+      "Tree shrew model — primate-like laminar V1 organization without using actual primates",
+      "Quantitative comparison of orientation tuning, ON/OFF balance, and spatial-frequency tuning across the LGN→4→2/3 hierarchy",
+      "Sibling dataset to 68839b1fbf243809c0800a01 (premature vision V1 development) from the same lab"
+    ],
+    "keywords": [
+      "tree shrew",
+      "Tupaia belangeri",
+      "lateral geniculate nucleus",
+      "LGN",
+      "primary visual cortex",
+      "V1",
+      "receptive field",
+      "orientation tuning",
+      "spatial frequency",
+      "ON/OFF cells",
+      "layer 4",
+      "layer 2/3",
+      "feedforward processing",
+      "thalamocortical",
+      "tuning curve",
+      "Fitzpatrick lab"
+    ],
+    "notableMethods": [
+      "paired LGN + V1 extracellular recordings",
+      "receptive field mapping with drifting gratings",
+      "tuning curve analysis (orientation, spatial frequency)",
+      "laminar localization via histology"
+    ],
+    "piContext": "David Fitzpatrick lab (Max Planck Florida Institute) — sibling work to the premature-vision dataset. Together these two datasets form a body of work on tree shrew V1 — a unique resource for primate-like visual neuroscience without primate ethics constraints."
+  },
+
+  "6546c5097895c9702d9fc744": {
+    "displayName": "Katz — Gustatory cortex single-trial ensemble dynamics + precisely-timed inhibition",
+    "highlights": [
+      "Tests causal role of precisely-timed gustatory-cortex (GC) activity on taste-related behavior (palatability-driven gaping)",
+      "Single-trial analysis: shows that taste-response firing-rate epochs culminate in a coherent, variably-timed transition to action-related firing",
+      "Optogenetic precisely-timed inhibition delivered AT the population transition disrupts behavior; mistimed inhibition does not — strong causal demonstration",
+      "Population analysis methods (HMM-style state transitions) on multi-unit ensemble data"
+    ],
+    "keywords": [
+      "rat",
+      "Rattus norvegicus",
+      "gustatory cortex",
+      "GC",
+      "taste",
+      "palatability",
+      "gaping",
+      "taste response",
+      "single-trial dynamics",
+      "ensemble dynamics",
+      "population coding",
+      "state transitions",
+      "HMM",
+      "precisely-timed inhibition",
+      "optogenetic silencing",
+      "halorhodopsin",
+      "decision-making",
+      "sensorimotor",
+      "Katz lab"
+    ],
+    "notableMethods": [
+      "chronic multi-unit GC recordings",
+      "optogenetic inhibition (precisely timed)",
+      "single-trial state-transition analysis",
+      "intraoral taste delivery + gape monitoring",
+      "behavior + neural simultaneous"
+    ],
+    "piContext": "Donald Katz lab (Brandeis) — gustatory cortex, taste perception, sensorimotor integration. This dataset is the resource behind a series of papers on how cortical ensemble dynamics causally drive moment-by-moment taste behavior."
+  }
+}

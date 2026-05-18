@@ -38,3 +38,52 @@ vi.mock('geist/font/mono', () => ({
  * empty module so server-only files can be imported by tests.
  */
 vi.mock('server-only', () => ({}));
+
+/**
+ * localStorage polyfill.
+ *
+ * The jsdom 29 environment shipped with vitest 4 exposes `Storage` and
+ * `sessionStorage` correctly but `window.localStorage` returns an
+ * empty plain object with no `setItem`/`getItem` methods. Until that
+ * is patched upstream, install a minimal in-memory `Storage`
+ * implementation here so tests that exercise localStorage (e.g. the
+ * /ask conversation persistence layer) get a working API.
+ *
+ * Safe to leak across tests: every test that cares about isolation
+ * already calls `localStorage.clear()` in its own beforeEach.
+ */
+if (
+  typeof window !== 'undefined' &&
+  (typeof window.localStorage?.setItem !== 'function' ||
+    typeof window.localStorage?.clear !== 'function')
+) {
+  const createMemoryStorage = (): Storage => {
+    const store = new Map<string, string>();
+    const storage: Storage = {
+      get length() {
+        return store.size;
+      },
+      key(index: number): string | null {
+        return Array.from(store.keys())[index] ?? null;
+      },
+      getItem(key: string): string | null {
+        return store.has(key) ? (store.get(key) as string) : null;
+      },
+      setItem(key: string, value: string): void {
+        store.set(String(key), String(value));
+      },
+      removeItem(key: string): void {
+        store.delete(key);
+      },
+      clear(): void {
+        store.clear();
+      },
+    };
+    return storage;
+  };
+
+  Object.defineProperty(window, 'localStorage', {
+    configurable: true,
+    value: createMemoryStorage(),
+  });
+}

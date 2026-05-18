@@ -43,6 +43,7 @@ import type { CSSProperties } from 'react';
 import type { DatasetRecord } from '@/lib/api/datasets';
 import { Badge } from '@/components/ui/Badge';
 import { Card, CardBody, CardTitle } from '@/components/ui/Card';
+import { DatasetHealthBadge } from '@/components/datasets/DatasetHealthBadge';
 import { cn } from '@/lib/cn';
 import { isDefaultBranch } from '@/lib/dataset-filters';
 import {
@@ -56,6 +57,15 @@ import { normalizeLicense } from '@/lib/license-normalize';
 
 interface DatasetCardProps {
   dataset: DatasetRecord;
+  /**
+   * Builds the href the card navigates to. Defaults to the public
+   * `/datasets/[id]/overview` discovery surface. The `/my` workspace
+   * landing overrides this to `/my/workspace/[id]` so logged-in users
+   * land directly in the rich Task-2 viewer GUI when they click on
+   * one of their datasets. (Added 2026-05-14 with the workspace
+   * landing; safe default keeps every other consumer unchanged.)
+   */
+  hrefBuilder?: (datasetId: string) => string;
 }
 
 const HOVER_STYLE: CSSProperties = {
@@ -63,7 +73,10 @@ const HOVER_STYLE: CSSProperties = {
   transitionTimingFunction: 'var(--ease-out)',
 };
 
-export function DatasetCard({ dataset }: DatasetCardProps) {
+export function DatasetCard({
+  dataset,
+  hrefBuilder = (id) => `/datasets/${id}/overview`,
+}: DatasetCardProps) {
   // Strip cloud-side cosmetic noise before render: leading "Dataset:"
   // prefix on names (legacy admin-UI artifact, inconsistent across
   // entries) and the in-flight "DATASET BEING PROCESSED." marker that
@@ -73,7 +86,7 @@ export function DatasetCard({ dataset }: DatasetCardProps) {
 
   return (
     <Link
-      href={`/datasets/${dataset.id}/overview`}
+      href={hrefBuilder(dataset.id)}
       className="block group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-brand-blue-3 rounded-lg"
       aria-label={`Open dataset ${displayName}`}
     >
@@ -152,7 +165,11 @@ function DatasetCardInner({
           Loading…
         </div>
       )}
-      <CardBody className="p-6 md:p-7">
+      {/* Padding ramp: p-5 (20px) on phones <640px so the card body
+          doesn't crowd the meta strip at <375px viewports (px-7 page
+          padding + p-6 card padding was leaving ~216px content at
+          320px), p-6 on small tablets, p-7 on md+ desktops. */}
+      <CardBody className="p-5 sm:p-6 md:p-7">
         <div className="flex items-center gap-2 mb-3 flex-wrap">
           {/* Status pill: PUBLISHED (green) / DRAFT (amber) / PROCESSING.
               2026-04-28 — these were previously stacked: Published +
@@ -197,6 +214,12 @@ function DatasetCardInner({
             dataset.publishStatus !== 'published' && (
               <Badge variant="secondary">{dataset.publishStatus}</Badge>
             )}
+          {/* Stream 6.10 (2026-05-15): catalog-side Dataset Health
+              badge. Renders ONLY when the inlined compact summary
+              reveals a violation (e.g. totalDocuments > 0 but
+              subjects = 0, or subjects present with empty species).
+              Renders nothing on healthy datasets. */}
+          <DatasetHealthBadge dataset={dataset} />
         </div>
 
         <CardTitle
@@ -280,7 +303,13 @@ function DatasetCardInner({
           )}
           {dataset.doi && (
             <MetaCell label="DOI">
-              <span className="font-mono truncate inline-block max-w-[260px] align-bottom">
+              {/* Truncate width was a fixed `max-w-[260px]` which overflowed
+                  the card at viewports <375px (after `px-7` page padding
+                  + `p-6` card padding eats ~104px, the inner column is
+                  ~216px at 320px viewport). Switched to a responsive
+                  ramp: 180px on small phones, 260px from sm: upward.
+                  `truncate` clips the rest with an ellipsis. */}
+              <span className="font-mono truncate inline-block max-w-[180px] sm:max-w-[260px] align-bottom">
                 {dataset.doi.replace(/^https?:\/\//, '')}
               </span>
             </MetaCell>

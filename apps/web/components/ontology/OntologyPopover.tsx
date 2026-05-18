@@ -35,7 +35,7 @@ import { Skeleton } from '@/components/ui/Skeleton';
 import { useOntologyLookup } from '@/lib/api/ontology';
 import { ontologyUrl } from '@/lib/ontology/url-builder';
 import { safeHref } from '@/lib/safe-href';
-import { normalizeOntologyTerm } from './ontology-utils';
+import { normalizeOntologyTerm } from '@/lib/ontology/utils';
 
 const OPEN_DELAY_MS = 150;
 const CLOSE_DELAY_MS = 100;

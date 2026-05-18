@@ -1,10 +1,13 @@
 /**
- * Ontology term utilities.
+ * Ontology term utilities — pure logic, no React, no DOM.
+ *
+ * Lives in `lib/ontology/` rather than `components/ontology/` because
+ * non-UI callers (data-layer hooks under `lib/api/`) need to normalize
+ * terms before issuing lookup requests. Keeping the helpers UI-free
+ * preserves the layering rule that `lib/` may not import from
+ * `components/`.
  *
  * Ported verbatim from `ndi-data-browser-v2/frontend/src/components/ontology/ontology-utils.ts`.
- * Single source of truth for "is this a clickable ontology term" — used
- * by `OntologyPopover` (single-term lookup) and any future batch-prefetch
- * consumer (e.g. `SummaryTableView` when its content port lands).
  *
  * Contract notes (carried from data-browser):
  *   - Lab-prefixed subject identifiers like

@@ -5,6 +5,7 @@ import type { NextConfig } from 'next';
 // Side-effect import: validates process.env at config-load time.
 // A malformed environment fails the build before next.config returns.
 import './lib/env';
+import { apiRewriteFor } from './lib/next-config/api-rewrite';
 
 const config: NextConfig = {
   reactStrictMode: true,
@@ -160,14 +161,14 @@ const config: NextConfig = {
    * upstream sees the request.
    */
   async rewrites() {
-    const upstream = process.env.UPSTREAM_API_URL;
-    if (!upstream) return [];
-    return [
-      {
-        source: '/api/:path*',
-        destination: `${upstream.replace(/\/$/, '')}/api/:path*`,
-      },
-    ];
+    // Branch-aware upstream routing for the NDI-python integration.
+    // The full decision tree + ADR pointer live in
+    // `lib/next-config/api-rewrite.ts` so the routing logic stays
+    // unit-testable (Stream 6.3 extraction, 2026-05-15).
+    return apiRewriteFor({
+      VERCEL_GIT_COMMIT_REF: process.env.VERCEL_GIT_COMMIT_REF,
+      UPSTREAM_API_URL: process.env.UPSTREAM_API_URL,
+    });
   },
 };
 

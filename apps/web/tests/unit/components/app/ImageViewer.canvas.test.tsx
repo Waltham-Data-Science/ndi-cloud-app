@@ -29,7 +29,7 @@ import { render, screen } from '@testing-library/react';
 
 import {
   ImageStackCanvasViewer,
-} from '@/components/app/ImageViewer';
+} from '@/components/ndi/media/ImageViewer';
 import type { ImageStackParameters } from '@/lib/api/binary';
 
 // Capture every `putImageData` call so we can assert canvas rendering
