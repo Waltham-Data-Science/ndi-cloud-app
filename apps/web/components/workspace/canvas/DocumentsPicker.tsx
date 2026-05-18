@@ -67,6 +67,7 @@ import { useDocuments, type DocumentSummary } from '@/lib/api/documents';
 import { cn } from '@/lib/cn';
 import { isHiddenWrapperClass } from '@/lib/data/class-counts';
 import { formatNumber } from '@/lib/format';
+import { resolveDocName } from '@/lib/workspace/doc-name-fallback';
 import {
   SELECTION_TITLES,
   useWorkspaceSelection,
@@ -258,9 +259,13 @@ interface DocRow {
 function projectDocRow(doc: DocumentSummary): DocRow | null {
   const docId = doc.id ?? doc.ndiId ?? '';
   if (typeof docId !== 'string' || docId.length === 0) return null;
+  // 2026-05-18 — B4 fix. Many doc classes (daqreader_*, imageStack,
+  // ontologyTableRow) ship empty `base.name`. Use the shared
+  // `resolveDocName` fallback so the picker shows a readable label
+  // (file name, class-specific synthesis, or `<class> · <id>`).
   return {
     docId,
-    name: typeof doc.name === 'string' ? doc.name : null,
+    name: resolveDocName(doc as Record<string, unknown>),
     raw: doc,
   };
 }
