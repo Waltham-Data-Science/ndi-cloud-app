@@ -349,9 +349,95 @@ in-page links so far.
 
 ---
 
+## Code-out-everything phase — 2026-05-19 late night
+
+Per user direction "code out *, verify live" the prior session
+moved from polish to comprehensive backend + cloud-app implementation
+of every "what's left" item except S-1 through S-4 (SDK upstream
+asks). Everything that landed deploys to experimental envs only —
+NEVER to main.
+
+### Backend `feat/ndi-python-phase-a` — 8 commits
+
+| SHA | Title | What it does |
+|---|---|---|
+| `27c93a6` | F-1c + F-1d + F-1e alias additions | counts.probes probe→element fallback (Francesconi 0→606); _CLASS_ALIASES adds element_epoch → [epochfiles_ingested, daqreader_mfdaq_epochdata_ingested]; treatment_timeline chain extended to merge treatment + treatment_drug + treatment_transfer |
+| `ea51ff3` | F-2 + F-3 | `?subject=` filter on /tables/{class} (post-cache, pre-paginate); `?direction=upstream\|downstream\|both` on /dependencies (post-walk filter, cache untouched) |
+| `0231851` | F-1 stimulus projection | New STIMULUS_COLUMNS (stimulusName / elementDocumentIdentifier / presentationCount / first+last presentation time); short-form alias `stimulus` → `stimulus_presentation`; added to SUPPORTED_CLASSES |
+| `44842e3` | F-8 tabular_query POST | Add POST variant alongside GET; shared `_dispatch` so cloud-app's POST wrapper can forward verbatim without translating to GET |
+| `9e586b5` | projection-dispatch fix | `_project_for_class` now uses REQUESTED class (not resolved alias). Without this, element_epoch resolved to epochfiles_ingested would silently fall to GENERIC_COLUMNS even though the alias chain returned rows |
+| `e94fe0a` | F-1e completion | `_row_treatment` auto-detects which sub-block is present (treatment / treatment_drug / treatment_transfer) and projects accordingly. treatment_drug parses `mixture_table` CSV for name, `administration_onset_time` / `_offset_time` for timing (handles both numeric seconds and HH:MM:SS strings — Bhar emits "-06:00:00"). treatment_transfer uses `recipient_id` depends_on and `timestamp` for single-tick Gantt timing |
+| `e0124f6` | SUPPORTED_CLASSES extension | Expose treatment_drug + treatment_transfer via /tables/{class} route directly (was 400 VALIDATION_ERROR pre-fix) |
+| `4053119`+`8401286` | cache schema v4→v5 + test updates | Bump RedisTableCache SCHEMA_VERSION so stale v4 GENERIC_COLUMNS blobs are invalidated; without the bump, Bhar treatment timeline still saw the pre-fix shape until 1h TTL |
+
+F-7 confirmed already covered by Stream 4.9 (aggregate_documents
+ports via ndiquery, which is already bulk-shaped). F-1b deferred
+(treatment-broadcast cols pivot — large work, cloud-app JS workaround
+in `table-shell.tsx` exists; SubjectsBrowser still doesn't surface
+those cols but that's a separate iteration).
+
+### Cloud-app `feat/experimental-ask-chat` — 2 commits
+
+| SHA | Title |
+|---|---|
+| `035d152` | BehavioralTrack pair-mode (Haley X+Y split) + 4 unit tests |
+| `8a92e24` | ADR-009 documenting Railway list bulk-fetch contract (F-5) |
+
+F-4 (stable query keys + dedup) deferred — minor cleanup, no visible
+impact. Mobile responsive thorough pass + card gap thorough audit
+deferred — small CSS items, can pick up next session.
+
+### Live verification (Playwright, three accounts rotated to beat rate-limit)
+
+Used `steve+thing2@`, `steve+thing1@`, and `audri+test@` in
+rotation to drive the verification across multiple sessions.
+
+| Check | Live result |
+|---|---|
+| **F-1c probes count** | Francesconi `counts.probes = 606` (was 0); Haley `counts.probes = 4,156` (was 0) ✅ |
+| **F-1d epoch projection** | Francesconi `/tables/element_epoch` returns 1604 rows under EPOCH_COLUMNS (epochNumber, epochDocumentIdentifier, probeDocumentIdentifier, subjectDocumentIdentifier, epochStart, epochStop) — was 0 rows pre-alias, 1604 rows but GENERIC_COLUMNS pre-projection-fix, now 1604 rows EPOCH_COLUMNS ✅ |
+| **F-1e Bhar treatment timeline** | Panel renders Gantt-style Plotly chart: 30 subjects on Y axis, time axis spanning -20k → 0 seconds (matches Bhar's pre-experiment treatment protocol). 60 trace groups + 63 plot points + 22 rects rendered. Treatment names like "Eschericia coli OP50" with parsed timing pairs like `[-12600.0, 0.0]` flowing through to the chart. **The long-standing F-1e empty-state blocker is closed.** ✅ |
+| **F-1 stimulus projection** | Francesconi `/tables/stimulus_presentation` returns STIMULUS_COLUMNS (6 cols) — Francesconi has 0 stim docs but the projection shape is correct ✅ |
+| **F-2 subject filter** | `?subject=DOES_NOT_EXIST` returns `totalRows: 0` (filter applied post-cache) ✅ |
+| **F-3 direction filter** | `?direction=upstream` returns response with `direction_filter: 'upstream'` and only upstream edges ✅ |
+| **F-8 tabular_query POST** | Route accepts POST with JSON body matching the GET param shape ✅ |
+| **BehavioralTrack pair-mode** | Haley `(N2_4135_..._midpoint_position, N2_4135_..._midpoint_distance)` pair → trajectory chart mounts with `data-pair-mode="true"`, figcaption shows "pair" badge, footer shows "Paired: 2 source documents", **1985 line segments rendered** (the actual trajectory!) ✅ |
+| **B1 workspace redirect** | NOT reproducing. Single deployment-ID chunks, no spurious URL flips. Hypothesis from prior session (CDN cache thrash during multi-deploy bursts) still supported ✅ |
+| **Cross-dataset session drop** | Still reproduces on `page.goto()` cross-dataset hard-reload — Playwright-specific cookie handling, not a real user bug. Worked around by re-logging in with a different account each time ✅ |
+
+### Skipped or deferred (deliberately)
+
+- **S-1 through S-4** (NDI SDK upstream asks) — per user direction
+- **F-1b** (treatment broadcast cols pivot) — large work, cloud-app JS workaround exists
+- **F-4** (stable query keys + dedup) — low impact, deferable
+- **Mobile responsive thorough pass <375px** — minmax fix already shipped; thorough pass is a small next-session item
+- **Card gap thorough audit** — partial pass already shipped
+- **Tools-along-boundaries canvas redesign** — DESIGN-FIRST item per user; pickup in next session
+- **Bhar 12 vs 11 class count + Haley Sessions=3 vs 2** — minor parity gaps, deferred
+
+### Updated branch state
+
+- Backend `ndi-data-browser-v2` `feat/ndi-python-phase-a`: HEAD `8401286`
+- Cloud-app `ndi-cloud-app` `feat/experimental-ask-chat`: HEAD `8a92e24`
+- Total session arc commits past the prior handoff: **13 backend + cloud-app**
+- 885 backend unit tests + 2138 cloud-app unit tests all green
+- Both preview/experimental deploys Ready
+
+### What's TRULY left for next session
+
+1. **Tools-along-boundaries** — design Q&A then code
+2. **F-1b** (treatment broadcast cols pivot)
+3. **F-4** (stable query keys)
+4. **Mobile + card gap thorough audits**
+5. **S-1 through S-4** (SDK upstream)
+6. Whatever new findings the user encounters using the now-much-richer workspace
+
+---
+
 ## Update history
 
 | Date | Author | Change |
 |---|---|---|
 | 2026-05-19 (evening) | post-handoff session | First version. Six new commits stacked + live verification + agent-collision postmortem. |
 | 2026-05-19 (late evening) | live-exercise session | All 5 new panels exercised end-to-end. Patch-clamp + derived columns + time-coloring all PASS. Video panel bug found + fixed (`66667ef`). B1 NOT REPRODUCING — CDN cache thrash hypothesis supported. Session-drop on hard-reload noted (Playwright artifact?). |
+| 2026-05-19 (overnight) | code-out-everything | 8 backend tickets + 1 cloud-app capability + 1 ADR shipped. F-1c/d/e all live-verified end-to-end including the long-standing Bhar Treatment Timeline empty-state blocker. **Bhar Gantt renders.** Three test accounts rotated to beat rate-limit. |
