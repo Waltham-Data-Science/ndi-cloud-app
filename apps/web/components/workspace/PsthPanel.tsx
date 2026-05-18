@@ -5,7 +5,7 @@
  * Joins a vmspikesummary spike train with a stimulus_presentation /
  * stimulus_response event train and bins spikes around each onset.
  *
- * Mirrors SpikeActivityPanel's mutation + Skeleton + error envelope
+ * Mirrors SpikeActivityPanel's query + Skeleton + error envelope
  * shape; the chart is the new PsthChart component. Show-Code emits
  * the `psth` tool snippet for Python and MATLAB.
  *
@@ -19,14 +19,20 @@
  * suppress further auto-runs. See
  * `apps/web/docs/design/2026-05-16-workspace-canvas-redesign.md` for
  * the selection-keys → panels mapping.
+ *
+ * F-4 (2026-05-18): Converted from `useMutation` → `useQuery` keyed
+ * on the committed request body. Identical picks (same form values
+ * after a selection cascade) no longer re-fire the network call —
+ * TanStack Query dedups by queryKey hash. The "Run" button forces an
+ * explicit refetch when the committed args are unchanged. See
+ * `apps/web/docs/specs/2026-05-18-backend-followups.md` § F-4.
  */
 import { Activity } from 'lucide-react';
-import { useMutation } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type FormEvent,
 } from 'react';
@@ -180,12 +186,34 @@ export function PsthPanel({ datasetId }: PsthPanelProps) {
     selection.unit !== null && selection.stimulus !== null,
   );
 
-  const mutation = useMutation<EndpointResponse, Error, RequestBody>({
-    mutationFn: (body) =>
+  // F-4: committed args drive the useQuery key. The form holds the
+  // current input; committedArgs holds the last user-validated body.
+  // useQuery dedups identical committedArgs (same key hash) so a
+  // repeat selection-pick with the same values doesn't re-hit the
+  // network. The Run button forces an explicit refetch when args
+  // are unchanged.
+  const [committedArgs, setCommittedArgs] = useState<RequestBody | null>(null);
+
+  const query = useQuery<EndpointResponse, Error>({
+    queryKey: [
+      'psth',
+      datasetId,
+      committedArgs?.unitDocId ?? null,
+      committedArgs?.stimulusDocId ?? null,
+      committedArgs?.t0 ?? null,
+      committedArgs?.t1 ?? null,
+      committedArgs?.binSizeMs ?? null,
+    ],
+    queryFn: ({ signal }) =>
       apiFetch<EndpointResponse>(
         `/api/datasets/${encodeURIComponent(datasetId)}/psth`,
-        { method: 'POST', body },
+        { method: 'POST', body: committedArgs!, signal },
       ),
+    enabled: committedArgs !== null,
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    retry: 0,
+    refetchOnWindowFocus: false,
   });
 
   // Pull updates from the selection bar into the form. Never blanks
@@ -231,6 +259,7 @@ export function PsthPanel({ datasetId }: PsthPanelProps) {
   }, [selection.unit, selection.stimulus, form.unitDocId, form.stimulusDocId]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  const refetch = query.refetch;
   const handleRun = useCallback(
     (e?: FormEvent) => {
       e?.preventDefault();
@@ -240,43 +269,79 @@ export function PsthPanel({ datasetId }: PsthPanelProps) {
         setFormError(built.error);
         return;
       }
-      mutation.mutate(built);
+      // F-4: if the committed args are identical to what we'd commit
+      // now, the queryKey hash is unchanged — useQuery won't refetch.
+      // For an explicit Run press the user expects a network call, so
+      // call refetch() directly. For different args, set committedArgs
+      // and useQuery will fire automatically.
+      if (
+        committedArgs !== null &&
+        committedArgs.unitDocId === built.unitDocId &&
+        committedArgs.stimulusDocId === built.stimulusDocId &&
+        committedArgs.t0 === built.t0 &&
+        committedArgs.t1 === built.t1 &&
+        committedArgs.binSizeMs === built.binSizeMs
+      ) {
+        refetch();
+      } else {
+        setCommittedArgs(built);
+      }
     },
-    [form, mutation],
+    [form, committedArgs, refetch],
   );
   // NB: stale-state reset on dataset change happens at the parent
   // (`workspace-client.tsx` keys the panel stack by `datasetId`).
 
   // Auto-run when context becomes complete + auto-filled. Debounced
-  // 400ms so a rapid selection cascade settles before firing. Uses a
-  // ref-tracked "last run pair" key so the same pairing doesn't fire
-  // twice even if React re-runs the effect.
-  const lastAutoRunRef = useRef<string | null>(null);
+  // 400ms so a rapid selection cascade settles before firing. The
+  // committed args naturally dedup repeat fires via useQuery's
+  // queryKey hash — no lastAutoRunRef needed post-F-4. The ref-based
+  // pre-F-4 guard was a workaround for useMutation always firing on
+  // mutate(); useQuery skips identical-key fetches by design.
   useEffect(() => {
     if (!isAutoFilled) return;
     const unit = form.unitDocId.trim();
     const stim = form.stimulusDocId.trim();
     if (!HEX_24.test(unit) || !HEX_24.test(stim)) return;
-    const key = `${unit}|${stim}`;
-    if (lastAutoRunRef.current === key) return;
     const handle = setTimeout(() => {
-      lastAutoRunRef.current = key;
-      handleRun();
+      const built = buildRequestBody({
+        ...form,
+        unitDocId: unit,
+        stimulusDocId: stim,
+      });
+      if ('error' in built) return;
+      setCommittedArgs((prev) => {
+        // Bail out early if the candidate body matches prev — preserves
+        // ref equality so consumers that depend on committedArgs don't
+        // re-run. The useQuery key would dedup anyway but skipping the
+        // state update is cheaper.
+        if (
+          prev !== null &&
+          prev.unitDocId === built.unitDocId &&
+          prev.stimulusDocId === built.stimulusDocId &&
+          prev.t0 === built.t0 &&
+          prev.t1 === built.t1 &&
+          prev.binSizeMs === built.binSizeMs
+        ) {
+          return prev;
+        }
+        return built;
+      });
     }, 400);
     return () => clearTimeout(handle);
-  }, [isAutoFilled, form.unitDocId, form.stimulusDocId, handleRun]);
+  }, [isAutoFilled, form]);
 
-  // Pull the success-shape result out of the mutation envelope.
+  // Pull the success-shape result out of the query envelope.
   const result = useMemo<PsthToolResult | null>(() => {
-    const data = mutation.data;
+    const data = query.data;
     if (!data || isErrorEnvelope(data)) return null;
     return data;
-  }, [mutation.data]);
+  }, [query.data]);
 
   const errorEnvelope =
-    mutation.data && isErrorEnvelope(mutation.data) ? mutation.data : null;
-  const networkError = mutation.error;
-  const isRunning = mutation.isPending;
+    query.data && isErrorEnvelope(query.data) ? query.data : null;
+  const networkError = query.error;
+  const isRunning = query.isFetching;
   const hasSuccessRun = !!result && !isRunning;
 
   // Args object for Show-Code — reflects the parameters the user

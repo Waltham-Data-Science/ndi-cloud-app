@@ -34,10 +34,16 @@
  * §"Default form discovery" in the canvas redesign doc), wire it
  * into the auto-run path so the discovered groupBy / subjectColumn
  * land in the request body. For v1, empty-body auto-run is enough.
+ *
+ * F-4 (2026-05-18): Converted from `useMutation` → `useQuery` keyed
+ * on the committed request body. Auto-run on mount commits an empty
+ * body; repeat Runs with identical args refetch explicitly. Two
+ * consecutive Runs with the same form values no longer re-hit the
+ * network — TanStack Query dedups by queryKey hash.
  */
 
-import { useEffect, useId, useRef, useState } from 'react';
-import { useMutation } from '@tanstack/react-query';
+import { useId, useState } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { CalendarRange } from 'lucide-react';
 
 import { apiFetch } from '@/lib/api/client';
@@ -106,63 +112,67 @@ export function TreatmentTimelinePanel({
   const maxSubjectsId = useId();
   const [title, setTitle] = useState('');
   const [maxSubjects, setMaxSubjects] = useState('');
-  // Hold last-run args in state (not a ref) so render-time consumers
-  // — specifically ShowCodeButton — read a stable value that is set
-  // together with the mutation result. useState rather than a ref
-  // keeps React happy under the react-hooks/refs rule (refs aren't
-  // read during render).
-  const [lastRunArgs, setLastRunArgs] = useState<
-    TreatmentTimelineRequestBody & { datasetId: string }
-  >({ datasetId });
 
-  const mutation = useMutation<
-    TreatmentTimelineResponse,
-    Error,
-    TreatmentTimelineRequestBody
-  >({
-    mutationFn: (body) =>
+  // F-4: committed args drive the useQuery key. We seed with an empty
+  // body so the panel auto-runs on mount (backend picks defaults).
+  // Subsequent manual Runs commit new args or refetch when unchanged.
+  // Two consecutive Runs with identical form values dedup naturally —
+  // the queryKey hash is identical, so useQuery doesn't refetch on
+  // its own; we call refetch() explicitly to honor the user's intent.
+  const [committedArgs, setCommittedArgs] = useState<TreatmentTimelineRequestBody>({});
+
+  const query = useQuery<TreatmentTimelineResponse, Error>({
+    queryKey: [
+      'treatment-timeline',
+      datasetId,
+      committedArgs.title ?? null,
+      committedArgs.maxSubjects ?? null,
+    ],
+    queryFn: ({ signal }) =>
       apiFetch<TreatmentTimelineResponse>(
         `/api/datasets/${encodeURIComponent(datasetId)}/treatment-timeline`,
-        { method: 'POST', body },
+        { method: 'POST', body: committedArgs, signal },
       ),
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    retry: 0,
+    refetchOnWindowFocus: false,
   });
 
+  const refetch = query.refetch;
   function onRun() {
     const body: TreatmentTimelineRequestBody = {};
     const trimmedTitle = title.trim();
     if (trimmedTitle.length > 0) body.title = trimmedTitle;
     const parsedMax = parseMaxSubjects(maxSubjects);
     if (parsedMax !== null) body.maxSubjects = parsedMax;
-    setLastRunArgs({ datasetId, ...body });
-    mutation.mutate(body);
+    // F-4: identical committed args → queryKey hash unchanged →
+    // useQuery skips its auto-refetch. An explicit Run press is the
+    // user's intent to re-hit the network, so call refetch() directly.
+    if (
+      committedArgs.title === body.title &&
+      committedArgs.maxSubjects === body.maxSubjects
+    ) {
+      refetch();
+    } else {
+      setCommittedArgs(body);
+    }
   }
   // NB: stale-state reset on dataset change happens at the parent
   // (`workspace-client.tsx` keys the panel stack by `datasetId`).
-
-  // Auto-run on mount. Empty body → backend's defaults pick a
-  // sensible groupBy + subjectColumn from the dataset's actual schema.
-  // This is the fix for the Francesconi "no treatments" report — the
-  // panel used to require a click + had a default `maxSubjects=30`
-  // that wasn't the issue; the real win is letting the backend
-  // discover columns automatically on the first call.
   //
-  // Guarded by a ref so it only fires once per panel mount; further
-  // user-driven Run clicks go through `onRun()` as before. The parent
-  // keys the panel stack by `datasetId` (workspace-client.tsx) so a
-  // dataset change remounts the panel and re-fires the auto-run.
-  const autoRanRef = useRef(false);
-  useEffect(() => {
-    if (autoRanRef.current) return;
-    autoRanRef.current = true;
-    setLastRunArgs({ datasetId });
-    mutation.mutate({});
-    // mutation is intentionally omitted — including it would re-run
-    // the effect on every render because React Query returns a new
-    // mutation object reference each tick.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [datasetId]);
+  // Auto-run on mount is now implicit: committedArgs starts as `{}`
+  // so the useQuery fires immediately with empty body — backend's
+  // auto-discovery path takes over. Pre-F-4 this was a one-shot ref-
+  // guarded mutation.mutate({}); useQuery makes the guard unnecessary
+  // because the queryKey hash dedups identical states.
 
-  const hasSuccess = mutation.isSuccess && mutation.data !== undefined;
+  const lastRunArgs: TreatmentTimelineRequestBody & { datasetId: string } = {
+    datasetId,
+    ...committedArgs,
+  };
+
+  const hasSuccess = query.isSuccess && query.data !== undefined;
 
   return (
     <PanelCard
@@ -178,16 +188,16 @@ export function TreatmentTimelinePanel({
             type="button"
             variant="primary"
             onClick={onRun}
-            disabled={mutation.isPending}
+            disabled={query.isFetching}
             data-testid="treatment-timeline-run"
           >
-            {mutation.isPending ? 'Running…' : 'Run'}
+            {query.isFetching ? 'Running…' : 'Run'}
           </Button>
           {hasSuccess && (
             <ShowCodeButton
               toolName="treatment_timeline"
               args={cleanArgs(lastRunArgs)}
-              result={mutation.data}
+              result={query.data}
             />
           )}
         </>
@@ -197,7 +207,7 @@ export function TreatmentTimelinePanel({
         className="grid gap-3 sm:grid-cols-2"
         onSubmit={(e) => {
           e.preventDefault();
-          if (!mutation.isPending) onRun();
+          if (!query.isFetching) onRun();
         }}
         data-testid="treatment-timeline-form"
       >
@@ -253,10 +263,10 @@ export function TreatmentTimelinePanel({
       </form>
 
       <ResultArea
-        isPending={mutation.isPending}
-        isError={mutation.isError}
-        error={mutation.error}
-        data={mutation.data}
+        isPending={query.isFetching}
+        isError={query.isError}
+        error={query.error}
+        data={query.data}
         datasetId={datasetId}
       />
     </PanelCard>

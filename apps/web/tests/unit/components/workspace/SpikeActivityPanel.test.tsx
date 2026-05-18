@@ -528,4 +528,67 @@ describe('SpikeActivityPanel — selection auto-fill', () => {
 
     expect(screen.queryByTestId('spike-activity-auto-hint')).not.toBeInTheDocument();
   });
+
+  // F-4: TanStack Query dedups by queryKey hash. Selecting unit A,
+  // then unit B, then unit A again used to re-fire the mutation; with
+  // useQuery the cached result for A is reused and apiFetch is NOT
+  // called a third time. Mirror of the "subject A → B → A" picker-rail
+  // path the F-4 ticket describes.
+  it('dedups by queryKey when selection ping-pongs across the same unit', async () => {
+    const OTHER_UNIT_ID = 'a'.repeat(24);
+    // Two responses staged: one for VALID_UNIT, one for OTHER_UNIT.
+    // If the implementation regressed and re-fired for the third pick,
+    // the test would consume a non-existent 3rd mock (or fall through
+    // to undefined) — the assertion `toHaveBeenCalledTimes(2)` would
+    // fail in either case.
+    apiFetchMock.mockResolvedValueOnce(makeBothResult());
+    apiFetchMock.mockResolvedValueOnce(makeBothResult());
+
+    selectionStub = { ...selectionStub, unit: VALID_UNIT_ID };
+
+    const qc = new QueryClient({
+      defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+    });
+    const { rerender } = render(
+      <QueryClientProvider client={qc}>
+        <SpikeActivityPanel datasetId="ds-dedup" />
+      </QueryClientProvider>,
+    );
+
+    await waitFor(
+      () => {
+        expect(apiFetchMock).toHaveBeenCalledTimes(1);
+      },
+      { timeout: 2000 },
+    );
+
+    // Switch to a different unit — fetches a new result.
+    selectionStub = { ...selectionStub, unit: OTHER_UNIT_ID };
+    rerender(
+      <QueryClientProvider client={qc}>
+        <SpikeActivityPanel datasetId="ds-dedup" />
+      </QueryClientProvider>,
+    );
+    await waitFor(
+      () => {
+        expect(apiFetchMock).toHaveBeenCalledTimes(2);
+      },
+      { timeout: 2000 },
+    );
+
+    // Switch BACK to the original unit. queryKey hashes the same as the
+    // first commit → useQuery serves the cached result instead of
+    // re-fetching. apiFetch stays at 2 calls.
+    selectionStub = { ...selectionStub, unit: VALID_UNIT_ID };
+    rerender(
+      <QueryClientProvider client={qc}>
+        <SpikeActivityPanel datasetId="ds-dedup" />
+      </QueryClientProvider>,
+    );
+
+    // Wait long enough for the 400ms debounce + a buffer to confirm
+    // no second fetch fired.
+    await new Promise((resolve) => setTimeout(resolve, 800));
+    expect(apiFetchMock).toHaveBeenCalledTimes(2);
+  });
 });

@@ -22,14 +22,19 @@
  * field drop the auto-fill flag and suppress further auto-runs. The
  * other fields (time window, max units, kind radio) are tuning knobs
  * and don't influence auto-fill state.
+ *
+ * F-4 (2026-05-18): Converted from `useMutation` → `useQuery` keyed
+ * on the committed request body. Identical picks (same unit twice in
+ * a row from the selection bar) no longer re-fire the network call —
+ * TanStack Query dedups by queryKey hash. The "Run" button forces an
+ * explicit refetch when the committed args are unchanged.
  */
-import { useMutation } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import {
   useCallback,
   useEffect,
   useId,
   useMemo,
-  useRef,
   useState,
 } from 'react';
 import { Activity } from 'lucide-react';
@@ -101,6 +106,25 @@ function isErrorEnvelope(r: EndpointResponse): r is { error: string } {
   );
 }
 
+/**
+ * Shallow-compare two RequestBody values to decide whether they map to
+ * the same useQuery key (post-F-4). Handles the `tWindow` tuple slot
+ * explicitly so [0, 60] vs undefined are distinguishable. Returns
+ * true when the bodies would hash to the same queryKey under TanStack
+ * Query's deterministic stringification.
+ */
+function requestBodyEqual(a: RequestBody, b: RequestBody): boolean {
+  if (a.kind !== b.kind) return false;
+  if (a.unitDocId !== b.unitDocId) return false;
+  if (a.unitNameMatch !== b.unitNameMatch) return false;
+  if (a.maxUnits !== b.maxUnits) return false;
+  const at = a.tWindow;
+  const bt = b.tWindow;
+  if (at === undefined && bt === undefined) return true;
+  if (at === undefined || bt === undefined) return false;
+  return at[0] === bt[0] && at[1] === bt[1];
+}
+
 function buildRequestBody(form: FormState): RequestBody | { error: string } {
   // Build the body the way the chat tool's invocation site does:
   // optional fields are OMITTED when blank so the zod schema's
@@ -167,12 +191,35 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
   // valid but harder to debug in the a11y tree.
   const headingId = 'panel-spike-activity';
 
-  const mutation = useMutation<EndpointResponse, Error, RequestBody>({
-    mutationFn: (body) =>
+  // F-4: committed args drive the useQuery key. The form holds the
+  // current input; committedArgs holds the last user-validated body.
+  // useQuery dedups identical committedArgs (same key hash) so a
+  // repeat selection-pick with the same unit doesn't re-hit the
+  // network. The Run button forces an explicit refetch when args
+  // are unchanged.
+  const [committedArgs, setCommittedArgs] = useState<RequestBody | null>(null);
+
+  const query = useQuery<EndpointResponse, Error>({
+    queryKey: [
+      'spike-summary',
+      datasetId,
+      committedArgs?.kind ?? null,
+      committedArgs?.unitDocId ?? null,
+      committedArgs?.unitNameMatch ?? null,
+      committedArgs?.tWindow?.[0] ?? null,
+      committedArgs?.tWindow?.[1] ?? null,
+      committedArgs?.maxUnits ?? null,
+    ],
+    queryFn: ({ signal }) =>
       apiFetch<EndpointResponse>(
         `/api/datasets/${encodeURIComponent(datasetId)}/spike-summary`,
-        { method: 'POST', body },
+        { method: 'POST', body: committedArgs!, signal },
       ),
+    enabled: committedArgs !== null,
+    staleTime: 60_000,
+    gcTime: 5 * 60_000,
+    retry: 0,
+    refetchOnWindowFocus: false,
   });
 
   // Selection-bar wiring: pull updates into the form when a unit gets
@@ -193,6 +240,7 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
   }, [selection.unit]);
   /* eslint-enable react-hooks/set-state-in-effect */
 
+  const refetch = query.refetch;
   const handleRun = useCallback(() => {
     setFormError(null);
     const result = buildRequestBody(form);
@@ -200,26 +248,46 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
       setFormError(result.error);
       return;
     }
-    mutation.mutate(result);
-  }, [form, mutation]);
+    // F-4: identical committed args → queryKey hash unchanged →
+    // useQuery won't refetch on its own. An explicit Run press is the
+    // user's intent to re-hit the network, so call refetch() directly
+    // when the body matches; otherwise commit the new args and let
+    // useQuery auto-fire on the new key.
+    if (
+      committedArgs !== null &&
+      requestBodyEqual(committedArgs, result)
+    ) {
+      refetch();
+    } else {
+      setCommittedArgs(result);
+    }
+  }, [form, committedArgs, refetch]);
   // NB: stale-state reset on dataset change happens at the parent
   // (`workspace-client.tsx` keys the panel stack by `datasetId`).
 
   // Auto-run when the unit is auto-filled + valid. Debounced 400ms.
-  // Uses a ref-tracked "last id" so we don't fire twice for the same
-  // selection — important under React 19 effect re-runs.
-  const lastAutoRunRef = useRef<string | null>(null);
+  // The committed args naturally dedup repeat fires via useQuery's
+  // queryKey hash — no lastAutoRunRef needed post-F-4. The ref-based
+  // pre-F-4 guard was a workaround for useMutation always firing on
+  // mutate(); useQuery skips identical-key fetches by design.
   useEffect(() => {
     if (!isAutoFilled) return;
     const unit = form.unitDocId.trim();
     if (!HEX_24.test(unit)) return;
-    if (lastAutoRunRef.current === unit) return;
     const handle = setTimeout(() => {
-      lastAutoRunRef.current = unit;
-      handleRun();
+      const built = buildRequestBody({ ...form, unitDocId: unit });
+      if ('error' in built) return;
+      setCommittedArgs((prev) => {
+        // Bail out early if the candidate body matches prev — preserves
+        // ref equality so consumers that depend on committedArgs don't
+        // re-run. The useQuery key would dedup anyway but skipping the
+        // state update is cheaper.
+        if (prev !== null && requestBodyEqual(prev, built)) return prev;
+        return built;
+      });
     }, 400);
     return () => clearTimeout(handle);
-  }, [isAutoFilled, form.unitDocId, handleRun]);
+  }, [isAutoFilled, form]);
 
   function onUnitChange(value: string) {
     setForm((f) => ({ ...f, unitDocId: value }));
@@ -233,7 +301,7 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
   // or 2 entries depending on `kind`. We discriminate on the
   // payload's own `kind` field so the order is irrelevant.
   const charts = useMemo(() => {
-    const data = mutation.data;
+    const data = query.data;
     if (!data || isErrorEnvelope(data)) return null;
     const result = data;
     let raster: SpikeRasterChartPayload | null = null;
@@ -243,7 +311,7 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
       else if (p.kind === 'isi_histogram') isi = p;
     }
     return { raster, isi, result };
-  }, [mutation.data]);
+  }, [query.data]);
 
   // Args for ShowCodeButton — only meaningful after a successful run.
   const showCodeArgs = useMemo(() => {
@@ -254,11 +322,11 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
   }, [form, datasetId]);
 
   const errorEnvelope =
-    mutation.data && isErrorEnvelope(mutation.data) ? mutation.data : null;
-  const networkError = mutation.error;
-  const isRunning = mutation.isPending;
+    query.data && isErrorEnvelope(query.data) ? query.data : null;
+  const networkError = query.error;
+  const isRunning = query.isFetching;
   const hasSuccessRun =
-    !!mutation.data && !isErrorEnvelope(mutation.data) && !mutation.isPending;
+    !!query.data && !isErrorEnvelope(query.data) && !query.isFetching;
   const showAutoHint = isAutoFilled && !!form.unitDocId;
   // Illustrated empty state: no run pending, no run completed, nothing
   // typed manually, no validation error showing. Surface the raster
@@ -296,8 +364,8 @@ export function SpikeActivityPanel({ datasetId }: SpikeActivityPanelProps) {
               toolName="fetch_spike_summary"
               args={showCodeArgs}
               result={
-                mutation.data && !isErrorEnvelope(mutation.data)
-                  ? mutation.data
+                query.data && !isErrorEnvelope(query.data)
+                  ? query.data
                   : undefined
               }
             />
